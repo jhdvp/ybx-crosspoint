@@ -39,3 +39,17 @@ which upstream commit is already inside the fork, and what was still open.
   package set. With several worktrees building at once this stall can look like a
   hang; `pio pkg install -e default` first, then the procedure's `--build` step.
 - No fork commit resulted from this entry.
+
+## 2026-10-28 — observed upstream advance, not integrated
+
+- New upstream commit: `8f4d035c` (`fix: Move Picco switch to hardware setting
+  not software switch (#4234)`), 7 paths.
+- Integrated upstream SHA stays `31dc683f9`; this advance is deliberately not
+  merged here.
+- Simulation against `upstream/develop`: 0 conflicts, all YBX invariants OK on the
+  resulting tree. One both-side churn path: `src/main.cpp` (area `sleep-events`),
+  where the fork changed `deliverSleepPluginEvents()` and upstream changed the
+  frontlight setting. Clean auto-merge here is expected, not proof: re-read both
+  hunks when integrating.
+- Owner next step: `python3 scripts/ybx_upstream_sync.py --merge`, then
+  `--no-fetch --merge --build`, then commit and `--record docs/ybx-sync-log.md`.
