@@ -6,12 +6,17 @@
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
 #include "components/CoverGridHomeUi.h"
+#include "components/OptionPopup.h"
+#include "components/YbxHomeUi.h"
 #include "util/ButtonNavigator.h"
 
 struct Rect;
 
 class HomeActivity final : public Activity {
   std::unique_ptr<CoverGridHomeUi> coverGridUi;
+  std::unique_ptr<YbxHomeUi> ybxHomeUi;
+  std::unique_ptr<OptionPopup> ybxMore;
+  int ybxMoreChoice = -1;
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
   bool recentsLoading = false;
@@ -70,6 +75,7 @@ class HomeActivity final : public Activity {
   void onFileTransferOpen();
   void onOpdsBrowserOpen();
   void onPluginsOpen();
+  void onMoreOpen();
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image

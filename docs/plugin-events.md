@@ -238,9 +238,38 @@ belongs on the service's server, keyed by the id in the sidecar.
 
 ## Delivery semantics and limits
 
-- At-least-once, in order per plugin. The drain stops at the first failed
-  delivery so a later event never overtakes an earlier one; delivered events
-  are removed, the rest wait for the next drain.
+- Ordinary events are delivered at least once, in order per plugin, within
+  the outbox size limit below. The drain stops ordinary delivery at the first
+  failure; undelivered events wait for the next drain.
+- A `sleep.enter` GET download may opt into `"delivery": "latest"` alongside
+  its `download` object. One attempt from the drain budget is reserved for the
+  newest queued sleep snapshot, after ordinary events. It is attempted even
+  if an ordinary event failed. Only after that download succeeds are older
+  queued sleep snapshots removed as superseded. Failed downloads retain all
+  snapshots. Other event types and POST handlers cannot opt in.
+- The budget counts handler attempts, including failures. Authentication
+  refresh and its retry can make more than one HTTP call per handler. This
+  is a request-count limit, not a wall-clock sleep deadline. Across plugins,
+  the shared budget and existing subscription order still apply.
+- Sleep entry uses a 15-second cooperative drain budget after the existing
+  Wi-Fi join window (up to 10 seconds). Ordinary handlers share a 2-second
+  budget per event; an opted-in latest snapshot has up to 8 seconds. Token
+  refresh and retry share the event budget. Online drains keep the normal
+  30-second request timeout. Synchronous DNS/TCP connect and SD I/O may overrun
+  the cooperative budget; this is not a hard upper bound on sleep latency.
+- Queue replacement writes and closes `.pending`, parks the previous queue
+  as `.bak`, then renames the complete replacement. Before append, inspection
+  or delivery, a missing queue is restored from `.bak`. An existing queue is
+  authoritative; uncommitted `.pending` files are discarded, never promoted.
+  A failed restore leaves the backup for another attempt. This handles failed
+  operations and interrupted transaction boundaries; physical FAT/SD corruption
+  still requires device testing and cannot be excluded by host tests.
+- Before appending, the firmware checks the final line boundary and truncates
+  only a partial trailing event (at most 512 bytes). A read/truncate failure
+  stops that append; the next event is never glued to a known incomplete line.
+- A streamed download is accepted only after a complete HTTP response, complete
+  writes and successful file close. A close failure keeps the old sleep image
+  and the queued event for retry.
 - A corrupt queue line, or a line whose event no longer has a handler, counts
   as delivered — a manifest edit cannot wedge the queue.
 - The subscription table is rebuilt at boot. A plugin installed mid-session
@@ -253,7 +282,7 @@ belongs on the service's server, keyed by the id in the sidecar.
 | Request response               | 8KB (discarded)                |
 | Download                       | 1MB, streamed to SD            |
 | Subscribed plugins             | 8                              |
-| Handlers run per drain         | 4 (backlog continues next drain) |
+| Handler attempts per drain     | 4 (backlog continues next drain) |
 | Sidecar / config / token files | 2KB each                       |
 
 ## Worked example: hands-free progress sync

@@ -88,3 +88,33 @@ validation. Do not treat this preview as a security-reviewed public release.
 The reader sends its scoped YBX token and reading events to YBX. Provider OAuth
 tokens and LitRes/WB sessions remain on the server. A reader token can authorize
 catalog and owned-book requests, so it still needs protection in transit.
+
+## YBX home on X3/X4
+
+The home follows the YBX clients: a branded header, the most recently opened
+local book with its saved reading percentage, up to two other recent books,
+and a compact Library / Catalogs / More footer. Files, file transfer and
+settings live in the More popup. Percentages are hidden
+when no saved position is available. Recent books are not a cloud reading
+shelf; Home does not connect Wi-Fi or claim an account/sync status.
+
+Use the mapped navigation buttons to move through books and actions, Confirm
+to open, and Back to resume the latest book. Empty devices start at Library.
+Catalogs appears only when Plugins is enabled or an OPDS server is configured;
+it opens the existing Plugins/OPDS flow. Select a recent cover directly; its
+caption is plain text and saved progress, not a second title button. Other board
+profiles keep their home.
+The firmware uses its existing UI fonts rather than bundling desktop fonts.
+
+Hardware acceptance: check empty/one/three books, a deleted recent file, missing
+or corrupt cover, unknown progress, long translated titles, all four rotations,
+remapped front/side buttons, returning from each action, and repeated Home/book
+transitions. Record heap/latency and confirm no radio activation on Home.
+
+The broader native-client scope is tracked in [the parity matrix](docs/ybx-client-parity.md)
+and [the statistics adaptation plan](docs/ybx-reading-stats-plan.md). These are
+implementation plans; the preview does not yet implement native account statistics
+or achievements.
+
+Current implementation checks and open release blockers are recorded in
+[the validation status](docs/ybx-validation-status.md).

@@ -110,3 +110,6 @@ add_test(NAME clipping_selection_text COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURR
 
 add_test(NAME recursive_dictionary COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_recursive_dictionary.py)
 add_test(NAME ybx_plugin_install COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ybx_plugin_install.py)
+add_subdirectory(ybx_home)
+
+add_subdirectory(plugin_event_queue)

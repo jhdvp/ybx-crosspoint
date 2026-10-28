@@ -39,7 +39,9 @@ class GfxRenderer;
 // a pre-sleep progress push), so subscribing implies "connect": true: the
 // sleep path brings WiFi up to deliver it at sleep entry rather than waiting
 // for the next online session. Delivery stays at-least-once — a failed
-// sleep-time drain leaves the events queued for the next drain.
+// sleep-time drain leaves the events queued for the next drain. A sleep.enter
+// GET download can opt into "delivery": "latest": reserve one attempt for the
+// newest snapshot and discard older snapshots only after it succeeds.
 //
 // Whitelist only: unknown names in a manifest are ignored with a log line, so
 // manifests written against newer firmware degrade gracefully. Event names are
@@ -86,11 +88,14 @@ void emit(Event e, const Var* vars, size_t varCount);
 
 // Replays queued events through their manifest handlers. Call only while WiFi
 // is connected; requests run synchronously on the calling task. At most
-// `maxEvents` handlers run per call (each is a bounded HTTPS request) so a
-// backlog cannot stall an interactive session. Successfully delivered events
+// `maxEvents` handler attempts run per call, including failures. A handler
+// can refresh authentication and retry; this is not a wall-clock deadline.
+// Successfully delivered events
 // leave the outbox; failures stay for the next drain. When `renderer` is
 // non-null, a handler's "toast" template is shown via the standard popup after
 // its request succeeds.
-void drain(GfxRenderer* renderer, size_t maxEvents = 4);
+// maxMillis=0 preserves the normal online drain. A nonzero budget stops new
+// requests and cooperatively aborts SDK waits; synchronous DNS can overrun it.
+void drain(GfxRenderer* renderer, size_t maxEvents = 4, uint32_t maxMillis = 0);
 
 }  // namespace pluginevents

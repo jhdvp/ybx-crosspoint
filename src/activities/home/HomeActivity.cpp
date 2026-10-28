@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "CrossPointSettings.h"
@@ -169,8 +170,10 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
   for (RecentBook& book : recentBooks) {
     // The cover grid shares one slot size; generating at any other height
     // would rescale the dithered thumb at draw time and alias badly.
-    const int thumbHeight = coverGridUi ? coverGridUi->thumbHeightFor() : coverHeight;
-    if (coverGridUi) {
+    const int thumbHeight = ybxHomeUi     ? ybxHomeUi->thumbHeightFor(progress)
+                            : coverGridUi ? coverGridUi->thumbHeightFor()
+                                          : coverHeight;
+    if (coverGridUi || ybxHomeUi) {
       loadGridCover(book, thumbHeight, showingLoading, popupRect);
       ++progress;
       if (showingLoading) GUI.fillPopupProgress(renderer, popupRect, progress * 100 / recentBooks.size());
@@ -236,12 +239,22 @@ void HomeActivity::onEnter() {
   hasPlugins = SETTINGS.pluginsEnabled != 0;
 
   const auto& metrics = UITheme::getInstance().getMetrics();
-  if (UITheme::getInstance().hasCoverGridHome()) {
+#if FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3
+  ybxHomeUi = makeUniqueNoThrow<YbxHomeUi>(renderer);
+  if (ybxHomeUi) ybxMore = makeUniqueNoThrow<OptionPopup>();
+  if (!ybxMore) {
+    ybxHomeUi.reset();
+    LOG_ERR("HOME", "OOM: YBX home; using standard home");
+  }
+#endif
+  if (!ybxHomeUi && UITheme::getInstance().hasCoverGridHome()) {
     // Screen-lifetime interaction tables and component properties exceed the stack budget.
     coverGridUi = makeUniqueNoThrow<CoverGridHomeUi>(renderer);
     if (!coverGridUi) LOG_ERR("HOME", "OOM: cover grid UI; using standard home");
   }
-  loadRecentBooks(coverGridUi ? CoverGridHomeUi::MAX_BOOKS : metrics.homeRecentBooksCount);
+  loadRecentBooks(ybxHomeUi     ? ybxhome::MAX_BOOKS
+                  : coverGridUi ? CoverGridHomeUi::MAX_BOOKS
+                                : metrics.homeRecentBooksCount);
   hasContinueReading = !recentBooks.empty();
   if (coverGridUi) {
     fillCoverGridFromLibrary();
@@ -249,8 +262,18 @@ void HomeActivity::onEnter() {
     coverGridUi->begin(recentBooks, hasLibrarySlot(), hasContinueReading);
   }
 
+  if (ybxHomeUi) {
+    resolveGridCoverPaths();
+    ybxHomeUi->begin(recentBooks, hasLibrarySlot());
+  }
+
   const auto base = static_cast<int>(recentBooks.size());
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasLibrarySlot());
+
+  if (ybxHomeUi && initialMenuItem == HomeMenuItem::NONE)
+    selectorIndex = ybxhome::actionForPosition(base, hasLibrarySlot(), 0);
+
+  if (ybxHomeUi) selectorIndex = ybxhome::visibleSelection(selectorIndex, base, hasLibrarySlot());
 
   // Trigger first update
   requestUpdate();
@@ -260,6 +283,8 @@ void HomeActivity::onExit() {
   Activity::onExit();
 
   coverGridUi.reset();
+  ybxHomeUi.reset();
+  ybxMore.reset();
 
   // Free the stored cover buffer if any
   freeCoverBuffer();
@@ -306,6 +331,10 @@ void HomeActivity::loop() {
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   auto activateSelection = [this] {
+    if (ybxHomeUi && selectorIndex == ybxhome::moreAction(recentBooks.size(), hasLibrarySlot())) {
+      onMoreOpen();
+      return;
+    }
     if (selectorIndex < recentBooks.size()) {
       onRecentBookSelected(recentBooks[selectorIndex].path);
       return;
@@ -331,6 +360,41 @@ void HomeActivity::loop() {
         break;
     }
   };
+
+  if (ybxMore && ybxMore->isActive()) {
+    ybxMore->handleInput(mappedInput, [this] { requestUpdate(); });
+    const int choice = std::exchange(ybxMoreChoice, -1);
+    const int destination = ybxhome::moreChoiceAction(recentBooks.size(), hasLibrarySlot(), choice);
+    if (destination >= 0) {
+      selectorIndex = destination;
+      activateSelection();
+    }
+    return;
+  }
+
+  if (ybxHomeUi) {
+    const auto move = [this](int direction) {
+      selectorIndex = ybxhome::moveSelection(selectorIndex, recentBooks.size(), hasLibrarySlot(), direction);
+      requestUpdate();
+    };
+    buttonNavigator.onNext([&move] { move(1); });
+    buttonNavigator.onPrevious([&move] { move(-1); });
+    const auto swipe = mappedInput.wasSwipe();
+    if (swipe == MappedInputManager::SwipeDir::Up) move(1);
+    if (swipe == MappedInputManager::SwipeDir::Down) move(-1);
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back) && hasContinueReading) {
+      onRecentBookSelected(recentBooks.front().path);
+      return;
+    }
+    const int touched = ybxHomeUi->selectedAction(mappedInput);
+    if (touched >= 0 && touched <= ybxhome::moreAction(recentBooks.size(), hasLibrarySlot())) {
+      selectorIndex = touched;
+      activateSelection();
+      return;
+    }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) activateSelection();
+    return;
+  }
 
   // Cover grid home splits navigation by button group (see below); the flat
   // next/previous cycle is for the classic list home only.
@@ -472,6 +536,29 @@ void HomeActivity::render(RenderLock&&) {
   const Rect content = UITheme::getInstance().getContentArea(renderer);
 
   renderer.clearScreen();
+  if (ybxHomeUi) {
+    ybxHomeUi->setSelection(selectorIndex);
+    ybxHomeUi->renderUi();
+    if (ybxMore && ybxMore->isActive()) ybxMore->render(renderer);
+    const auto labels = mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT), tr(STR_DIR_UP),
+                                              tr(STR_DIR_DOWN));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH
+                                                                   : HalDisplay::FAST_REFRESH);
+    if (ybxHomeUi->takeThumbHeightChanged()) {
+      ybxHomeUi->refreshCoverPaths();
+      recentsLoaded = false;
+    }
+    if (!firstRenderDone) {
+      firstRenderDone = true;
+      requestUpdate();
+    } else if (!recentsLoaded && !recentsLoading) {
+      loadRecentCovers(1);  // Each YBX slot records its exact thumbnail height during render.
+      ybxHomeUi->refreshCoverPaths();
+      requestUpdate();
+    }
+    return;
+  }
   if (coverGridUi) {
     coverGridUi->setSelection(selectorIndex);
     UITheme::getInstance().drawCoverGridHome(*coverGridUi);
@@ -578,3 +665,11 @@ void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
 
 void HomeActivity::onPluginsOpen() { activityManager.goToPlugins(hasOpdsServers); }
+
+void HomeActivity::onMoreOpen() {
+  if (!ybxMore) return;
+  static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE};
+  ybxMoreChoice = -1;
+  ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 3, 0, [this](int choice) { ybxMoreChoice = choice; });
+  requestUpdate();
+}

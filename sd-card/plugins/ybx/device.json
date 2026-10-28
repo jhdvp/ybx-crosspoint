@@ -116,6 +116,7 @@
       }
     },
     "sleep.enter": {
+      "delivery": "latest",
       "download": {
         "url": "https://my.ybx.app/api/v1/crosspoint/sleep-image?w={cfg.sleep_width}&h={cfg.sleep_height}&v=1.7.0",
         "headers": {

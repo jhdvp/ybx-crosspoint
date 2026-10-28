@@ -367,8 +367,8 @@ static bool loadSleepFrameBuffer() {
 // now — over the live connection, or by bringing WiFi up when a plugin
 // subscribes (e.g. fetching a fresh /sleep.bmp so THIS sleep shows it — the
 // drain runs before goToSleep() renders the sleep screen). The connect path
-// is bounded (join deadline + drain event budget), skipped on low battery,
-// and sleep is never blocked on the network: a failed join or delivery just
+// has a join deadline and a cooperative drain budget, skipped on low battery.
+// Synchronous DNS may exceed the budget. A failed join or delivery just
 // sleeps with the previous image and the queued events retry on the next
 // drain (at-least-once). The caller's WiFi shutdown tears the radio down
 // either way. Deferrable events already queued (reader.exit) ride along in
@@ -392,31 +392,40 @@ static void deliverSleepPluginEvents(const bool allowNetwork) {
     vars[varCount++] = {"percent", percent};
   }
   pluginevents::emit(pluginevents::Event::SleepEnter, vars, varCount);
-  if (!allowNetwork) return;
+  if (!allowNetwork) {
+    LOG_DBG("MAIN", "Sleep-event network skipped: Bluetooth shutdown incomplete");
+    return;
+  }
   if (WiFi.status() == WL_CONNECTED) {
-    pluginevents::drain(&renderer);
+    pluginevents::drain(&renderer, 4, 15000);
     return;
   }
   // Any connect-flagged queued event justifies the join, not only
   // sleep.enter: reader.session is queued while reading and delivered on this
   // same sleep, and a progress-sync plugin usually subscribes to it alone.
   if (!pluginevents::wantsConnectAny()) return;
-  if (powerManager.getBatteryPercentage() < 20) return;
+  if (powerManager.getBatteryPercentage() < 20) {
+    LOG_DBG("MAIN", "Sleep-event WiFi skipped: battery below 20 percent");
+    return;
+  }
   // Sleep can be the first WiFi use since boot or deep-sleep wake.
   WIFI_STORE.loadFromFile();
   const auto cred = WIFI_STORE.findCredential(WIFI_STORE.getLastConnectedSsid());
-  if (!cred) return;
+  if (!cred) {
+    LOG_DBG("MAIN", "Sleep-event WiFi skipped: no saved last-network credential");
+    return;
+  }
 
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   WiFi.mode(WIFI_STA);
   WiFi.begin(cred->ssid.c_str(), cred->password.c_str());
   const unsigned long joinDeadline = millis() + 10000;
-  while (WiFi.status() != WL_CONNECTED && millis() < joinDeadline) {
+  while (WiFi.status() != WL_CONNECTED && static_cast<int32_t>(millis() - joinDeadline) < 0) {
     delay(100);
   }
   if (WiFi.status() == WL_CONNECTED) {
     trustedtime::startSync();  // snap the clock floor while the network is up
-    pluginevents::drain(&renderer);
+    pluginevents::drain(&renderer, 4, 15000);
   } else {
     LOG_DBG("MAIN", "Sleep-event WiFi join timed out; deferring delivery");
   }

@@ -7,13 +7,17 @@
 #include <esp_random.h>
 #include <time.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
 
+#include "PluginEventDeadline.h"
+#include "PluginEventQueue.h"
 #include "PluginHttp.h"
 #include "PluginLocations.h"
+#include "PluginQueueStorage.h"
 #include "components/UITheme.h"
 #include "network/ProtectedPaths.h"
 
@@ -25,6 +29,20 @@ static_assert(sizeof(EVENT_NAMES) / sizeof(EVENT_NAMES[0]) == static_cast<size_t
               "event name table out of sync");
 
 constexpr const char* OUTBOX_NAME = "/events.jsonl";
+struct QueueFiles {
+  bool exists(const std::string& path) { return Storage.exists(path.c_str()); }
+  bool remove(const std::string& path) { return Storage.remove(path.c_str()); }
+  bool rename(const std::string& from, const std::string& to) { return Storage.rename(from.c_str(), to.c_str()); }
+  bool writeComplete(const std::string& path, const std::string_view content) {
+    HalFile file;
+    if (!Storage.openFileForWrite("PEVT", path, file)) return false;
+    const bool complete =
+        file.write(reinterpret_cast<const uint8_t*>(content.data()), content.size()) == content.size();
+    const bool closed = file.close();
+    return complete && closed;
+  }
+};
+
 // Drop-oldest wholesale: a plugin that is never drained must not grow a file
 // forever, and by the time 4KB of events piled up the old ones describe stale
 // state anyway.
@@ -154,8 +172,11 @@ uint8_t subscriptionMask(const char* plugin) {
 bool wantsConnectAny() {
   for (const auto& sub : subscribers) {
     if (sub.name[0] == '\0' || sub.connectMask == 0) continue;
+    QueueFiles files;
+    const std::string path = outboxPath(sub);
+    if (!recoverQueue(files, path)) continue;
     std::string raw;
-    if (!Storage.readFileToString("PEVT", outboxPath(sub), MAX_OUTBOX_BYTES + MAX_EVENT_LINE, raw)) continue;
+    if (!Storage.readFileToString("PEVT", path, MAX_OUTBOX_BYTES + MAX_EVENT_LINE, raw)) continue;
     for (size_t i = 0; i < static_cast<size_t>(Event::COUNT); i++) {
       if (!(sub.connectMask & eventBit(static_cast<Event>(i)))) continue;
       char eventField[48];
@@ -220,16 +241,25 @@ void emit(const Event e, const Var* vars, const size_t varCount) {
       if (!matched) continue;
     }
     const std::string path = outboxPath(sub);
-    HalFile file = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND);
+    QueueFiles files;
+    if (!recoverQueue(files, path)) {
+      LOG_ERR("PEVT", "%s: outbox recovery failed; append deferred", sub.name);
+      continue;
+    }
+    HalFile file = Storage.open(path.c_str(), O_RDWR | O_CREAT | O_APPEND);
     if (!file || !file.isOpen()) {
       LOG_ERR("PEVT", "%s: outbox open failed", sub.name);
+      continue;
+    }
+    if (!repairQueueTail(file, MAX_EVENT_LINE)) {
+      LOG_ERR("PEVT", "%s: outbox tail repair failed; append deferred", sub.name);
       continue;
     }
     if (file.fileSize() > MAX_OUTBOX_BYTES) {
       // Drop-oldest wholesale (see MAX_OUTBOX_BYTES).
       file.close();  // explicit: remove follows on the same path
       Storage.remove(path.c_str());
-      file = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND);
+      file = Storage.open(path.c_str(), O_RDWR | O_CREAT | O_APPEND);
       if (!file || !file.isOpen()) continue;
       LOG_DBG("PEVT", "%s: outbox over cap, dropped", sub.name);
     }
@@ -259,6 +289,7 @@ struct DrainManifest {
     // "download" variant: the response streams to `dest` on SD (e.g. a fresh
     // sleep image) instead of being read as an acknowledgement.
     std::string dest;
+    bool latestSnapshot = false;
     bool isDownload() const { return !dest.empty(); }
   };
   std::vector<Handler> handlers;
@@ -302,6 +333,8 @@ bool loadDrainManifest(const Subscriber& sub, DrainManifest& out) {
     } else {
       pluginhttp::readRequest(kv.value()["request"], "POST", h.req);
     }
+    h.latestSnapshot = e == static_cast<int>(Event::SleepEnter) && h.isDownload() && h.req.method == "GET" &&
+                       strcmp(kv.value()["delivery"] | "", "latest") == 0;
     h.toast = kv.value()["toast"] | "";
     if (!h.req.url.empty()) out.handlers.push_back(std::move(h));
   }
@@ -334,7 +367,8 @@ std::string drainSubstituted(std::string tpl, const std::string& token, const pl
 // `token` is shared across the drain: a 401-minted refresh persists to the
 // remaining lines instead of re-minting per line.
 bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::string& token,
-                 const pluginhttp::Headers& config, GfxRenderer* renderer) {
+                 const pluginhttp::Headers& config, GfxRenderer* renderer, const EventDeadline& drainDeadline,
+                 const bool sleepBudget) {
   JsonDocument doc;
   if (deserializeJson(doc, lineText) != DeserializationError::Ok) return true;  // corrupt line: drop
   const int e = eventFromName(doc["e"] | "");
@@ -347,6 +381,19 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
   }
   if (!handler) return true;
 
+  const uint32_t remaining = drainDeadline.remaining(millis());
+  if (remaining == 0) return false;
+  // Reserve time for the snapshot after ordinary telemetry. Auth refresh and
+  // retry share this handler deadline instead of starting fresh time budgets.
+  const uint32_t handlerLimit =
+      sleepBudget ? std::min<uint32_t>(remaining, handler->latestSnapshot ? 8000u : 2000u) : 0;
+  const EventDeadline handlerDeadline(millis(), handlerLimit);
+  const std::function<bool()> shouldAbort = [&]() {
+    return drainDeadline.remaining(millis()) == 0 || handlerDeadline.remaining(millis()) == 0;
+  };
+  const auto timeout = [&]() {
+    return std::min<uint32_t>(30000, std::min(drainDeadline.remaining(millis()), handlerDeadline.remaining(millis())));
+  };
   JsonVariantConst vars = doc["vars"];
   const long long ts = doc["ts"] | 0LL;
   // Lines queued by pre-id firmware substitute {event.id} as empty.
@@ -363,6 +410,7 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
   }
 
   const auto run = [&](const std::string& tok) {
+    if (shouldAbort()) return -1;
     pluginhttp::Headers headers;
     headers.reserve(handler->req.headers.size());
     for (const auto& h : handler->req.headers) {
@@ -384,7 +432,7 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
       const int st = pluginhttp::requestToFile(
           nullptr, drainSubstituted(handler->req.url, tok, config, meta, vars, ts, id), handler->req.method,
           drainSubstituted(handler->req.body, tok, config, meta, vars, ts, id), headers, tmp.c_str(),
-          MAX_EVENT_DOWNLOAD);
+          MAX_EVENT_DOWNLOAD, shouldAbort, timeout());
       if (st >= 200 && st < 300) {
         // rename won't overwrite an existing file, so park the old dest as a
         // backup and restore it if the swap fails: a failed commit must not
@@ -412,14 +460,15 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
       return st;
     }
     String response;
-    return pluginhttp::request(
-        nullptr, drainSubstituted(handler->req.url, tok, config, meta, vars, ts, id), handler->req.method,
-        drainSubstituted(handler->req.body, tok, config, meta, vars, ts, id), headers, response, MAX_EVENT_RESPONSE);
+    return pluginhttp::request(nullptr, drainSubstituted(handler->req.url, tok, config, meta, vars, ts, id),
+                               handler->req.method,
+                               drainSubstituted(handler->req.body, tok, config, meta, vars, ts, id), headers, response,
+                               MAX_EVENT_RESPONSE, nullptr, shouldAbort, timeout());
   };
 
   int status = run(token);
   // A password-grant token expires; on 401/403 mint a fresh one and retry once.
-  if ((status == 401 || status == 403) && mf.hasPasswordGrant()) {
+  if ((status == 401 || status == 403) && mf.hasPasswordGrant() && !shouldAbort()) {
     std::string minted;
     // Same template vocabulary as the delivery request (e.g. a {cfg.*} client
     // secret in an auth header).
@@ -431,7 +480,7 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
     if (pluginhttp::mintPasswordToken(nullptr, drainSubstituted(mf.authReq.url, token, config, meta, vars, ts, id),
                                       mf.authReq.method,
                                       drainSubstituted(mf.authReq.body, token, config, meta, vars, ts, id), authHeaders,
-                                      mf.authTokenPath, minted)) {
+                                      mf.authTokenPath, minted, shouldAbort, timeout())) {
       pluginhttp::saveTokenToFile(mf.tokenFile, mf.tokenPath, minted);
       token = minted;
       status = run(token);
@@ -447,13 +496,15 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
 
 }  // namespace
 
-void drain(GfxRenderer* renderer, const size_t maxEvents) {
+void drain(GfxRenderer* renderer, const size_t maxEvents, const uint32_t maxMillis) {
+  const EventDeadline deadline(millis(), maxMillis);
   size_t budget = maxEvents;
   for (const auto& sub : subscribers) {
-    if (budget == 0) break;
+    if (budget == 0 || deadline.remaining(millis()) == 0) break;
     if (sub.name[0] == '\0') continue;
     const std::string path = outboxPath(sub);
-    if (!Storage.exists(path.c_str())) continue;
+    QueueFiles files;
+    if (!recoverQueue(files, path) || !Storage.exists(path.c_str())) continue;
 
     std::string raw;
     if (!Storage.readFileToString("PEVT", path, MAX_OUTBOX_BYTES + MAX_EVENT_LINE, raw)) continue;
@@ -475,35 +526,25 @@ void drain(GfxRenderer* renderer, const size_t maxEvents) {
     // Pre-build the substitution patterns (see drainSubstituted).
     for (auto& kv : config) kv.first = "{cfg." + kv.first + "}";
 
-    // Walk lines; stop at the first failure so order is preserved.
-    size_t pos = 0;
-    bool stalled = false;
-    while (pos < raw.size() && budget > 0 && !stalled) {
-      size_t nl = raw.find('\n', pos);
-      if (nl == std::string::npos) nl = raw.size();
-      const std::string lineText = raw.substr(pos, nl - pos);
-      if (!lineText.empty()) {
-        if (deliverLine(mf, lineText, token, config, renderer)) {
-          budget--;
-        } else {
-          stalled = true;
-          break;
-        }
-      }
-      pos = nl + 1;
-    }
-
-    if (pos >= raw.size() && !stalled) {
-      Storage.remove(path.c_str());
-    } else if (pos > 0) {
-      // Rewrite the unprocessed tail so delivered events are not replayed.
-      // writeFile keeps the old outbox if the rewrite fails: replaying delivered
-      // events beats losing undelivered ones.
-      if (!Storage.writeFile(path.c_str(), String(raw.c_str() + pos))) {
+    const bool latestSleep = std::any_of(mf.handlers.begin(), mf.handlers.end(),
+                                         [](const DrainManifest::Handler& h) { return h.latestSnapshot; });
+    const auto isLatest = [latestSleep](const std::string_view line) {
+      if (!latestSleep) return false;
+      JsonDocument doc;
+      if (deserializeJson(doc, line.data(), line.size()) != DeserializationError::Ok) return false;
+      return strcmp(doc["e"] | "", "sleep.enter") == 0;
+    };
+    const bool changed = drainQueue(raw, budget, isLatest, [&](const std::string_view line) {
+      return deliverLine(mf, std::string(line), token, config, renderer, deadline, maxMillis != 0);
+    });
+    if (changed) {
+      if (raw.empty()) {
+        Storage.remove(path.c_str());
+      } else if (!replaceQueue(files, path, raw)) {
         LOG_ERR("PEVT", "%s: outbox rewrite failed", sub.name);
       }
     }
-    LOG_DBG("PEVT", "%s: drained (stalled=%d)", sub.name, stalled);
+    LOG_DBG("PEVT", "%s: drain remaining=%u", sub.name, static_cast<unsigned>(raw.size()));
   }
 }
 
