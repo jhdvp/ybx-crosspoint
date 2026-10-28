@@ -1,7 +1,7 @@
 {
   "name": "ybx",
   "title": "YBX",
-  "version": "1.7.0",
+  "version": "1.9.0",
   "description": "Подключённые книжные сервисы, EPUB и статистика чтения YBX.",
   "mount": "settings",
   "author": "YBX",

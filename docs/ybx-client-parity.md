@@ -6,20 +6,20 @@ working functions of the other YBX clients. Audio remains excluded.
 Reference snapshot: ybx-apps 0e24398448a8612871b8f20dfa6f8150bb544a97,
 Classic ybx_inkview_app.c, Desktop qml/Main.qml and the pages it actually routes.
 Source presence does not establish device acceptance or a release.
-Firmware baseline: YBX fork e728f5dd, SDK44427f8d. Local compact-home candidate
-is not committed. This matrix is an inventory and implementation scope, not a
-claim that the gaps are implemented.
+Firmware baseline: compact Home/sleep changes are committed in344185ee;
+SDK44427f8d is unchanged. The native account-summary slice is a subsequent
+local candidate. This matrix records the remaining implementation scope.
 
 | User flow | Existing firmware reuse | YBX integration still needed |
 |---|---|---|
-| Home / continue / local progress | RecentBooksStore, BookProgress, native reader | Compact home prototype local; replace surplus shelf controls with real account stats |
+| Home / continue / local progress | RecentBooksStore, BookProgress, native reader | Home with cached account-summary panel; hardware acceptance pending |
 | Personal library / reading/wanted/finished | PluginCatalogActivity, authenticated dynamic lists | Native nested provider/shelf/series navigation; shared cloud/local identity |
 | Search / pagination | Existing plugin/native OPDS search and paging | Full provider filters and source-state UX acceptance |
 | Book details / cover / author / series / actions | Existing EPUB/library cover path and generic details | Native thumbnails, real book actions, provider alternatives; no fake Fetch actions |
 | On Reader / downloads / delete | LibraryIndex, FileBrowser, bounded downloader | YBX folder workflow, states and safe deletion/progress-cache acceptance |
 | EPUB reading / TOC / bookmarks / dictionary | Existing reader engine and native UI | Verify the same downloaded files, image books and preserved metadata |
 | Reading position across clients | Existing KOSync, server position conversion | Native pairing-to-KOSync setup, state/errors and mismatch UX without browser JS |
-| Reading summary / month / day / year | ReaderSession events; FreeInkUI widgets | Bounded native account model/cache, views and one session ledger |
+| Reading summary / month / day / year | ReaderSession events; FreeInkUI widgets | Summary/cache and weekly chart implemented; month/day/year views and one session ledger remain |
 | Book-level reading statistics | Existing book identity / metadata sidecars | Native per-book stats and reliable shared identity |
 | Goals / streaks | Server profile data | Display actual shared goals and server streak semantics, unknown != zero |
 | Received and pending achievements | Existing YBX achievement API/model contract | Native awards screen, progress/date, offline cache and pagination |
@@ -45,3 +45,9 @@ Work order: stable session/sleep/TLS foundation; bounded account/profile model;
 summary + history + awards; native source/account/sync flows; book/library
 parity; device acceptance. Reuse completed source-level work and keep hardware
 acceptance distinct from code presence.
+
+Implementation update (28 October): the first native account-summary slice
+adds the Home panel and a Statistics screen with explicit refresh, a token-bound
+SD cache and weekly chart. X4 Pro uses the shared YBX Home/touch routing. This
+does not complete calendar/day details, awards/goals or local-session sync.
+See [Native statistics](ybx-native-statistics.md) for the precise boundaries.

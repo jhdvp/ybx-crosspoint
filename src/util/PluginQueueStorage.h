@@ -44,12 +44,12 @@ bool recoverQueue(Files& files, const std::string& path) {
   return !files.exists(pending) || files.remove(pending);
 }
 
-template <typename Files>
-bool replaceQueue(Files& files, const std::string& path, const std::string_view content) {
+template <typename Files, typename Writer>
+bool replaceQueueWithWriter(Files& files, const std::string& path, Writer write) {
   if (!recoverQueue(files, path)) return false;
   const std::string pending = path + ".pending";
   const std::string backup = path + ".bak";
-  if (!files.writeComplete(pending, content)) return false;
+  if (!write(pending)) return false;
   const bool hadQueue = files.exists(path);
   if (hadQueue && !files.rename(path, backup)) return false;
   if (!files.rename(pending, path)) {
@@ -59,6 +59,12 @@ bool replaceQueue(Files& files, const std::string& path, const std::string_view 
   // The new path is authoritative even if backup cleanup fails. Recovery
   // must complete cleanup before another append or replacement is allowed.
   return !hadQueue || files.remove(backup);
+}
+
+template <typename Files>
+bool replaceQueue(Files& files, const std::string& path, const std::string_view content) {
+  return replaceQueueWithWriter(files, path,
+                                [&](const std::string& pending) { return files.writeComplete(pending, content); });
 }
 
 }  // namespace pluginevents

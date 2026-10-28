@@ -9,7 +9,9 @@
 
 #include "MappedInputManager.h"
 #include "UITheme.h"
+#include "YbxReadingPanel.h"
 #include "util/BookProgress.h"
+#include "util/YbxReadingData.h"
 
 namespace fui = freeink::ui;
 namespace {
@@ -24,6 +26,7 @@ YbxHomeUi::YbxHomeUi(GfxRenderer& renderer) : UiAppHost(renderer), renderer(rend
 void YbxHomeUi::begin(const std::vector<RecentBook>& recent, bool hasCatalogs) {
   books = &recent;
   catalogs = hasCatalogs;
+  ybx::loadReadingSummary(summary);
   // Deliberately do not begin the PSRAM cache: X3/X4 decode bounded SD thumbnails.
   resetUi();
   app.on(SELECT, &YbxHomeUi::onAction, this);
@@ -182,7 +185,8 @@ void YbxHomeUi::drawRecent(UiScreen& screen, fui::Rect bounds) {
 void YbxHomeUi::draw(UiScreen& screen) {
   covers.prepare();
   const auto& theme = screen.theme();
-  auto safe = UITheme::getInstance().getScreenSafeArea(renderer, true);
+  const bool hints = !uiTarget.deviceContext().hasTouch;
+  auto safe = UITheme::getInstance().getScreenSafeArea(renderer, hints);
   const int padding = UITheme::getInstance().getMetrics().contentSidePadding;
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto layout =
@@ -190,7 +194,7 @@ void YbxHomeUi::draw(UiScreen& screen) {
                                 static_cast<int16_t>(safe.width - 2 * padding), static_cast<int16_t>(safe.height)},
                       screen.target().lineHeight(theme.bodyText.font), screen.target().lineHeight(theme.smallText.font),
                       catalogs, books->size() > 1, metrics.topPadding + metrics.batteryBarHeight);
-  auto status = UITheme::getInstance().getHeaderRect(renderer, true);
+  auto status = UITheme::getInstance().getHeaderRect(renderer, hints);
   status.height = metrics.batteryBarHeight;
   GUI.drawHeader(renderer, status, nullptr, nullptr, false);
   const int markY = layout.header.y + metrics.topPadding + metrics.batteryBarHeight + 6;
@@ -208,9 +212,13 @@ void YbxHomeUi::draw(UiScreen& screen) {
                        INK);
   drawHero(screen, layout.hero);
   drawRecent(screen, layout.recent);
+  const int statistics = ybxhome::statisticsAction(books->size(), catalogs);
+  screen.frame().hit(layout.statistics, SELECT, statistics, fui::InputTouch);
+  if (selected == statistics) screen.target().stroke(layout.statistics.inset({-3, -3, -3, -3}), INK, 2);
+  drawYbxReadingPanel(screen, layout.statistics, summary);
   const int base = books->size();
   for (int i = 0; i < layout.actionCount; ++i) {
-    const int value = ybxhome::actionForPosition(base, catalogs, base + i);
+    const int value = ybxhome::actionForPosition(base, catalogs, base + 1 + i);
     const char* label = value == base + 1                              ? tr(STR_LIBRARY)
                         : value == ybxhome::moreAction(base, catalogs) ? tr(STR_TOOL_MORE)
                                                                        : tr(STR_YBX_HOME_CATALOGS);

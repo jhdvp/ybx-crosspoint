@@ -24,6 +24,7 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
+#include "activities/ybx/YbxStatisticsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -239,7 +240,7 @@ void HomeActivity::onEnter() {
   hasPlugins = SETTINGS.pluginsEnabled != 0;
 
   const auto& metrics = UITheme::getInstance().getMetrics();
-#if FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3
+#if FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3 || FREEINK_DEVICE_X4PRO
   ybxHomeUi = makeUniqueNoThrow<YbxHomeUi>(renderer);
   if (ybxHomeUi) ybxMore = makeUniqueNoThrow<OptionPopup>();
   if (!ybxMore) {
@@ -271,7 +272,7 @@ void HomeActivity::onEnter() {
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasLibrarySlot());
 
   if (ybxHomeUi && initialMenuItem == HomeMenuItem::NONE)
-    selectorIndex = ybxhome::actionForPosition(base, hasLibrarySlot(), 0);
+    selectorIndex = base == 0 ? 1 : ybxhome::actionForPosition(base, hasLibrarySlot(), 0);
 
   if (ybxHomeUi) selectorIndex = ybxhome::visibleSelection(selectorIndex, base, hasLibrarySlot());
 
@@ -331,6 +332,14 @@ void HomeActivity::loop() {
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   auto activateSelection = [this] {
+    if (ybxHomeUi && selectorIndex == ybxhome::statisticsAction(recentBooks.size(), hasLibrarySlot())) {
+      auto statistics = makeUniqueNoThrow<YbxStatisticsActivity>(renderer, mappedInput);
+      if (statistics)
+        activityManager.replaceActivity(std::move(statistics));
+      else
+        GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
+      return;
+    }
     if (ybxHomeUi && selectorIndex == ybxhome::moreAction(recentBooks.size(), hasLibrarySlot())) {
       onMoreOpen();
       return;
@@ -387,7 +396,8 @@ void HomeActivity::loop() {
       return;
     }
     const int touched = ybxHomeUi->selectedAction(mappedInput);
-    if (touched >= 0 && touched <= ybxhome::moreAction(recentBooks.size(), hasLibrarySlot())) {
+    if (ybxHomeUi->app.invalidated()) requestUpdate();
+    if (touched >= 0 && touched <= ybxhome::statisticsAction(recentBooks.size(), hasLibrarySlot())) {
       selectorIndex = touched;
       activateSelection();
       return;
@@ -542,7 +552,7 @@ void HomeActivity::render(RenderLock&&) {
     if (ybxMore && ybxMore->isActive()) ybxMore->render(renderer);
     const auto labels = mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT), tr(STR_DIR_UP),
                                               tr(STR_DIR_DOWN));
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    if (!mappedInput.hasTouch()) GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH
                                                                    : HalDisplay::FAST_REFRESH);
     if (ybxHomeUi->takeThumbHeightChanged()) {
@@ -566,7 +576,7 @@ void HomeActivity::render(RenderLock&&) {
     // side page buttons (unhinted) walk the covers.
     const auto labels = mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT),
                                               tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    if (!mappedInput.hasTouch()) GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH
                                                                    : HalDisplay::FAST_REFRESH);
     // Slot heights are recorded during the draw above; a change (first layout

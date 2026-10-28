@@ -113,3 +113,5 @@ add_test(NAME ybx_plugin_install COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_S
 add_subdirectory(ybx_home)
 
 add_subdirectory(plugin_event_queue)
+
+add_subdirectory(ybx_reading)

@@ -28,3 +28,11 @@ second framebuffer. Home does not own Wi-Fi or fetch cloud account/stats data.
 Avoid the defaults: a grid of unrelated apps, invented reading streaks, and
 phone-sized touch tabs that cannot be reached with physical buttons. All old
 home actions remain available; other device profiles keep the upstream home.
+
+The first native profile slice adds a selectable cached statistics panel between
+the current book and recent shelf. Reuse YbxReadingPanel on Home and Statistics;
+the full screen gives the weekly bars more height. Unknown and unobserved days
+remain distinct from measured zero. Show the account snapshot date and the
+trusted fetch timestamp, never a live-looking synthetic total. Explicit update
+owns networking; Home only reads SD. X4 Pro uses the same published touch
+interaction table and gives the button-hint area back to content.

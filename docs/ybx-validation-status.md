@@ -46,8 +46,10 @@ parent YBX workspace; generated binaries and logs are not committed here.
   budget. No hard upper bound on sleep latency is claimed.
 - The inherited 4 KB outbox overflow policy still drops the queue wholesale;
   shared attempt limits and subscription order can starve later plugins.
-- Native account statistics and achievements are planned, not implemented.
-- X4 Pro compiles, but still uses the upstream Home. YBX touch adaptation,
+- The first native account-summary/cache and Statistics screen slice is now
+  implemented separately; see [Native statistics](ybx-native-statistics.md).
+  Achievements, local journal/calendar and per-book history remain pending.
+- X4 Pro now uses the YBX Home with shared touch routing. Hardware acceptance,
   USB branding and Pro release/OTA assets remain unfinished.
 - Inherited HTTPS certificate verification remains disabled. Transport/OTA
   trust hardening is a separate release blocker.
@@ -56,3 +58,10 @@ parent YBX workspace; generated binaries and logs are not committed here.
 See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),
 [statistics plan](ybx-reading-stats-plan.md) and
 [event delivery contract](plugin-events.md) for scope and acceptance steps.
+
+## Subsequent native summary slice
+
+The checks above describe the earlier saved sleep/Home commit. New native-summary
+work has its own final builds, review packet and test results in the parent
+workspace under `artifacts/ybx-native-statistics-20261028`. No sleep/TLS blocker
+is closed by adding these screens. The SD plugin contract is now1.8.0.

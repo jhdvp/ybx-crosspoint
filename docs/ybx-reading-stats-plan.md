@@ -1,3 +1,8 @@
+Implementation update: the native account-summary/cache and explicit refresh
+slice is now in progress; see [Native statistics](ybx-native-statistics.md).
+This is not the local journal/vCodex adaptation described below. The original
+prototype observations remain as design history.
+
 # Reading statistics on the YBX home
 
 Source review: 2026-10-28. The owner requested a compact footer and reading
