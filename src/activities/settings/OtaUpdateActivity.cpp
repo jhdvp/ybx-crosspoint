@@ -18,10 +18,17 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     return;
   }
 
+  runUpdateCheck();
+}
+
+// Lookup + confirmation. Retry on the FAILED screen re-enters this while the
+// Wi-Fi connection this activity opened is still up.
+void OtaUpdateActivity::runUpdateCheck() {
   LOG_DBG("OTA", "WiFi connected, checking for update");
 
   {
     RenderLock lock(*this);
+    failureStage = FAILURE_CHECK;
     state = CHECKING_FOR_UPDATE;
   }
   requestUpdateAndWait();
@@ -39,10 +46,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   }
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update check failed: %d", res);
-    {
-      RenderLock lock(*this);
-      state = FAILED;
-    }
+    enterFailed(res == OtaUpdater::OOM_ERROR ? tr(STR_MEMORY_ERROR) : tr(STR_UPDATE_NETWORK_HINT), true);
     return;
   }
 
@@ -158,7 +162,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
     if (failedDetail != nullptr) {
       renderer.drawCenteredText(UI_10_FONT_ID, top + height + metrics.verticalSpacing, failedDetail);
     }
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), allowRetry ? tr(STR_RETRY) : "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state == FINISHED) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATE_COMPLETE), true, EpdFontFamily::BOLD);
@@ -176,6 +180,12 @@ void OtaUpdateActivity::runUpdateInstall() {
   LOG_DBG("OTA", "New update available, starting download...");
   {
     RenderLock lock(*this);
+    failureStage = FAILURE_INSTALL;
+    failedDetail = nullptr;
+    // Force the first UPDATE_IN_PROGRESS frame to paint: render() skips the
+    // refresh when the percent looks unchanged, and a retried install starts at 0
+    // again.
+    lastUpdaterPercentage = UNINITIALIZED_PERCENTAGE;
     state = UPDATE_IN_PROGRESS;
   }
   requestUpdateAndWait();
@@ -190,12 +200,15 @@ void OtaUpdateActivity::runUpdateInstall() {
 
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update failed: %d", res);
-    {
-      RenderLock lock(*this);
-      failedDetail = res == OtaUpdater::WRONG_DEVICE_ERROR ? tr(STR_FIRMWARE_WRONG_DEVICE) : nullptr;
-      state = FAILED;
+    const char* detail = nullptr;
+    if (res == OtaUpdater::WRONG_DEVICE_ERROR) {
+      detail = tr(STR_FIRMWARE_WRONG_DEVICE);
+    } else if (res == OtaUpdater::HTTP_ERROR) {
+      detail = tr(STR_UPDATE_NETWORK_HINT);
     }
-    requestUpdate();
+    // A wrong-device image fails the same way on every attempt; a truncated
+    // download or a failed flash write is worth re-running.
+    enterFailed(detail, res != OtaUpdater::WRONG_DEVICE_ERROR);
     return;
   }
 
@@ -212,6 +225,24 @@ void OtaUpdateActivity::runUpdateInstall() {
   }
 }
 
+void OtaUpdateActivity::enterFailed(const char* detail, const bool canRetry) {
+  {
+    RenderLock lock(*this);
+    failedDetail = detail;
+    allowRetry = canRetry;
+    state = FAILED;
+  }
+  requestUpdate();
+}
+
+void OtaUpdateActivity::retryFailedStep() {
+  if (failureStage == FAILURE_INSTALL) {
+    runUpdateInstall();
+  } else {
+    runUpdateCheck();
+  }
+}
+
 void OtaUpdateActivity::loop() {
   if (state == WAITING_CONFIRMATION) {
     if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
@@ -221,10 +252,17 @@ void OtaUpdateActivity::loop() {
   }
 
   if (state == FAILED) {
+    // A tap only ever exits. It must not retry: on touch devices drawButtonHints
+    // returns without drawing anything, so an unlabeled tap on the whole screen
+    // would silently start a slot-erasing re-flash.
     int x = 0;
     int y = 0;
     if (mappedInput.wasPressed(MappedInputManager::Button::Back) || mappedInput.wasScreenTapped(x, y)) {
       finish();
+      return;
+    }
+    if (allowRetry && mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      retryFailedStep();
     }
     return;
   }

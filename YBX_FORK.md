@@ -114,7 +114,10 @@ transitions. Record heap/latency and confirm no radio activation on Home.
 The broader native-client scope is tracked in [the parity matrix](docs/ybx-client-parity.md)
 and [the statistics adaptation plan](docs/ybx-reading-stats-plan.md). These are
 implementation plans; the preview does not yet implement native account statistics
-or achievements.
+or achievements. The Settings / Updates / About screens are reconciled against the
+Classic and Desktop clients in [settings parity](docs/ybx-settings-parity.md), which
+also records why some reference controls are not ported and why native support-log
+submission is still open.
 
 Current implementation checks and open release blockers are recorded in
 [the validation status](docs/ybx-validation-status.md).

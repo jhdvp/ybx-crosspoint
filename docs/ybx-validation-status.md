@@ -56,3 +56,35 @@ parent YBX workspace; generated binaries and logs are not committed here.
 See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),
 [statistics plan](ybx-reading-stats-plan.md) and
 [event delivery contract](plugin-events.md) for scope and acceptance steps.
+
+## Settings / Updates / About parity lane (same date, separate change)
+
+The numbers above belong to the sleep-recovery lane. For the Settings / Updates /
+About reconciliation ([settings parity](ybx-settings-parity.md)):
+
+- `~/.platformio/penv/bin/pio run -e default` — **passed**; static RAM
+  66,712/327,680 bytes, flash 5,545,169/6,553,600 bytes, i18n blob 408,093 bytes.
+  Re-run after formatting gave identical figures. Full log `/tmp/fsp-build4.log`
+  (not committed).
+- `./bin/clang-format-fix -g` — **passed**, and idempotent on the second run. The binary
+  is not on `PATH` here and the script rejects anything below 21, so the gate ran with the
+  clang-format **21.1.0** bundled in the installed Python `clang_format` package linked onto
+  `PATH`; no repository file was changed to make that work. It re-packed the new `menuNames`
+  table, which is the only formatting change it made.
+- Host suite (CTest under `test/`) — **898/898 passed**, configured offline
+  (`-DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=<v1.17.0 copy>`, `-DANIMATEDGIF_SOURCE_DIR=<copy>`)
+  because both `FetchContent` clones stall in this environment. Log `/tmp/fsp-host2.log`.
+  The changed code is activity rendering and input handling, which the host harness does not
+  cover, so this is a no-regression signal only.
+- Four independent read-only handoff reviews (correctness, architecture, embedded,
+  i18n/docs) ran against the candidate, plus a second targeted round over those fixes.
+  Confirmed findings are all resolved in the same change: About position-sync gating, the
+  unlabeled touch tap that could start a re-flash, the stale progress counters on a retried
+  install, two doc citations, and one check that had been recorded as passing when it had
+  not been run. Left open deliberately and written up in the parity document: the native
+  support-log upload (blocked on the server auth contract), the whole-partition erase per
+  retried install, and a visible on-screen Retry control for touch devices
+  (`WifiSelectionActivity.cpp:926-941` is the precedent). Nothing in the second round was
+  re-reviewed after the final formatting and progress-counter edits; those are mechanical,
+  main-agent verified, and covered by the build and suite above. No device flashing or
+  hardware validation is part of these checks.

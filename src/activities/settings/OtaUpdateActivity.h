@@ -20,6 +20,16 @@ class OtaUpdateActivity : public Activity {
   static constexpr unsigned int UNINITIALIZED_PERCENTAGE = 111;
 
   State state = WIFI_SELECTION;
+  // Which step produced FAILED, so the Retry hint re-runs that step instead of
+  // always going back to the release lookup.
+  enum FailureStage {
+    FAILURE_CHECK,
+    FAILURE_INSTALL,
+  };
+  FailureStage failureStage = FAILURE_CHECK;
+  // False for failures that repeat identically (a wrong-device image): the
+  // screen then offers Back only.
+  bool allowRetry = false;
   unsigned int lastUpdaterPercentage = UNINITIALIZED_PERCENTAGE;
   OtaUpdater updater;
   // Optional detail line shown under the generic "Update failed" heading.
@@ -31,7 +41,10 @@ class OtaUpdateActivity : public Activity {
   OptionPopup confirmPopup;
 
   void onWifiSelectionComplete(bool success);
+  void runUpdateCheck();
   void runUpdateInstall();
+  void enterFailed(const char* detail, bool canRetry);
+  void retryFailedStep();
 
  public:
   explicit OtaUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

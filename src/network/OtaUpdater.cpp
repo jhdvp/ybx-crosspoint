@@ -157,6 +157,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     return INTERNAL_UPDATE_ERROR;
   }
 
+  // Cleared before the slot erase, not after: esp_ota_begin() can take tens of
+  // seconds, and a retried install must not report the previous attempt's bytes
+  // while the render task paints the "Updating" frame.
+  processedSize = 0;
+
   esp_ota_handle_t otaHandle = 0;
   esp_err_t esp_err = esp_ota_begin(updatePartition, OTA_SIZE_UNKNOWN, &otaHandle);
   if (esp_err != ESP_OK) {
@@ -164,7 +169,6 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     return INTERNAL_UPDATE_ERROR;
   }
 
-  processedSize = 0;
   int lastReportedPct = -1;
   bool flashOk = true;
   // The image streams in chunks; only the first bytes carry the header. Buffer
