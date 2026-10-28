@@ -335,6 +335,10 @@ void HomeActivity::loop() {
       onMoreOpen();
       return;
     }
+    if (ybxHomeUi && selectorIndex == ybxhome::achievementsAction(recentBooks.size(), hasLibrarySlot())) {
+      onAchievementsOpen();
+      return;
+    }
     if (selectorIndex < recentBooks.size()) {
       onRecentBookSelected(recentBooks[selectorIndex].path);
       return;
@@ -666,10 +670,13 @@ void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
 
 void HomeActivity::onPluginsOpen() { activityManager.goToPlugins(hasOpdsServers); }
 
+void HomeActivity::onAchievementsOpen() { activityManager.goToAchievements(); }
+
 void HomeActivity::onMoreOpen() {
   if (!ybxMore) return;
-  static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE};
+  static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
+                                      StrId::STR_YBX_ACHIEVEMENTS};
   ybxMoreChoice = -1;
-  ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 3, 0, [this](int choice) { ybxMoreChoice = choice; });
+  ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 4, 0, [this](int choice) { ybxMoreChoice = choice; });
   requestUpdate();
 }

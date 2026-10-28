@@ -33,6 +33,7 @@
 #include "util/BmpViewerActivity.h"
 #include "util/FrontlightPanelActivity.h"
 #include "util/FullScreenMessageActivity.h"
+#include "ybx/YbxAchievementsActivity.h"
 
 static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
 
@@ -322,6 +323,15 @@ void ActivityManager::goToBrowser() {
 
 void ActivityManager::goToPlugins(bool showOpds) {
   replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, showOpds, /*rootMode=*/true));
+}
+
+void ActivityManager::goToAchievements() {
+  auto activity = makeUniqueNoThrow<YbxAchievementsActivity>(renderer, mappedInput);
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: achievements activity");
+    return;
+  }
+  replaceActivity(std::move(activity));
 }
 
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {

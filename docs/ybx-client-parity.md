@@ -23,6 +23,14 @@ claim that the gaps are implemented.
 | Book-level reading statistics | Existing book identity / metadata sidecars | Native per-book stats and reliable shared identity |
 | Goals / streaks | Server profile data | Display actual shared goals and server streak semantics, unknown != zero |
 | Received and pending achievements | Existing YBX achievement API/model contract | Native awards screen, progress/date, offline cache and pagination |
+
+Source-level status (2026-10-28, branch `agents/fw-achievements`): a native awards
+screen exists behind More > Achievements. It shows received and pending rewards from
+the shared account with a token-bound cache and explicit unknown/offline/expired
+states. The cp endpoint returns one limited page for both sections (limit only, no
+offset), so the screen caps at 20 per section and notes that more remain; reward
+images are device-scoped and cannot be fetched with a cp token, so rows are text.
+Hardware acceptance is pending.
 | Reader pairing / unlink | Existing device-code auth and scoped token | Native account status/repair/unlink and consentful settings flows |
 | Connected sources / link / disconnect | Existing server-owned credentials and provider lists | Native source management with phone/QR for external provider sign-in |
 | Settings / language / theme / sync / folders | Firmware Settings and UI translation system | YBX-specific controls/labels and client-parity validation |

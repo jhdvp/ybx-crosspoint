@@ -70,9 +70,11 @@ TEST(YbxHomeNavigation, AllBooksAndLegacyActionsAreReachableExactlyOnce) {
         current = next;
       }
       EXPECT_EQ(current, first);
-      for (int i = 0; i < 3; ++i) EXPECT_TRUE(visited.insert(ybxhome::moreChoiceAction(books, catalogs, i)).second);
+      for (int i = 0; i < 4; ++i) EXPECT_TRUE(visited.insert(ybxhome::moreChoiceAction(books, catalogs, i)).second);
       for (int id = 0; id <= ybxhome::moreAction(books, catalogs); ++id) EXPECT_EQ(visited.count(id), 1u);
-      for (int i = 0; i < 3; ++i)
+      EXPECT_EQ(ybxhome::moreChoiceAction(books, catalogs, 3), ybxhome::achievementsAction(books, catalogs));
+      EXPECT_GT(ybxhome::achievementsAction(books, catalogs), ybxhome::moreAction(books, catalogs));
+      for (int i = 0; i < 4; ++i)
         EXPECT_EQ(ybxhome::visibleSelection(ybxhome::moreChoiceAction(books, catalogs, i), books, catalogs),
                   ybxhome::moreAction(books, catalogs));
       EXPECT_EQ(ybxhome::moveSelection(-1, books, catalogs, 1), first);

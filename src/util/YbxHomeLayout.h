@@ -17,10 +17,13 @@ struct Layout {
 // Preserve legacy IDs for destinations; More is the one extra action.
 inline int moreAction(int books, bool catalogs) { return books + (catalogs ? 5 : 4); }
 inline int visibleCount(int books, bool catalogs) { return books + (catalogs ? 3 : 2); }
+// Reachable only through the More popup; books+5 is unused with catalogs on.
+inline int achievementsAction(int books, bool /*catalogs*/) { return books + 6; }
 inline int moreChoiceAction(int books, bool catalogs, int choice) {
   if (choice == 0) return books;
   if (choice == 1) return books + (catalogs ? 3 : 2);
   if (choice == 2) return books + (catalogs ? 4 : 3);
+  if (choice == 3) return achievementsAction(books, catalogs);
   return -1;
 }
 inline int actionForPosition(int books, bool catalogs, int position) {
