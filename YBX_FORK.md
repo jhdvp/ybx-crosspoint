@@ -58,6 +58,9 @@ a build identifier, as in CI:
 CROSSPOINT_RC_HASH="$(git rev-parse --short=7 HEAD)" pio run -e gh_release_rc
 ```
 
+SDK fixes not yet released upstream are carried as reviewed patch assets and
+applied by a build script; see [the SDK patch plan](docs/ybx-sdk-patches.md).
+
 The displayed version is `<version>-rc+<identifier>`; the GitHub preview tag
 uses `<version>rc`. Local uncommitted previews use a source-patch identifier
 recorded in BUILD.json.

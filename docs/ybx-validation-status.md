@@ -36,14 +36,47 @@ not establish physical FAT/SD durability. Build logs, source patches and binary
 checksums were saved locally in `artifacts/ybx-sleep-recovery-20261028` in the
 parent YBX workspace; generated binaries and logs are not committed here.
 
+## Deadline-bounded transport (this branch)
+
+The SecureNet deadline patch described in
+[the SDK patch plan](ybx-sdk-patches.md) replaces the blocking
+`lwip_getaddrinfo()` connect with an asynchronous lookup bounded by the same
+deadline as the TCP connect, TLS handshake and TLS 1.2 retry.
+
+Host checks: `sh freeink-sdk/libs/network/SecureNet/test/host/run.sh` passes
+(scripted resolver: cache hit, NXDOMAIN, blackhole, abort, late answer after
+timeout/abort, slot exhaustion and recycling, `millis()` wraparound).
+Firmware build: `pio run -e default` passes.
+
+Hardware acceptance (owner, on X3/X4 and X4 Pro) — record wall-clock duration
+from the sleep trigger to radio-off, including WiFi stop and the SD write,
+against each case:
+
+- [ ] Wi-Fi up, DNS server unreachable: request fails within its timeout, the
+      reader sleeps with the previous image, no watchdog reset.
+- [ ] Wi-Fi up, NXDOMAIN: fast failure, no multi-second stall.
+- [ ] TCP blackhole (port filtered): fails at the request timeout.
+- [ ] Slow TLS handshake (throttled or 1.2-only host): bounded by the same
+      timeout; HTTPS hostname/SNI still works (e.g. YBX catalog opens).
+- [ ] Expired reader token: re-authorization still works after a failed
+      request, and the retry shares the handler deadline.
+- [ ] Cancel path (back/navigation during a connect): returns promptly and the
+      radio stops; a late DNS answer does not crash.
+- [ ] Repeat 10 delivery attempts: heap before/after shows no growth per retry.
+
+Host tests cannot prove device timing; treat these as required before claiming
+a sleep-latency bound.
+
 ## Outstanding
 
 - Four independent final reviews are incomplete. OpenCode Go correctness,
   architecture and embedded attempts timed out without substantive results;
   Qoder documentation review failed on its credit limit. An earlier Home
   architecture review does not cover all final changes.
-- Synchronous SDK DNS/TCP and SD operations can exceed the cooperative sleep
-  budget. No hard upper bound on sleep latency is claimed.
+- DNS, TCP and the TLS handshake now share a request's timeout (SecureNet
+  deadline patch), but the sleep drain budget remains cooperative: SD writes and
+  WiFi shutdown are outside it, and an in-flight TCP/TLS wait still runs to
+  that timeout. No hard upper bound on sleep latency is claimed.
 - The inherited 4 KB outbox overflow policy still drops the queue wholesale;
   shared attempt limits and subscription order can starve later plugins.
 - Native account statistics and achievements are planned, not implemented.
