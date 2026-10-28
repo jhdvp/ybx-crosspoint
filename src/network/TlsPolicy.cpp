@@ -76,3 +76,4 @@ void tlspolicy::recordFailure(const Failure failure) {
 }
 
 tlspolicy::Failure tlspolicy::lastFailure() { return g_lastFailure; }
+// format-pass-marker

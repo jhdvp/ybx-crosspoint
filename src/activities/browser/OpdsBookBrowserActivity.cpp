@@ -337,7 +337,7 @@ void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {
         fail(StrId::STR_PARSE_FEED_FAILED);
         break;
       default:
-        fail(feedFailureMessage());
+        if (!failTlsIfAny()) fail(feedFailureMessage());
         break;
     }
     return;
@@ -606,7 +606,7 @@ void OpdsBookBrowserActivity::downloadLcpBook(const OpdsEntry& book) {
         options);
     if (!ok || licenseText.empty()) {
       LOG_ERR("OPDS", "LCP license fetch failed (status %d)", status);
-      fail(StrId::STR_FETCH_FEED_FAILED);
+      if (!failTlsIfAny()) fail(StrId::STR_FETCH_FEED_FAILED);
       return;
     }
   }
@@ -652,7 +652,11 @@ OpdsBookBrowserActivity::LcpUnlock OpdsBookBrowserActivity::requestLcpUnlock(con
   std::string deviceId;
   bool notEnrollable = false;
   if (!lcpdevice::ensureEnrolled(deviceId, notEnrollable)) {
-    fail(notEnrollable ? StrId::STR_LCP_OFFICIAL_BUILD : StrId::STR_DOWNLOAD_FAILED);
+    if (notEnrollable) {
+      fail(StrId::STR_LCP_OFFICIAL_BUILD);
+    } else if (!failTlsIfAny()) {
+      fail(StrId::STR_DOWNLOAD_FAILED);
+    }
     return LcpUnlock::Failed;
   }
 
@@ -693,7 +697,7 @@ OpdsBookBrowserActivity::LcpUnlock OpdsBookBrowserActivity::requestLcpUnlock(con
     if (!bookkey::write(pendingLcpPath, contentKey, sizeof(contentKey), expiresAt)) break;
     return LcpUnlock::Ok;
   }
-  fail(StrId::STR_DOWNLOAD_FAILED);
+  if (!failTlsIfAny()) fail(StrId::STR_DOWNLOAD_FAILED);
   return LcpUnlock::Failed;
 }
 
@@ -1027,7 +1031,7 @@ void OpdsBookBrowserActivity::performSearch(const std::string& query) {
   beginLoading();
 
   if (!ensureSearchTemplate()) {
-    fail(StrId::STR_FETCH_FEED_FAILED);
+    if (!failTlsIfAny()) fail(StrId::STR_FETCH_FEED_FAILED);
     return;
   }
 

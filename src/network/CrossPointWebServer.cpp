@@ -3177,3 +3177,4 @@ void CrossPointWebServer::handleFontDelete() {
     LOG_ERR("WEB", "Failed to delete font family: %s", familyName);
   }
 }
+// format-pass-marker

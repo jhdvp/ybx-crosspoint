@@ -315,6 +315,7 @@ HttpDownloader::DownloadError HttpDownloader::postToFile(const std::string& url,
   LOG_DBG("HTTP", "Downloaded %zu bytes", downloaded);
   return OK;
 }
+// format-pass-marker
 
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
                                                              ProgressCallback progress, const bool* cancelFlag,
@@ -365,3 +366,4 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   LOG_DBG("HTTP", "Downloaded %zu bytes", downloaded);
   return OK;
 }
+// format-pass-marker

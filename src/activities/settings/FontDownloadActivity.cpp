@@ -1006,3 +1006,4 @@ void FontDownloadActivity::render(RenderLock&&) {
 
   renderer.displayBuffer();
 }
+// format-pass-marker

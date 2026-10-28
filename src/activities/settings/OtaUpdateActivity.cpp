@@ -252,3 +252,4 @@ void OtaUpdateActivity::loop() {
     ESP.restart();
   }
 }
+// format-pass-marker

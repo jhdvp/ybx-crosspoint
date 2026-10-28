@@ -91,3 +91,4 @@ inline bool isTrustFailure(const Failure failure) {
 }
 
 }  // namespace tlspolicy
+// format-pass-marker

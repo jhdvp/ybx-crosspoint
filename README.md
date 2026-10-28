@@ -52,7 +52,7 @@ provider permissions; this project does not bypass DRM.
 | Extended YBX book actions | Planned |
 | HTTPS certificate verification | Implemented on this branch (built-in CA bundle, host name check, clock gate, no downgrade redirects); device acceptance pending |
 
-The build passed **917 CTest cases**, including the Python checks and the TLS
+The build passed **918 CTest cases**, including the Python checks and the TLS
 policy suite. These results
 apply to this preview; they do not establish hardware rendering, battery use,
 runtime memory or OTA recovery. See [fork details](YBX_FORK.md) for the limits
