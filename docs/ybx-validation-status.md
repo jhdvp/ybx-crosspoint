@@ -62,18 +62,21 @@ plugin API has no tree, so the firmware browses the tree with the existing
 native OPDS browser (`OpdsBookBrowserActivity` and the pinned SDK
 `OpdsClient`/`OpdsFeedParser`) instead of a parallel JSON UI. Search,
 OpenSearch, paging and signed `?e=&s=` downloads stay on that code path; no
-bearer token is put into a URL.
+bearer token is put into a URL, and the download log prints the URL without its
+query so a capability signature never reaches the serial dump.
 
 - One feed per level: root → «Все»/source → section → shelf/series → books.
   The server pages at `opds_page_size` and the SDK keeps at most 62 entries per
   feed; the change adds no heap-resident list.
-- Back returns to the feed level it came from with the same row selected.
-  Leaving a book card and the reload after a download also return to that card.
+- Back returns to the feed level it came from with the row the reader was on
+  selected (arrow scrolling counts, not only an activated row). Leaving a book
+  card and the reload after a download also return to that card.
 - An entry with no acquisition URL (an OPDS 2.0 self-only row) opens a card
-  marked "Not available" with no download action, and the callback cannot start
-  a download. In a flat plugin catalog, a mapped `url` field that is empty on a
-  row (the YBX update notice) is marked in the list, opens its details card and
-  cannot start a doomed download.
+  marked "Not available": the primary button is not drawn and neither Confirm
+  nor a tap there starts anything. In a flat plugin catalog the same applies to a
+  row whose mapped `url` field is empty (the YBX update notice) once the
+  manifest declares `download.require_url`; every other catalog keeps its fetch
+  button. See [plugin manifest schema](sd-plugins.md).
 - `STR_OPDS_UNAVAILABLE` gained a Russian text; other languages still fall back
   to English as the generator documents.
 
@@ -81,9 +84,11 @@ Verification: `test/opds_library_tree` compiles the pinned SDK Atom parser for
 the host and pins the server-shaped feeds (root navigation with «Все» before
 source folders, the Все folders, a shelf with a notice entry and signed book
 cards, a series list with counts and paging, ordered series books, search
-groups and facets, the 62-entry budget). Host suite: **906/906 passed**,
-including the eight new parser cases. `pio run -e default`: passed; static RAM
-66,712/327,680 bytes, flash 5,545,533/6,553,600 bytes. Neither proves device
+groups and facets, the 62-entry budget). `test_item_downloadability.py` compiles
+`PluginCatalogActivity::itemDownloadable()` and pins which manifest shapes lose
+the download action. Host suite: **907/907 passed**, including the eight parser
+cases and the downloadability checks. `pio run -e default`: passed; static RAM
+66,712/327,680 bytes, flash 5,545,589/6,553,600 bytes. Neither proves device
 behavior.
 
 Not verified: hardware. YBX feeds omit `opensearch:itemsPerPage` and
@@ -91,7 +96,10 @@ Not verified: hardware. YBX feeds omit `opensearch:itemsPerPage` and
 works. The pinned parser drops an entry whose only link is a `text/html`
 alternate; YBX does not emit that shape in these feeds. A book the Yandex
 source cannot deliver is still downloaded as an explanatory error EPUB (server
-contract, not detectable by the client before the transfer).
+contract, not detectable by the client before the transfer). The notice-row
+marking also depends on the manifest: the SD copy in this repo declares
+`download.require_url`, and the plugin build served by the YBX site needs the
+same field before an installed-from-hub catalog marks the notice.
 
 Owner acceptance on the device (Wi-Fi configured):
 
@@ -104,11 +112,14 @@ Owner acceptance on the device (Wi-Fi configured):
 3. Серии → a series: books in series order; the number reads in the card.
 4. Open a book card → Back: the same row is selected. Download → after the
    reload the same row is selected and the EPUB appears in the library.
-5. Search from the header: results keep the quoted-query header; Back returns
-   to the previous feed with its row selected.
+5. Scroll with the arrows to a row that is not the first and open nothing.
+   Search from the header: results keep the quoted-query header; Back returns to
+   the previous feed with that scrolled row selected, not the top of the list.
+   A Next/Previous page turn returns to the same row of the page it left.
 6. Next/Previous move through a section; an unknown N/M count is expected.
 7. The YBX plugin's update-notice row shows "Not available" and its card has no
-   fetch button.
+   fetch button; Confirm on that card starts no transfer and Back returns to the
+   list. Other plugin catalogs (and any row with a file URL) keep their button.
 
 See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),
 [statistics plan](ybx-reading-stats-plan.md) and

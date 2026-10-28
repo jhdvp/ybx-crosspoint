@@ -298,6 +298,7 @@ bool PluginCatalogActivity::loadManifest() {
   JsonVariantConst dl = doc["download"];
   pluginhttp::readRequest(dl, "GET", manifest.downloadReq);
   manifest.dlUrlPath = dl["url_path"] | "";
+  manifest.dlRequireUrl = dl["require_url"] | false;
   manifest.dlUser = dl["username"] | "";
   manifest.dlPass = dl["password"] | "";
   manifest.destDir = pluginhttp::inPluginDir(pluginDir, dl["dest_dir"] | "");
@@ -1021,7 +1022,9 @@ void PluginCatalogActivity::pollAuth() {
 bool PluginCatalogActivity::itemDownloadable(const Item& item) const {
   if (manifest.isBundle() && !item.files.empty()) return true;
   if (!manifest.dlUrlPath.empty()) return true;  // the API hop resolves the file URL
-  return manifest.urlPath.empty() || !item.url.empty();
+  // Only a manifest that declares require_url treats the url field as the row's
+  // file source. Others build the download from {id}/{title} and keep the action.
+  return !manifest.dlRequireUrl || manifest.urlPath.empty() || !item.url.empty();
 }
 
 void PluginCatalogActivity::downloadItem(const int itemIndex) {
@@ -1540,14 +1543,13 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
   addFact(item.status);
 
   const bool downloadable = itemDownloadable(item);
-  if (!downloadable) {
-    // No download source: mark the card instead of offering a fetch that can
-    // only fail. The backend still confirms on Confirm, hence the callback guard.
-    spec.status = tr(STR_OPDS_UNAVAILABLE);
-    spec.actionLabel = "";
-  } else {
+  spec.hasPrimaryAction = downloadable;
+  if (downloadable) {
     const bool updateAvailable = item.status == tr(STR_UPDATE_AVAILABLE);
     spec.actionLabel = updateAvailable ? tr(STR_UPDATE) : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH));
+  } else {
+    // No download source: the card states that and offers no action to start one.
+    spec.status = tr(STR_OPDS_UNAVAILABLE);
   }
 
   auto detailsActivity = makeUniqueNoThrow<DetailsActivity>(renderer, mappedInput, std::move(spec));
@@ -1555,8 +1557,8 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
     LOG_ERR("PCAT", "OOM: item details");
     return;
   }
-  startActivityForResult(std::move(detailsActivity), [this, itemIndex, downloadable](const ActivityResult& result) {
-    if (result.isCancelled || !downloadable || itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
+  startActivityForResult(std::move(detailsActivity), [this, itemIndex](const ActivityResult& result) {
+    if (result.isCancelled || itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
     downloadItem(itemIndex);
   });
 }

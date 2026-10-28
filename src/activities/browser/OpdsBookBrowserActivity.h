@@ -51,12 +51,13 @@ class OpdsBookBrowserActivity final : public CatalogActivity {
   std::string searchQuery;
   // Quoted form of searchQuery for the header; derived by setSearchQuery().
   std::string headerSearchTitle;
-  // Row to select after the next feed load; -1 = top. Set by Back and by
-  // leaving for a book card; applied and cleared in fetchFeed().
+  // Row to select after the next feed load; -1 = top. Set by Back, by a search
+  // or page turn, and by leaving for a book card; applied and cleared in
+  // fetchFeed(). The row left behind is always the live list selection.
   int pendingSelection = -1;
-  // Row of the entry being opened, so the details page and the reload after a
-  // download return to its card.
-  int lastActivatedRow = 0;
+  // The row the reader is on: button navigation and taps both move it, so it
+  // also covers a feed scrolled without activating anything.
+  int selectedRow() const { return nav.selected.load(); }
   // Raw pagination hrefs of the current feed: following them keeps the
   // search-term header (page 2 of results is still the same search).
   std::string pageNextHref;

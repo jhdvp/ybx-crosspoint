@@ -315,6 +315,8 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
     "body": "{}",
     "url_path": "url",                      // response field with the file URL;
                                             // omit to treat "url" itself as the file URL
+    "require_url": true,                    // json: a row whose mapped "url" field is empty
+                                            // has no file — see "Rows without a file" below
     "username": "{cfg.user}",              // optional HTTP Basic creds for the file GET
     "password": "{cfg.pass}",             // omit for token/header auth
     "dest_dir": "/ServiceName",             // created if missing; falls back to SD root
@@ -395,6 +397,12 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
   defaults to the list title, and omitted button labels use the firmware's
   translated Cancel/Confirm defaults. Back from the book list returns to the
   picker.
+- **Rows without a file** (json): with `download.require_url`, a row whose mapped
+  `url` field is empty is marked as not available in the list and its Details
+  card offers no action — for a catalog that mixes books with informational rows
+  (the YBX update notice carries an id but no file). Without the flag the row
+  keeps its Fetch action, so a download built from `{id}`/`{title}` still works
+  and a genuinely broken one reports the server error.
 - **XML navigation**: Confirm on a folder (an item carrying `container_element`)
   descends into it, Back climbs out (Back at the root leaves the screen).
   With `resolve_urls`, server-relative URLs resolve against the browse URL's

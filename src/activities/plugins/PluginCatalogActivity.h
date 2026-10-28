@@ -98,6 +98,9 @@ class PluginCatalogActivity final : public CatalogActivity {
     // Empty dlUrlPath means a direct URL; otherwise resolve it through an API hop.
     pluginhttp::RequestSpec downloadReq;
     std::string dlUrlPath;
+    // require_url: the mapped url field is the row's file source, so a row that
+    // leaves it empty has nothing to fetch (the YBX update notice).
+    bool dlRequireUrl = false;
     // Optional HTTP Basic credentials for the file GET (webdav); templates.
     std::string dlUser, dlPass;
     std::string destDir, filenameTpl;
@@ -227,9 +230,9 @@ class PluginCatalogActivity final : public CatalogActivity {
   void activateItem(int itemIndex);  // XML list: navigate into a folder, else show details/download
   bool loadItemDetails(int itemIndex, ItemDetails& details);
   void showItemDetails(int itemIndex);
-  // A catalog that maps a URL field and leaves it empty for a row (the YBX
-  // notice) says "show this, do not fetch it". Rows are only judged when the
-  // manifest maps that field and the download is not resolved by an API hop.
+  // Whether the row still has a file to fetch. require_url plus an empty mapped
+  // url field means the catalog says "show this, do not fetch it" (the YBX
+  // update notice). Every other catalog keeps its download action.
   bool itemDownloadable(const Item& item) const;
   void downloadItem(int itemIndex);
   HttpDownloader::DownloadError downloadBundle(const Item& item);

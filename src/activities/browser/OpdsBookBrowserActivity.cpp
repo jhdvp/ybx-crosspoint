@@ -114,7 +114,6 @@ void OpdsBookBrowserActivity::onExit() {
 
 void OpdsBookBrowserActivity::activateIndex(const int index) {
   app.clearTapFlash();
-  lastActivatedRow = index;
   const auto& entry = entries[index];
   entry.type == OpdsEntryType::BOOK ? openPublicationDetail(entry) : navigateToEntry(entry);
 }
@@ -455,7 +454,7 @@ void OpdsBookBrowserActivity::releaseEntries() {
 }
 
 void OpdsBookBrowserActivity::navigateToEntry(const OpdsEntry& entry) {
-  navigationHistory.push_back({currentPath, searchQuery, lastActivatedRow});
+  navigationHistory.push_back({currentPath, searchQuery, selectedRow()});
   // Following a results page (first/previous/next/last) stays within the
   // same search; any other navigation leaves it.
   if (!isPaginationHref(entry.href)) setSearchQuery("");
@@ -553,7 +552,12 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
     downloadUrl = resolved;
   }
   const std::string filename = downloadDestination(book);
-  LOG_DBG("OPDS", "Downloading: %s -> %s", downloadUrl.c_str(), filename.c_str());
+  {
+    // A signed acquisition href carries its capability in the query (?e=&s=), so
+    // the log gets the path only; the scoped copy is gone before TLS takes heap.
+    const std::string logUrl = downloadUrl.substr(0, downloadUrl.find('?'));
+    LOG_DBG("OPDS", "Downloading: %s -> %s", logUrl.c_str(), filename.c_str());
+  }
 
   // The selected book data is now copied into the download URL, filename, and
   // status line. Reclaim the catalog while TLS owns its record buffers; reload
@@ -821,7 +825,7 @@ void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
   detailBook = entry;
   // The page releases the rows for the TLS fetch; Back, and the reload after a
   // download, must return to the card this page was opened from.
-  pendingSelection = lastActivatedRow;
+  pendingSelection = selectedRow();
   OpdsPublication publication;
 
   const std::string feedUrl = UrlUtils::buildUrl(server.url, currentPath);
@@ -886,11 +890,10 @@ void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
   spec.descriptionHtml = true;  // publication documents may carry markup; plain text parses as-is
   if (detailBook.href.empty()) {
     // A publication may be listed without any usable acquisition (OPDS 2.0
-    // rows carry only a self link). Downloading would fetch the feed itself,
-    // so the card says it cannot be downloaded and offers no action. The
-    // backend still confirms on Confirm, hence the guard in the callback.
+    // rows carry only a self link). Downloading would fetch the feed itself, so
+    // the card states that and offers no action to start one.
     spec.status = tr(STR_OPDS_UNAVAILABLE);
-    spec.actionLabel = "";
+    spec.hasPrimaryAction = false;
   } else {
     spec.actionLabel = acquireLabel(publication.availability);
   }
@@ -908,8 +911,6 @@ void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
     }
     if (result.isCancelled) {
       startBrowse();  // entries were released for heap; rebuild the catalog we came from
-    } else if (detailBook.href.empty()) {
-      startBrowse();  // nothing to acquire; stay on the catalog, card selected
     } else {
       downloadBook(detailBook);
     }
@@ -1055,7 +1056,7 @@ void OpdsBookBrowserActivity::performSearch(const std::string& query) {
       searchTemplateBase.empty() ? UrlUtils::buildUrl(server.url, currentPath) : searchTemplateBase;
   const std::string url = UrlUtils::buildUrl(base, expanded);
 
-  navigationHistory.push_back({currentPath, searchQuery, lastActivatedRow});
+  navigationHistory.push_back({currentPath, searchQuery, selectedRow()});
   setSearchQuery(query);
   currentPath = url;
   pendingSelection = -1;  // a new search opens at the top of its results
