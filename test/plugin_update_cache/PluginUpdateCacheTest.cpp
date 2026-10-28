@@ -1,10 +1,9 @@
+#include <HalStorage.h>
 #include <gtest/gtest.h>
 
 #include <map>
 #include <string>
 #include <vector>
-
-#include <HalStorage.h>
 
 #include "util/PluginUpdateCache.h"
 
@@ -306,11 +305,10 @@ TEST_F(PluginUpdateCacheSd, LoadRejectsMissingCorruptAndOversizedFiles) {
 }
 
 TEST_F(PluginUpdateCacheSd, LoadKeepsUsableRowsAndTheStoredCount) {
-  fakefs::setFile(pluginupdates::CACHE_PATH,
-                  R"({"checked_at":9,"count":5,"items":[)"
-                  R"({"name":"a/b","title":"T","version":"1.1.0"},)"
-                  R"({"name":"empty","title":"E","version":""},)"
-                  R"({"name":"keep","title":"K","version":"1.2.0","notified":true}]})");
+  fakefs::setFile(pluginupdates::CACHE_PATH, R"({"checked_at":9,"count":5,"items":[)"
+                                             R"({"name":"a/b","title":"T","version":"1.1.0"},)"
+                                             R"({"name":"empty","title":"E","version":""},)"
+                                             R"({"name":"keep","title":"K","version":"1.2.0","notified":true}]})");
   pluginupdates::UpdateSet set;
   int64_t checkedAt = 0;
   ASSERT_TRUE(pluginupdates::load(set, checkedAt));

@@ -574,11 +574,10 @@ void HomeActivity::render(RenderLock&&) {
     ybxHomeUi->renderUi();
     if (ybxMore && ybxMore->isActive()) ybxMore->render(renderer);
     if (updateToast && updateToast->isActive()) updateToast->render(renderer);
-    const auto labels =
-        updateToast && updateToast->isActive()
-            ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
-            : mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT), tr(STR_DIR_UP),
-                                    tr(STR_DIR_DOWN));
+    const auto labels = updateToast && updateToast->isActive()
+                            ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
+                            : mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT),
+                                                    tr(STR_DIR_UP), tr(STR_DIR_DOWN));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH
                                                                    : HalDisplay::FAST_REFRESH);
@@ -602,11 +601,10 @@ void HomeActivity::render(RenderLock&&) {
     if (updateToast && updateToast->isActive()) updateToast->render(renderer);
     // Front Left/Right walk the tabs, so their hints read Left/Right; the
     // side page buttons (unhinted) walk the covers.
-    const auto labels =
-        updateToast && updateToast->isActive()
-            ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
-            : mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT), tr(STR_DIR_LEFT),
-                                    tr(STR_DIR_RIGHT));
+    const auto labels = updateToast && updateToast->isActive()
+                            ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
+                            : mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT),
+                                                    tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH
                                                                    : HalDisplay::FAST_REFRESH);
@@ -679,11 +677,10 @@ void HomeActivity::render(RenderLock&&) {
 
   if (updateToast && updateToast->isActive()) updateToast->render(renderer);
 
-  const auto labels =
-      updateToast && updateToast->isActive()
-          ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
-          : mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
-                                  tr(STR_DIR_DOWN));
+  const auto labels = updateToast && updateToast->isActive()
+                          ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
+                          : mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT),
+                                                  tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
