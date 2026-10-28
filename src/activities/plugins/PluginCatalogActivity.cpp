@@ -1018,6 +1018,12 @@ void PluginCatalogActivity::pollAuth() {
   }
 }
 
+bool PluginCatalogActivity::itemDownloadable(const Item& item) const {
+  if (manifest.isBundle() && !item.files.empty()) return true;
+  if (!manifest.dlUrlPath.empty()) return true;  // the API hop resolves the file URL
+  return manifest.urlPath.empty() || !item.url.empty();
+}
+
 void PluginCatalogActivity::downloadItem(const int itemIndex) {
   // Own only the selected item's metadata while TLS needs the catalog's heap.
   Item item;
@@ -1437,8 +1443,8 @@ void PluginCatalogActivity::activateItem(const int itemIndex) {
     fetchPage(page);
     return;
   }
-  if (!manifest.isXmlList() && manifest.hasItemDetails()) {
-    showItemDetails(itemIndex);
+  if (!manifest.isXmlList() && (manifest.hasItemDetails() || !itemDownloadable(item))) {
+    showItemDetails(itemIndex);  // an unavailable row explains itself on its card
     return;
   }
   downloadItem(itemIndex);
@@ -1533,16 +1539,24 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
   if (!item.version.empty()) addFact(std::string(tr(STR_VERSION)) + " " + item.version);
   addFact(item.status);
 
-  const bool updateAvailable = item.status == tr(STR_UPDATE_AVAILABLE);
-  spec.actionLabel = updateAvailable ? tr(STR_UPDATE) : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH));
+  const bool downloadable = itemDownloadable(item);
+  if (!downloadable) {
+    // No download source: mark the card instead of offering a fetch that can
+    // only fail. The backend still confirms on Confirm, hence the callback guard.
+    spec.status = tr(STR_OPDS_UNAVAILABLE);
+    spec.actionLabel = "";
+  } else {
+    const bool updateAvailable = item.status == tr(STR_UPDATE_AVAILABLE);
+    spec.actionLabel = updateAvailable ? tr(STR_UPDATE) : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH));
+  }
 
   auto detailsActivity = makeUniqueNoThrow<DetailsActivity>(renderer, mappedInput, std::move(spec));
   if (!detailsActivity) {
     LOG_ERR("PCAT", "OOM: item details");
     return;
   }
-  startActivityForResult(std::move(detailsActivity), [this, itemIndex](const ActivityResult& result) {
-    if (result.isCancelled || itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
+  startActivityForResult(std::move(detailsActivity), [this, itemIndex, downloadable](const ActivityResult& result) {
+    if (result.isCancelled || !downloadable || itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
     downloadItem(itemIndex);
   });
 }
@@ -1567,7 +1581,8 @@ void PluginCatalogActivity::drawFooter() {
       } else {
         const bool onItem = itemSel >= 0 && itemSel < static_cast<int>(items.size());
         const bool onDir = manifest.isXmlList() && onItem && items[itemSel].isDir;
-        const bool onDetails = !manifest.isXmlList() && onItem && manifest.hasItemDetails();
+        const bool onDetails =
+            !manifest.isXmlList() && onItem && (manifest.hasItemDetails() || !itemDownloadable(items[itemSel]));
         confirmLabel = count == 0 ? "" : (onDir ? tr(STR_OPEN) : (onDetails ? tr(STR_DETAILS) : tr(STR_FETCH)));
       }
       // On the top row of a searchable catalog the previous-nav slot becomes
@@ -1738,7 +1753,10 @@ void PluginCatalogActivity::rebuildRowItems() {
   } else {
     if (prevRowVisible()) addRow(tr(STR_PREV_PAGE), nullptr, ">");
     for (const auto& entry : items) {
-      addRow(entry.title.c_str(), entry.author.c_str(), entry.isDir ? ">" : entry.status.c_str());
+      // A row without a download source is marked, not shown as fetchable.
+      const char* value =
+          entry.isDir ? ">" : (itemDownloadable(entry) ? entry.status.c_str() : tr(STR_OPDS_UNAVAILABLE));
+      addRow(entry.title.c_str(), entry.author.c_str(), value);
     }
     if (nextRowVisible()) addRow(tr(STR_NEXT_PAGE), nullptr, ">");
   }

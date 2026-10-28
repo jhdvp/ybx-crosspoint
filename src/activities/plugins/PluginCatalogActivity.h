@@ -227,6 +227,10 @@ class PluginCatalogActivity final : public CatalogActivity {
   void activateItem(int itemIndex);  // XML list: navigate into a folder, else show details/download
   bool loadItemDetails(int itemIndex, ItemDetails& details);
   void showItemDetails(int itemIndex);
+  // A catalog that maps a URL field and leaves it empty for a row (the YBX
+  // notice) says "show this, do not fetch it". Rows are only judged when the
+  // manifest maps that field and the download is not resolved by an API hop.
+  bool itemDownloadable(const Item& item) const;
   void downloadItem(int itemIndex);
   HttpDownloader::DownloadError downloadBundle(const Item& item);
   HttpDownloader::DownloadError downloadBook(const Item& item);

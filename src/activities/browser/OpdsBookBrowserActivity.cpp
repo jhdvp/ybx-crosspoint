@@ -104,6 +104,7 @@ void OpdsBookBrowserActivity::onEnter() {
 void OpdsBookBrowserActivity::onExit() {
   releaseEntries();
   navigationHistory.clear();
+  pendingSelection = -1;
   if (!detailCoverPath.empty()) {
     if (Storage.exists(detailCoverPath.c_str())) Storage.remove(detailCoverPath.c_str());
     detailCoverPath.clear();
@@ -113,6 +114,7 @@ void OpdsBookBrowserActivity::onExit() {
 
 void OpdsBookBrowserActivity::activateIndex(const int index) {
   app.clearTapFlash();
+  lastActivatedRow = index;
   const auto& entry = entries[index];
   entry.type == OpdsEntryType::BOOK ? openPublicationDetail(entry) : navigateToEntry(entry);
 }
@@ -367,8 +369,10 @@ void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {
   const bool feedTruncated = parser.truncated();
   // Reset the selection before the swap: the render task reads the selected
   // entry under only an empty() guard, and the new feed can be shorter than
-  // the old selection.
-  nav.reset();
+  // the old selection. A pending row (Back, or returning from a book card)
+  // is clamped to the new row count when the screen is built.
+  nav.reset(pendingSelection >= 0 ? pendingSelection : 0);
+  pendingSelection = -1;
   entries = parser.takeEntries();
 
   // Pagination is a bottom tab bar (buildPaginationBar), not list rows.
@@ -451,14 +455,14 @@ void OpdsBookBrowserActivity::releaseEntries() {
 }
 
 void OpdsBookBrowserActivity::navigateToEntry(const OpdsEntry& entry) {
-  navigationHistory.push_back(currentPath);
-  searchQueryHistory.push_back(searchQuery);
+  navigationHistory.push_back({currentPath, searchQuery, lastActivatedRow});
   // Following a results page (first/previous/next/last) stays within the
   // same search; any other navigation leaves it.
   if (!isPaginationHref(entry.href)) setSearchQuery("");
   // Resolve to a full URL so sub-sub-navigation retains parent path context
   const std::string feedUrl = UrlUtils::buildUrl(server.url, currentPath);
   currentPath = UrlUtils::buildUrl(feedUrl, entry.href);
+  pendingSelection = -1;  // a forward step opens at the top of the new feed
 
   startBrowse();
 }
@@ -468,12 +472,11 @@ void OpdsBookBrowserActivity::navigateBack() {
     onGoHome();
     return;
   }
-  currentPath = navigationHistory.back();
+  const HistoryEntry last = std::move(navigationHistory.back());
   navigationHistory.pop_back();
-  if (!searchQueryHistory.empty()) {
-    setSearchQuery(searchQueryHistory.back());
-    searchQueryHistory.pop_back();
-  }
+  currentPath = last.path;
+  setSearchQuery(last.searchQuery);
+  pendingSelection = last.selected;
   startBrowse();
 }
 
@@ -816,6 +819,9 @@ bool OpdsBookBrowserActivity::parseUnlockResponse(const std::string& response, L
 // the most heap free for the TLS fetch, exactly like a download.
 void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
   detailBook = entry;
+  // The page releases the rows for the TLS fetch; Back, and the reload after a
+  // download, must return to the card this page was opened from.
+  pendingSelection = lastActivatedRow;
   OpdsPublication publication;
 
   const std::string feedUrl = UrlUtils::buildUrl(server.url, currentPath);
@@ -878,7 +884,16 @@ void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
   spec.descriptionHeading = tr(STR_OPDS_ABOUT_BOOK);
   spec.description = std::move(publication.description);
   spec.descriptionHtml = true;  // publication documents may carry markup; plain text parses as-is
-  spec.actionLabel = acquireLabel(publication.availability);
+  if (detailBook.href.empty()) {
+    // A publication may be listed without any usable acquisition (OPDS 2.0
+    // rows carry only a self link). Downloading would fetch the feed itself,
+    // so the card says it cannot be downloaded and offers no action. The
+    // backend still confirms on Confirm, hence the guard in the callback.
+    spec.status = tr(STR_OPDS_UNAVAILABLE);
+    spec.actionLabel = "";
+  } else {
+    spec.actionLabel = acquireLabel(publication.availability);
+  }
 
   auto details = makeUniqueNoThrow<DetailsActivity>(renderer, mappedInput, std::move(spec));
   if (!details) {
@@ -893,6 +908,8 @@ void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
     }
     if (result.isCancelled) {
       startBrowse();  // entries were released for heap; rebuild the catalog we came from
+    } else if (detailBook.href.empty()) {
+      startBrowse();  // nothing to acquire; stay on the catalog, card selected
     } else {
       downloadBook(detailBook);
     }
@@ -1038,10 +1055,10 @@ void OpdsBookBrowserActivity::performSearch(const std::string& query) {
       searchTemplateBase.empty() ? UrlUtils::buildUrl(server.url, currentPath) : searchTemplateBase;
   const std::string url = UrlUtils::buildUrl(base, expanded);
 
-  navigationHistory.push_back(currentPath);
-  searchQueryHistory.push_back(searchQuery);
+  navigationHistory.push_back({currentPath, searchQuery, lastActivatedRow});
   setSearchQuery(query);
   currentPath = url;
+  pendingSelection = -1;  // a new search opens at the top of its results
 
   startBrowse();
 }

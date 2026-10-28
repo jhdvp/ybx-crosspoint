@@ -53,6 +53,63 @@ parent YBX workspace; generated binaries and logs are not committed here.
   trust hardening is a separate release blocker.
 - No device flashing, hardware validation, release or PR is part of these checks.
 
+## YBX aggregated library tree — 28 October 2026
+
+The merged library (`/library`: Все, Читаю, Хочу прочитать, Прочитано, Серии,
+Полки, Загруженные) and the per-source folders are OPDS 1.x Atom behind HTTP
+Basic device auth. Those routes reject a `cp_` plugin token, and the JSON
+plugin API has no tree, so the firmware browses the tree with the existing
+native OPDS browser (`OpdsBookBrowserActivity` and the pinned SDK
+`OpdsClient`/`OpdsFeedParser`) instead of a parallel JSON UI. Search,
+OpenSearch, paging and signed `?e=&s=` downloads stay on that code path; no
+bearer token is put into a URL.
+
+- One feed per level: root → «Все»/source → section → shelf/series → books.
+  The server pages at `opds_page_size` and the SDK keeps at most 62 entries per
+  feed; the change adds no heap-resident list.
+- Back returns to the feed level it came from with the same row selected.
+  Leaving a book card and the reload after a download also return to that card.
+- An entry with no acquisition URL (an OPDS 2.0 self-only row) opens a card
+  marked "Not available" with no download action, and the callback cannot start
+  a download. In a flat plugin catalog, a mapped `url` field that is empty on a
+  row (the YBX update notice) is marked in the list, opens its details card and
+  cannot start a doomed download.
+- `STR_OPDS_UNAVAILABLE` gained a Russian text; other languages still fall back
+  to English as the generator documents.
+
+Verification: `test/opds_library_tree` compiles the pinned SDK Atom parser for
+the host and pins the server-shaped feeds (root navigation with «Все» before
+source folders, the Все folders, a shelf with a notice entry and signed book
+cards, a series list with counts and paging, ordered series books, search
+groups and facets, the 62-entry budget). Host suite: **906/906 passed**,
+including the eight new parser cases. `pio run -e default`: passed; static RAM
+66,712/327,680 bytes, flash 5,545,533/6,553,600 bytes. Neither proves device
+behavior.
+
+Not verified: hardware. YBX feeds omit `opensearch:itemsPerPage` and
+`startIndex`, so the "page N/M" indicator stays unknown while arrow paging
+works. The pinned parser drops an entry whose only link is a `text/html`
+alternate; YBX does not emit that shape in these feeds. A book the Yandex
+source cannot deliver is still downloaded as an explanatory error EPUB (server
+contract, not detectable by the client before the transfer).
+
+Owner acceptance on the device (Wi-Fi configured):
+
+1. Settings → OPDS Servers → YBX server
+   (`https://my.ybx.app/opds/<device-id>`, Basic username = device id, password
+   = device key; with no plugins installed the same browser is Home →
+   Catalogs) → Browse.
+2. The root lists «Все» first, then the connected source folders. Open «Все»:
+   Читаю, Хочу прочитать, Прочитано, Серии, Полки (Yandex linked), Загруженные.
+3. Серии → a series: books in series order; the number reads in the card.
+4. Open a book card → Back: the same row is selected. Download → after the
+   reload the same row is selected and the EPUB appears in the library.
+5. Search from the header: results keep the quoted-query header; Back returns
+   to the previous feed with its row selected.
+6. Next/Previous move through a section; an unknown N/M count is expected.
+7. The YBX plugin's update-notice row shows "Not available" and its card has no
+   fetch button.
+
 See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),
 [statistics plan](ybx-reading-stats-plan.md) and
 [event delivery contract](plugin-events.md) for scope and acceptance steps.
