@@ -22,6 +22,9 @@ class OtaUpdater {
     INTERNAL_UPDATE_ERROR,
     OOM_ERROR,
     WRONG_DEVICE_ERROR,
+    UNTRUSTED_SOURCE_ERROR,  // release metadata points off the fork's release hosts
+    IMAGE_SIZE_ERROR,        // published image cannot fit this board's OTA slot
+    CORRUPT_IMAGE_ERROR,     // body is not an ESP image or arrived incomplete
   };
 
   size_t getOtaSize() const { return otaSize; }
@@ -31,6 +34,8 @@ class OtaUpdater {
   size_t getTotalSize() const { return totalSize; }
 
   OtaUpdater() = default;
+  // Channel rule (stable devices never receive a preview build; a preview device
+  // advances to the stable build of its core version): ota_policy::updateOfferedIsNewer.
   bool isUpdateNewer() const;
   const std::string& getLatestVersion() const;
   OtaUpdaterError checkForUpdate();
