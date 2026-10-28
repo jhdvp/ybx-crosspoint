@@ -122,7 +122,30 @@ inline bool deadlineReached(const unsigned long nowMs, const unsigned long deadl
 }
 
 inline unsigned long slowedDownIntervalMs(const unsigned long intervalMs) {
-  return intervalMs + SLOW_DOWN_STEP_MS;
+  // The API may send arbitrarily many slow_down replies, but the device
+  // must neither overflow millis nor busy-poll the endpoint.
+  return intervalMs >= 60000UL - SLOW_DOWN_STEP_MS ? 60000UL : intervalMs + SLOW_DOWN_STEP_MS;
+}
+
+inline bool validDeviceChallenge(const std::string_view userCode, const std::string_view deviceCode,
+                                 const std::string_view verifyUrl) {
+  constexpr std::string_view base = "https://my.ybx.app/pair?code=";
+  if (userCode.empty() || userCode.size() > 32 || deviceCode.empty() || deviceCode.size() > 160 ||
+      verifyUrl.substr(0, base.size()) != base ||
+      verifyUrl.substr(base.size()) != userCode)
+    return false;
+  for (const unsigned char c : userCode)
+    if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-')) return false;
+  for (const unsigned char c : deviceCode)
+    if (c < 33 || c > 126 || c == '"' || c == '\\') return false;
+  return true;
+}
+
+inline bool validAccessToken(const std::string_view token) {
+  if (token.empty() || token.size() > 2048) return false;
+  for (const unsigned char c : token)
+    if (c < 33 || c > 126 || c == '"' || c == '\\') return false;
+  return true;
 }
 
 enum class PollOutcome : uint8_t { Pending, SlowDown, Expired, Denied };

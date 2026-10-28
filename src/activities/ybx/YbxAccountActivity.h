@@ -18,14 +18,19 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
+  bool preventAutoSleep() override { return state_ == State::Pairing; }
 
  private:
-  enum class State { NotConnected, Ready, Loading, Failed, InvalidToken, Unsupported };
+  enum class State { NotConnected, Ready, Loading, Failed, InvalidToken, Unsupported, Pairing, PairFailed };
   static void screen(UiScreen& screen, void* user);
   static void action(const freeink::ui::ActionEvent& event, void* user);
   void draw(UiScreen& screen);
   void button(UiScreen& screen, freeink::ui::Rect bounds, int value, const char* label);
   void refresh();
+  void beginPairing();
+  void pollPairing();
+  void cancelPairing();
+  void showPairQr();
   void activate(int value);
   void openPluginCatalog();
 
@@ -34,6 +39,24 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
   bool fetched_ = false;
   bool ownsWifi_ = false;
   bool refreshPending_ = false;
+  bool pairPending_ = false;
+  bool pairExpired_ = false;
+  struct Pairing {
+    std::string deviceCode;
+    std::string userCode;
+    std::string verifyUrl;
+    unsigned long nextPollMs = 0;
+    unsigned long deadlineMs = 0;
+    unsigned long intervalMs = 5000;
+    void clear() {
+      deviceCode.clear();
+      userCode.clear();
+      verifyUrl.clear();
+      nextPollMs = deadlineMs = 0;
+      intervalMs = 5000;
+    }
+  } pairing_;
+
   bool returnedFromChild_ = false;
   bool waitConfirmRelease_ = false;
   bool waitBackRelease_ = false;

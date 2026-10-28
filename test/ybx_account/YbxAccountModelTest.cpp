@@ -47,3 +47,21 @@ TEST(YbxAccountModel, PollTimingIsBoundedAndHandlesMillisRollover) {
   EXPECT_EQ(pollOutcomeFromErrorCode("slow_down"), PollOutcome::SlowDown);
   EXPECT_EQ(pollOutcomeFromErrorCode("access_denied"), PollOutcome::Denied);
 }
+
+TEST(YbxAccountModel, ValidPairingChallengeBindsUriAndSecretToFirstParty) {
+  EXPECT_TRUE(validDeviceChallenge("ABCD-1234", "abc.def0123", "https://my.ybx.app/pair?code=ABCD-1234"));
+  EXPECT_FALSE(validDeviceChallenge("ABCD-1234", "abc.def", "https://evil.example/pair?code=ABCD-1234"));
+  EXPECT_FALSE(validDeviceChallenge("ABCD-1234", "abc.def", "https://my.ybx.app.evil/pair?code=ABCD-1234"));
+  EXPECT_FALSE(validDeviceChallenge("ABCD-1234", "abc.def", "https://my.ybx.app/pair?code=WRONG"));
+  EXPECT_FALSE(validDeviceChallenge("A;DROP", "abc.def", "https://my.ybx.app/pair?code=A;DROP"));
+  EXPECT_FALSE(validDeviceChallenge("ABCD-1234", "abc\\\"def", "https://my.ybx.app/pair?code=ABCD-1234"));
+}
+TEST(YbxAccountModel, TokenValidationAndBackoffAreBounded) {
+  EXPECT_FALSE(validAccessToken(""));
+  EXPECT_FALSE(validAccessToken("bad\\ntoken"));
+  EXPECT_FALSE(validAccessToken(std::string(2049,'x')));
+  EXPECT_TRUE(validAccessToken("secure.encoded_token-12"));
+  EXPECT_EQ(slowedDownIntervalMs(3000UL), 8000UL);
+  EXPECT_EQ(slowedDownIntervalMs(60000UL), 60000UL);
+  EXPECT_EQ(slowedDownIntervalMs(0xffffffffUL), 60000UL);
+}
