@@ -3,6 +3,7 @@ _language_code: "BE"
 _order: "11"
 _bcp47: "be"
 
+STR_YBX: "YBX"
 STR_CROSSPOINT: "CrossPoint"
 STR_BOOTING: "Загрузка"
 STR_SLEEPING: "Рэжым сну"

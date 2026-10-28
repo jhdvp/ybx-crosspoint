@@ -22,7 +22,7 @@ freeink::SecureHttpClient* openClient(freeink::SecureHttpClient* session, freein
                                       const std::string& url, const pluginhttp::Headers& headers,
                                       const std::function<bool()>& shouldAbort = nullptr) {
   freeink::SecureHttpClient& http = session ? *session : tmp;
-  http.setUserAgent("CrossPoint");
+  http.setUserAgent("YBX");
   // Same trust posture as every other SecureNet consumer: no CA bundle ships
   // with the transport, so verification is skipped; traffic stays encrypted.
   http.setInsecure();

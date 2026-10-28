@@ -270,6 +270,7 @@ bool PluginCatalogActivity::loadManifest() {
   // Documented bounds: each row costs an Item (strings) and a screen slot.
   manifest.pageSize = std::clamp(manifest.pageSize, 1, MAX_PAGE_SIZE);
   manifest.browseListsUrl = browse["lists_url"] | "";
+  pluginhttp::readHeaders(browse["lists_headers"], manifest.browseListsHeaders);
   manifest.browseLists.reserve(browse["lists"].size());
   for (JsonVariantConst l : browse["lists"].as<JsonArrayConst>()) {
     Manifest::BrowseList entry;
@@ -329,29 +330,36 @@ bool PluginCatalogActivity::loadManifest() {
   return !manifest.browseReq.url.empty();
 }
 
-bool PluginCatalogActivity::loadBrowseListIndex() {
-  if (manifest.browseListsUrl.empty()) return true;
+PluginCatalogActivity::ListIndexResult PluginCatalogActivity::loadBrowseListIndex() {
+  if (manifest.browseListsUrl.empty()) return ListIndexResult::LOADED;
 
   String response;
-  const std::string url = substituted(manifest.browseListsUrl, nullptr);
-  const int status = pluginhttp::request(session.get(), url, "GET", "", {}, response, MAX_BROWSE_LIST_INDEX_RESPONSE);
+  const auto run = [&] {
+    return pluginhttp::request(session.get(), substituted(manifest.browseListsUrl, nullptr), "GET", "",
+                               substitutedHeaders(manifest.browseListsHeaders, nullptr), response,
+                               MAX_BROWSE_LIST_INDEX_RESPONSE);
+  };
+  int status = run();
+  if ((status == 401 || status == 403) && manifest.hasPasswordGrant() && refreshCredentialToken()) status = run();
   if (status < 200 || status >= 300) {
-    LOG_ERR("PCAT", "browse list index fetch failed: status=%d %s", status, url.c_str());
-    return false;
+    if (status == 401 && manifest.hasDeviceCode()) return ListIndexResult::UNAUTHORIZED;
+    LOG_ERR("PCAT", "browse list index fetch failed: status=%d %s", status, manifest.browseListsUrl.c_str());
+    return ListIndexResult::FAILED;
   }
 
   JsonDocument doc;
   if (deserializeJson(doc, response) != DeserializationError::Ok) {
-    LOG_ERR("PCAT", "browse list index parse failed: %s", url.c_str());
-    return false;
+    LOG_ERR("PCAT", "browse list index parse failed: %s", manifest.browseListsUrl.c_str());
+    return ListIndexResult::FAILED;
   }
   JsonArrayConst lists = doc["lists"].as<JsonArrayConst>();
-  if (lists.isNull() || lists.size() == 0) {
-    LOG_ERR("PCAT", "browse list index has no lists: %s", url.c_str());
-    return false;
+  if (lists.isNull()) {
+    LOG_ERR("PCAT", "browse list index has no lists array: %s", manifest.browseListsUrl.c_str());
+    return ListIndexResult::FAILED;
   }
 
   manifest.browseLists.clear();
+  if (lists.size() == 0) return ListIndexResult::LOADED;
   manifest.browseLists.reserve(lists.size());
   for (JsonVariantConst l : lists) {
     Manifest::BrowseList entry;
@@ -366,10 +374,10 @@ bool PluginCatalogActivity::loadBrowseListIndex() {
     if (!entry.title.empty() && !entry.url.empty()) manifest.browseLists.push_back(std::move(entry));
   }
   if (manifest.browseLists.empty()) {
-    LOG_ERR("PCAT", "browse list index has no valid lists: %s", url.c_str());
-    return false;
+    LOG_ERR("PCAT", "browse list index has no valid lists: %s", manifest.browseListsUrl.c_str());
+    return ListIndexResult::FAILED;
   }
-  return true;
+  return ListIndexResult::LOADED;
 }
 
 bool PluginCatalogActivity::saveToken(const std::string& value) {
@@ -646,9 +654,16 @@ void PluginCatalogActivity::startBrowse() {
     }
   }
   if (!manifest.browseListsUrl.empty() && manifest.browseLists.empty()) {
-    if (!loadBrowseListIndex()) {
-      fail(StrId::STR_FETCH_FEED_FAILED);
-      return;
+    switch (loadBrowseListIndex()) {
+      case ListIndexResult::LOADED:
+        break;
+      case ListIndexResult::UNAUTHORIZED:
+        state = State::NO_TOKEN;
+        requestUpdate();
+        return;
+      case ListIndexResult::FAILED:
+        fail(StrId::STR_FETCH_FEED_FAILED);
+        return;
     }
   }
   // Browse lists apply to JSON catalogs; XML lists navigate by folder instead.

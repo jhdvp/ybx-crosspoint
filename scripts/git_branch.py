@@ -98,7 +98,7 @@ def inject_version(env):
         return version_env.Object(node)
 
     env.AddBuildMiddleware(add_version)
-    print(f'CrossPoint build version: {version_string}')
+    print(f'YBX build version: {version_string}')
 
 
 # PlatformIO/SCons entry point — Import and env are SCons builtins injected at runtime.

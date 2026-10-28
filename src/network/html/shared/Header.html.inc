@@ -8,7 +8,7 @@
           alt=""
           width="32"
           height="32"
-        />CrossPoint <span class="brand-reader">Reader</span></a
+        />YBX <span class="brand-reader">Reader</span></a
       >
     </h1>
     <nav class="nav-links desktop-nav">

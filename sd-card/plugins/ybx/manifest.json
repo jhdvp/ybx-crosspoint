@@ -1,0 +1,27 @@
+{
+  "name": "ybx",
+  "title": "YBX",
+  "version": "1.7.0",
+  "description": "Подключённые книжные сервисы, EPUB и статистика чтения YBX.",
+  "mount": "settings",
+  "author": "YBX",
+  "icon": "icon.png",
+  "compatibility": {
+    "firmware_family": [
+      "crosspoint"
+    ],
+    "plugin_api_min": 1,
+    "requires": [
+      "catalog.lists.auth"
+    ]
+  },
+  "files": [
+    "manifest.json",
+    "device.json",
+    "plugin.json",
+    "plugin.js",
+    "config.json",
+    "README.md",
+    "icon.png"
+  ]
+}

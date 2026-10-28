@@ -1,8 +1,8 @@
-# CrossPoint User Guide
+# YBX User Guide
 
-Welcome to the **CrossPoint** firmware. This guide outlines the hardware controls, navigation, and reading features of the device.
+Welcome to the **YBX** firmware, based on CrossPoint. This guide outlines the hardware controls, navigation, and reading features of the device.
 
-- [CrossPoint User Guide](#crosspoint-user-guide)
+- [YBX User Guide](#ybx-user-guide)
   - [1. Hardware Overview](#1-hardware-overview)
     - [Button Layout](#button-layout)
     - [Taking a Screenshot](#taking-a-screenshot)
@@ -164,7 +164,7 @@ A **Wi-Fi signal strength indicator** (dBm) is displayed on-screen during joined
 
 ### 3.5.1 Calibre Wireless Transfers
 
-CrossPoint supports sending books from Calibre using the CrossPoint Reader device plugin.
+YBX supports sending books from Calibre using the CrossPoint Reader device plugin.
 
 #### Installing the Plugin in Calibre
 
@@ -359,13 +359,13 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
   - **Hide** persists across reboots. Setting **Settings → Connectivity → Plugins** to **Enabled** again brings the installer back.
   - Plugin Hub is optional. Users who prefer manual installation can download it directly from [crosspoint-plugin-hub releases](https://github.com/crosspoint-reader/crosspoint-plugin-hub/releases) and copy/extract the `pluginhub` folder so it ends up at `/.crosspoint/plugins/pluginhub/`, `/plugins/pluginhub/`, or `/.plugins/pluginhub/`. Once installed, Plugin Hub appears as a normal entry under **Home → Plugins**.
 
-- **Language**: Set the UI language. CrossPoint supports 32 languages: English, Spanish, French, German, Czech, Brazilian Portuguese, European Portuguese, Russian, Swedish, Romanian, Catalan, Ukrainian, Belarusian, Italian, Polish, Finnish, Danish, Dutch, Turkish, Kazakh, Hungarian, Lithuanian, Slovenian, Valencian, Hebrew, Arabic, Slovak, Bosnian, Vietnamese, Norwegian Bokmål, Indonesian, and Orangutan.
+- **Language**: Set the UI language. YBX supports 32 languages: English, Spanish, French, German, Czech, Brazilian Portuguese, European Portuguese, Russian, Swedish, Romanian, Catalan, Ukrainian, Belarusian, Italian, Polish, Finnish, Danish, Dutch, Turkish, Kazakh, Hungarian, Lithuanian, Slovenian, Valencian, Hebrew, Arabic, Slovak, Bosnian, Vietnamese, Norwegian Bokmål, Indonesian, and Orangutan.
 
 - **Manage Fonts**: Browse, download, and manage custom font families installed from the SD card. See [Custom Fonts (SD Card)](#38-custom-fonts-sd-card) for more information.
 
 #### 3.6.5 OPDS Servers (Multiple Libraries)
 
-CrossPoint supports saving multiple OPDS servers and switching between them when browsing catalogs.
+YBX supports saving multiple OPDS servers and switching between them when browsing catalogs.
 
 1. Open **Settings -> Connectivity -> OPDS Servers**.
 
@@ -399,7 +399,7 @@ For web-based Wi-Fi network management, see [Web Settings (Wi-Fi + OPDS)](#366-w
 While in **File Transfer** mode, the web settings page includes management cards for both **Wi-Fi Networks** and **OPDS Servers**.
 
 1. On device: open **File Transfer** and connect through **Join a Network** or **Create Hotspot**.
-2. In a browser, open `http://<device-ip>/settings` or `http://crosspoint.local`.
+2. In a browser, open `http://<device-ip>/settings` or `http://ybx.local`.
 3. In **Wi-Fi Networks**, add, edit, or delete saved network entries (SSID + optional password).
 4. In **OPDS Servers**, add, edit, or delete OPDS catalogs.
 
@@ -411,10 +411,10 @@ Behavior notes:
 
 #### 3.6.7 KOReader Sync Quick Setup
 
-CrossPoint can sync reading progress with KOReader-compatible sync servers.
+YBX can sync reading progress with KOReader-compatible sync servers.
 It also interoperates with KOReader apps/devices when they use the same server and credentials.
 
-**Server Type** controls which progress and metadata format CrossPoint sends:
+**Server Type** controls which progress and metadata format YBX sends:
 
 - **CrossPoint** - For the default service or a self-hosted CrossPoint-compatible sync server. Sends standard KOReader progress plus CrossPoint's richer reading position when available.
 - **KoSync** - For standard KOReader Sync servers such as `sync.koreader.rocks` or `koreader/kosync`. Uses the strict standard payload without CrossPoint-specific rich position data.
@@ -426,11 +426,11 @@ It also interoperates with KOReader apps/devices when they use the same server a
 
 When **Sync Server URL** is left empty, CrossPoint uses the free CrossPoint sync server at `https://sync.crosspointreader.com`. It speaks the standard KOReader sync protocol (so KOReader apps can use it too). CrossPoint records page starts as chapter-content offsets and sends the corresponding standard KOReader XPath, so devices with different fonts or layouts can return to the same text.
 
-1. On each CrossPoint device:
+1. On each YBX device:
 
    - Go to **Settings -> Connectivity -> CrossPoint Sync**.
 
-   - Set **Username** and **Password** (enter the plain password; CrossPoint computes MD5 internally, and use the same values on all devices).
+   - Set **Username** and **Password** (enter the plain password; YBX computes MD5 internally, and use the same values on all devices).
 
    - Leave **Sync Server URL** empty (or set it to `https://sync.crosspointreader.com`).
 
@@ -444,7 +444,7 @@ Accounts are per server. Existing `sync.koreader.rocks` credentials do not exist
 
 Use this if you already sync KOReader devices against the official public server.
 
-1. On each CrossPoint device:
+1. On each YBX device:
 
    - Go to **Settings -> Connectivity -> CrossPoint Sync**.
 
@@ -511,7 +511,7 @@ curl -H "Accept: application/vnd.koreader.v1+json" "http://<server-ip>:17200/hea
 ```
 
 3. Register a user once.
-   CrossPoint authenticates against KOReader Sync (`koreader/kosync`) using an MD5 key, so register using the MD5 of your password:
+   YBX authenticates against KOReader Sync (`koreader/kosync`) using an MD5 key, so register using the MD5 of your password:
 
 > [!WARNING]
 > Sending a reusable MD5-derived password over plain HTTP is insecure.
@@ -532,11 +532,11 @@ curl -i "http://<server-ip>:17200/users/create" \
 
 If this returns `HTTP 402` with `{"code":2002,"message":"Username is already registered."}`, the account already exists.
 
-4. On each CrossPoint device:
+4. On each YBX device:
    
    - Go to **Settings -> Connectivity -> CrossPoint Sync**.
    
-   - Set **Username** and **Password** (enter the plain password; CrossPoint computes MD5 internally, and use the same values on all devices).
+   - Set **Username** and **Password** (enter the plain password; YBX computes MD5 internally, and use the same values on all devices).
    
    - Set **Sync Server URL** to `http://<server-ip>:17200`.
 
@@ -552,7 +552,7 @@ Once any of the options above is set up, press **Confirm** while reading to open
 
 - **Sync Clippings** is off by default. Enable it only for a compatible CrossPoint Sync server; manual **Sync Progress** then uploads and downloads this book’s clippings too. Leave it off for ordinary KOSync servers.
 - With **Sync Behavior** set to **Ask every time**, choose **Apply Remote** to jump to remote progress or **Upload Local** to push current progress.
-- With **Sync Behavior** set to **Smart sync**, CrossPoint auto-resolves simple cases: upload when no remote progress exists, confirm and leave both unchanged when local and remote progress are already synchronized, upload when local progress is further ahead, or apply remote when remote progress is further ahead.
+- With **Sync Behavior** set to **Smart sync**, YBX auto-resolves simple cases: upload when no remote progress exists, confirm and leave both unchanged when local and remote progress are already synchronized, upload when local progress is further ahead, or apply remote when remote progress is further ahead.
 
 ### 3.7 Sleep Screen
 
@@ -560,8 +560,8 @@ The **Sleep Screen** setting controls what is displayed when the device goes to 
 
 | Mode               | Behavior                                                                                                                     |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| **Dark** (default) | The CrossPoint logo on a dark background.                                                                                    |
-| **Light**          | The CrossPoint logo on a white background.                                                                                   |
+| **Dark** (default) | The YBX logo on a dark background.                                                                                    |
+| **Light**          | The YBX logo on a white background.                                                                                   |
 | **Custom**         | A custom image from the SD card (see below). Falls back to **Dark** if no custom image is found.                             |
 | **Cover**          | The cover of the currently open book. Falls back to **Dark** if no book is open.                                             |
 | **Cover + Custom** | The cover of the currently open book, shown only while actively reading. Falls back to **Custom** behavior when not reading. |
@@ -590,7 +590,7 @@ To use transparent sleep overlays, set the sleep screen mode to **Transparent** 
 - **Multiple Images (recommended):** Create a `.sleep-overlay` directory in the root of the SD card and place any number of valid overlay `.bmp` or `.png` images inside. One will be randomly selected each time the device sleeps. A directory named `sleep-overlay` is also accepted as a fallback.
 - **Single Image:** Place `sleep-overlay.bmp` or `sleep-overlay.png` in the root directory. A root BMP takes priority over a root PNG, and both take priority over the `.sleep-overlay`/`sleep-overlay` directories.
 
-Transparent overlay files are intentionally separate from normal sleep images. Regular BMP formats supported by CrossPoint are accepted; white pixels leave the existing screen unchanged. For per-pixel alpha transparency, use a PNG with an alpha channel or a 32-bit BGRA BMP with both visible and non-opaque pixels. Opaque white pixels in alpha images erase the content behind them.
+Transparent overlay files are intentionally separate from normal sleep images. Regular BMP formats supported by YBX are accepted; white pixels leave the existing screen unchanged. For per-pixel alpha transparency, use a PNG with an alpha channel or a 32-bit BGRA BMP with both visible and non-opaque pixels. Opaque white pixels in alpha images erase the content behind them.
 
 > [!TIP]
 > For best results:
@@ -611,7 +611,7 @@ the former built-in serif family. On upgrade, an existing Noto Serif selection
 uses `NotoSerif` if installed; otherwise, the reader switches to Noto Sans. After
 installing the family later, select it in **Settings → Reader → Font Family**.
 
-CrossPoint loads additional fonts from the SD card. Custom fonts can add Chinese, Japanese, Korean, and other scripts that the built-in reader fonts lack. If your device have external RAM, you can copy `.ttf`, `.otf`, and `.ttc` files directly. Otherwise, use `.cpfont` files made from those fonts. 
+YBX loads additional fonts from the SD card. Custom fonts can add Chinese, Japanese, Korean, and other scripts that the built-in reader fonts lack. If your device have external RAM, you can copy `.ttf`, `.otf`, and `.ttc` files directly. Otherwise, use `.cpfont` files made from those fonts.
 
 There are three ways to install fonts:
 
@@ -678,7 +678,7 @@ See [docs/dictionary.md](docs/dictionary.md) for supported formats, setup, and w
 
 ### Supported Languages
 
-CrossPoint renders text using the following Unicode character blocks, enabling support for a wide range of languages:
+YBX renders text using the following Unicode character blocks, enabling support for a wide range of languages:
 
 * **Latin Script (Basic, Supplement, Extended-A/B):** Covers English, German, French, Spanish, Portuguese, Italian, Dutch, Swedish, Norwegian, Danish, Finnish, Polish, Czech, Hungarian, Romanian, Slovak, Slovenian, Turkish, Catalan, and others.
 * **Cyrillic Script (Standard and Extended):** Covers Russian, Ukrainian, Belarusian, Bulgarian, Serbian, Macedonian, Kazakh, Kyrgyz, Mongolian, and others.
@@ -738,7 +738,7 @@ Select **View Clippings** to browse saved excerpts for the current book. Press *
 
 Each book can store up to **1,024 clippings on ESP32-S3 devices** or **256 on ESP32-C3 devices**. These limits also apply to clippings downloaded through sync.
 
-The structured clipping store under `.crosspoint/clippings` keeps up to **4 KiB of UTF-8 text per clipping**. Longer selections must be shortened before saving. CrossPoint also appends up to **2,000 UTF-8 bytes** of each saved excerpt to `My Clippings.txt` in the root of the SD card, using Kindle-compatible formatting. If that export fails, the clipping remains saved and the message reports the export failure.
+The structured clipping store under `.crosspoint/clippings` keeps up to **4 KiB of UTF-8 text per clipping**. Longer selections must be shortened before saving. YBX also appends up to **2,000 UTF-8 bytes** of each saved excerpt to `My Clippings.txt` in the root of the SD card, using Kindle-compatible formatting. If that export fails, the clipping remains saved and the message reports the export failure.
 
 Local book and folder moves carry clipping data with them. Deleting a local book removes its local clipping data; it does not delete already synced server copies or historical entries in `My Clippings.txt`. Deleting an individual clipping likewise leaves the text export untouched, but queues its server deletion for the next enabled manual sync. `My Clippings.txt` is an independent append-only export, not the source used to restore or sync highlights.
 
@@ -755,7 +755,7 @@ Please note that this firmware is currently in active development. The following
 
 If an issue or crash is encountered while using Crosspoint, feel free to raise an issue ticket and attach the logs.
 
-**Crash reports on SD card:** After a crash, CrossPoint automatically saves a crash report to the SD card (no USB connection needed). Check the root of the SD card for a crash log file and include it with any bug report.
+**Crash reports on SD card:** After a crash, YBX automatically saves a crash report to the SD card (no USB connection needed). Check the root of the SD card for a crash log file and include it with any bug report.
 
 **Serial monitor logs:** For more detailed debugging, connect the device to a computer and run the custom debugging monitor script (requires Python 3 with `pyserial`, `colorama`, and `matplotlib`; install via `pip3 install pyserial colorama matplotlib`):
 

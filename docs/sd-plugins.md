@@ -177,11 +177,12 @@ of the plugin-system contract, not hardware detection.
 | `plugin_api` | `1` | Numeric plugin contract level for requirements that need a minimum firmware API generation. |
 | `plugin_capabilities` | comma-separated names below | Fine-grained feature advertisement. A catalog entry may require one or more capabilities without hard-coding a firmware version. |
 
-Stock CrossPoint currently advertises these catalog capabilities:
+This YBX fork advertises these catalog capabilities (catalog.lists.auth is a fork extension):
 
 | Capability | What it means | Why it exists in the plugin system |
 |---|---|---|
 | `catalog.lists` | The catalog manifest can expose named browse lists, including lists supplied dynamically through `browse.lists_url`. | Any plugin can split or dynamically publish multiple catalog views without adding plugin-specific firmware logic. Plugin Hub currently uses this for Official/Community catalogs. |
+| `catalog.lists.auth` | Dynamic list requests accept explicit `browse.lists_headers`, with the same substitutions as `browse.headers`. Browse headers are never inherited. An empty `lists` array opens the required default `browse.url`; account-specific plugins should point it to an authenticated empty feed. | A service can return only the sources connected to the signed-in account, without placing credentials in URLs. Plugins requiring this behavior must declare this capability in catalog compatibility metadata. A 401 opens device-code sign-in on retry; password grants are refreshed once on 401/403. Other failures show a feed error. Omit static `browse.lists` when using a dynamic index. |
 | `catalog.notices` | A browse list can display an optional confirmation notice with custom title, message, Confirm, and Cancel labels before opening. | Any plugin can require a generic user notice before entering a catalog or section. Plugin Hub currently uses this for the Community-plugin warning. |
 | `catalog.bundle_install` | A catalog entry can install a multi-file plugin bundle from a base URL plus a file list into the plugin directory. | Any catalog can distribute a plugin or other supported bundle made of multiple files without a dedicated installer in firmware. Plugin Hub currently uses this to install complete plugins. |
 | `catalog.version_tracking` | Catalog item versions are compared with installed plugin manifests to show Installed or Update status. | Any catalog can expose install/update state using the generic installed-plugin version contract. Plugin Hub currently uses it to identify available updates. |

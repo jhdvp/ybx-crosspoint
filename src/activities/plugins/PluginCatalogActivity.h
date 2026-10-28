@@ -83,6 +83,7 @@ class PluginCatalogActivity final : public CatalogActivity {
     std::vector<BrowseList> browseLists;
     // Optional remote index that supplies the named JSON views dynamically.
     std::string browseListsUrl;
+    pluginhttp::Headers browseListsHeaders;
     // JSON search overrides URL/body independently; empty fields reuse browse.
     std::string searchUrl, searchBody;
     bool hasSearch() const { return (!searchUrl.empty() || !searchBody.empty()) && browseFormat != "xml"; }
@@ -177,7 +178,8 @@ class PluginCatalogActivity final : public CatalogActivity {
   bool wantsListPicker() const;
   void openList(int index);
   bool loadManifest();
-  bool loadBrowseListIndex();
+  enum class ListIndexResult { LOADED, UNAUTHORIZED, FAILED };
+  ListIndexResult loadBrowseListIndex();
   bool loadToken();
   void loadConfig();
   bool saveToken(const std::string& value);

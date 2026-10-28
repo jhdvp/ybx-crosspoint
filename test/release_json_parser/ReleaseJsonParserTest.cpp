@@ -597,6 +597,19 @@ TEST(ReleaseJsonParser, ConfiguredFirmwareNameRejectsDifferentVersion) {
   EXPECT_FALSE(p.foundFirmware());
 }
 
+TEST(ReleaseJsonParser, YbxAssetsDoNotSelectUpstreamOrAnotherBoard) {
+  const char* json = R"({"tag_name":"2.0.1","assets":[
+    {"name":"crosspoint-2.0.1-x3-x4.bin","browser_download_url":"https://upstream","size":100},
+    {"name":"ybx-2.0.1-x4pro.bin","browser_download_url":"https://other-board","size":200},
+    {"name":"ybx-2.0.1-x3-x4.bin","browser_download_url":"https://ybx","size":300}]})";
+  ReleaseJsonParser p;
+  p.setFirmwareAssetName("ybx-2.0.1-x3-x4.bin");
+  for (size_t i = 0; i < strlen(json); i++) p.feed(json + i, 1);
+  ASSERT_TRUE(p.foundFirmware());
+  EXPECT_STREQ(p.getFirmwareUrl(), "https://ybx");
+  EXPECT_EQ(p.getFirmwareSize(), 300u);
+}
+
 TEST(ReleaseJsonParser, LargeSize) {
   // 16MB firmware (maximum flash size)
   const char* json =

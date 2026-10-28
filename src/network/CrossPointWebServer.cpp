@@ -528,6 +528,7 @@ void CrossPointWebServer::handleStatus() const {
 
   JsonDocument doc;
   doc["version"] = CROSSPOINT_VERSION;
+  doc["product"] = "YBX Reader";
   doc["firmwareFamily"] = firmwareidentity::FAMILY;
   doc["pluginApi"] = firmwareidentity::PLUGIN_API_VERSION;
   doc["pluginCapabilities"] = firmwareidentity::PLUGIN_CAPABILITIES;
@@ -2394,7 +2395,7 @@ void CrossPointWebServer::handleFetch() {
   const freeink::FetchResult result = freeink::fetchResumable(
       url, options,
       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
-        http.setUserAgent("CrossPoint");
+        http.setUserAgent("YBX");
         // The SecureNet transport ships no CA bundle, so peer verification always
         // fails (wolfSSL -188); skip it like HttpDownloader does. Traffic stays
         // TLS-encrypted, just unauthenticated — matching the prior library-lending flow.

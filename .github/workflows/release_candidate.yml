@@ -1,4 +1,4 @@
-name: Compile Release Candidate
+name: Compile YBX Release Candidate
 
 on:
   workflow_dispatch:
@@ -12,20 +12,6 @@ jobs:
         include:
           - pio_env: gh_release_rc
             asset: firmware.bin
-          - pio_env: sticky-gh_release_rc
-            asset: firmware-sticky.bin
-          - pio_env: x4pro-gh_release_rc
-            asset: firmware-x4pro.bin
-          - pio_env: x4c-gh_release_rc
-            asset: firmware-x4c.bin
-          - pio_env: papermono-gh_release_rc
-            asset: firmware-papermono.bin
-          - pio_env: metalio_eink4-gh_release_rc
-            asset: firmware-metalio_eink4.bin
-          - pio_env: eego_a4-gh_release_rc
-            asset: firmware-eego_a4.bin
-          - pio_env: picco-gh_release_rc
-            asset: firmware-picco.bin
     steps:
       - uses: actions/checkout@v6
         with:
@@ -74,7 +60,7 @@ jobs:
           echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
           echo "BRANCH_SUFFIX=${GITHUB_REF_NAME#release/}" >> $GITHUB_ENV
 
-      - name: Build CrossPoint Release Candidate
+      - name: Build YBX Release Candidate
         env:
           CROSSPOINT_RC_HASH: ${{ env.SHORT_SHA }}
         run: pio run -e ${{ matrix.pio_env }} -j1

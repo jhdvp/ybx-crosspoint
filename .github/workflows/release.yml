@@ -1,4 +1,4 @@
-name: Compile Release
+name: Compile YBX Release
 
 # Build and attach firmware only after a release is published. The release tag
 # supplies both the source revision and the version in each asset name.
@@ -20,27 +20,6 @@ jobs:
           - release_env: gh_release
             rc_env: gh_release_rc
             device: x3-x4
-          - release_env: sticky-gh_release
-            rc_env: sticky-gh_release_rc
-            device: sticky
-          - release_env: x4pro-gh_release
-            rc_env: x4pro-gh_release_rc
-            device: x4pro
-          - release_env: x4c-gh_release
-            rc_env: x4c-gh_release_rc
-            device: x4c
-          - release_env: papermono-gh_release
-            rc_env: papermono-gh_release_rc
-            device: papermono
-          - release_env: metalio_eink4-gh_release
-            rc_env: metalio_eink4-gh_release_rc
-            device: metalio_eink4
-          - release_env: eego_a4-gh_release
-            rc_env: eego_a4-gh_release_rc
-            device: eego_a4
-          - release_env: picco-gh_release
-            rc_env: picco-gh_release_rc
-            device: picco
     steps:
       - uses: actions/checkout@v6
         with:
@@ -92,7 +71,7 @@ jobs:
           uv pip install --python ~/.platformio/penv/bin/python "pioarduino==6.1.19"
           ~/.platformio/penv/bin/pio --version
 
-      - name: Build CrossPoint
+      - name: Build YBX
         env:
           PIO_ENV: ${{ github.event.release.prerelease && matrix.rc_env || matrix.release_env }}
           # Enrollment gate for the LCP service: official releases carry this
@@ -113,7 +92,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           version="${RELEASE_TAG#v}"
-          asset="crosspoint-${version}-${{ matrix.device }}.bin"
+          asset="ybx-${version}-${{ matrix.device }}.bin"
           cp ".pio/build/${PIO_ENV}/firmware.bin" "$asset"
           echo "name=$asset" >> "$GITHUB_OUTPUT"
 
@@ -136,7 +115,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: crosspoint-*.bin
+          pattern: ybx-*.bin
           merge-multiple: true
 
       - name: Attach firmware assets
@@ -145,9 +124,9 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           version="${RELEASE_TAG#v}"
-          for device in x3-x4 sticky x4pro x4c papermono metalio_eink4 eego_a4 picco; do
-            test -f "dist/crosspoint-${version}-${device}.bin"
+          for device in x3-x4; do
+            test -f "dist/ybx-${version}-${device}.bin"
           done
-          test "$(find dist -maxdepth 1 -type f -name 'crosspoint-*.bin' | wc -l)" -eq 8
-          gh release upload "$RELEASE_TAG" dist/crosspoint-*.bin \
+          test "$(find dist -maxdepth 1 -type f -name 'ybx-*.bin' | wc -l)" -eq 1
+          gh release upload "$RELEASE_TAG" dist/ybx-*.bin \
             --repo "$GITHUB_REPOSITORY" --clobber

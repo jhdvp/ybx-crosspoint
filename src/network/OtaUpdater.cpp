@@ -19,7 +19,7 @@
 #include "FirmwareFlasher.h"
 
 namespace {
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest";
+constexpr char latestReleaseUrl[] = "https://api.github.com/repos/jhdvp/ybx-crosspoint/releases/latest";
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
@@ -28,7 +28,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   // Stream the ~32KB release JSON straight into the parser as it arrives.
   // Buffering the whole body in a std::string would add a growing allocation
   // on top of the TLS session's heap during the fetch; with -fno-exceptions an
-  // OOM there aborts. fetchUrl handles the verified-https GET, redirects, and
+  // OOM there aborts. fetchUrl handles the HTTPS GET, redirects, and
   // User-Agent (see HttpDownloader).
   // Heap-allocated: the parser embeds a 2 KB JSON token buffer.
   auto releaseParserPtr = makeUniqueNoThrow<ReleaseJsonParser>();
@@ -38,7 +38,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   }
   ReleaseJsonParser& releaseParser = *releaseParserPtr;
   releaseParser.setFirmwareAssetName("");
-  // Each board updates from crosspoint-<version>-<device>.bin. The combined
+  // Each board updates from ybx-<version>-<device>.bin. The combined
   // C3 image uses x3-x4; other asset suffixes match their firmware board tag.
   const bool isX4 = board_tag::boardNameLen() == 2 && memcmp(board_tag::boardName(), "x4", 2) == 0;
   char assetSuffix[20] = "-x3-x4";
@@ -54,7 +54,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
       releaseParser.feed(reinterpret_cast<const char*>(data + offset), 1);
       offset++;
       if (releaseParser.foundTag()) {
-        snprintf(assetName, sizeof(assetName), "crosspoint-%s%s.bin", releaseParser.getTagName(), assetSuffix);
+        snprintf(assetName, sizeof(assetName), "ybx-%s%s.bin", releaseParser.getTagName(), assetSuffix);
         releaseParser.setFirmwareAssetName(assetName);
         assetNameSet = true;
       }
@@ -63,6 +63,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
     return true;
   });
   if (!ok) {
+    if (HttpDownloader::lastStatus() == 404) return NO_UPDATE;
     LOG_ERR("OTA", "Release check fetch failed");
     return HTTP_ERROR;
   }
@@ -98,12 +99,15 @@ bool OtaUpdater::isUpdateNewer() const {
 
   int currentMajor, currentMinor, currentPatch;
   int latestMajor, latestMinor, latestPatch;
+  int currentCoreLength = 0, latestCoreLength = 0;
 
   const auto currentVersion = CROSSPOINT_VERSION;
 
   // semantic version check (only match on 3 segments)
-  sscanf(latestVersion.c_str(), "%d.%d.%d", &latestMajor, &latestMinor, &latestPatch);
-  sscanf(currentVersion, "%d.%d.%d", &currentMajor, &currentMinor, &currentPatch);
+  if (sscanf(latestVersion.c_str(), "%d.%d.%d%n", &latestMajor, &latestMinor, &latestPatch, &latestCoreLength) != 3 ||
+      sscanf(currentVersion, "%d.%d.%d%n", &currentMajor, &currentMinor, &currentPatch, &currentCoreLength) != 3) {
+    return false;
+  }
 
   /*
    * Compare major versions.
@@ -125,13 +129,14 @@ bool OtaUpdater::isUpdateNewer() const {
   if (latestPatch != currentPatch) return latestPatch > currentPatch;
 
   // If we reach here, it means all segments are equal.
-  // One final check, if we're on an RC build (contains "-rc"), we should consider the latest version as newer even if
-  // the segments are equal, since RC builds are pre-release versions.
-  if (strstr(currentVersion, "-rc") != nullptr) {
-    return true;
-  }
-
-  return false;
+  // Release builds append "rc" without a hyphen; development builds use "-dev-".
+  const char* currentSuffix = currentVersion + currentCoreLength;
+  const char* latestSuffix = latestVersion.c_str() + latestCoreLength;
+  const bool currentPreview = strcmp(currentSuffix, "rc") == 0 || strncmp(currentSuffix, "-rc", 3) == 0 ||
+                              strncmp(currentSuffix, "-dev-", 5) == 0;
+  const bool latestPreview =
+      strcmp(latestSuffix, "rc") == 0 || strncmp(latestSuffix, "-rc", 3) == 0 || strncmp(latestSuffix, "-dev-", 5) == 0;
+  return currentPreview && !latestPreview;
 }
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }

@@ -1,3 +1,13 @@
+# YBX Reader
+
+YBX firmware for Xteink X3/X4, based on CrossPoint Reader.
+
+See [YBX fork, installation and compatibility](YBX_FORK.md) for this fork.
+YBX releases: [jhdvp/ybx-crosspoint](https://github.com/jhdvp/ybx-crosspoint/releases).
+The original project README below is retained as upstream documentation and attribution.
+
+---
+
 # CrossPoint Reader
 
 [![Fund contributors](https://img.shields.io/badge/%F0%9F%91%91_Fund_contributors-royalty.dev-BB953A?style=for-the-badge&labelColor=1a1a1a)](https://app.royalty.dev/crosspoint-reader/crosspoint-reader)
