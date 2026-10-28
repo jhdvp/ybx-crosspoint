@@ -154,9 +154,10 @@ bool read(Files& files, const std::string& path, Record& record) {
   raw.clear();
   const bool haveStaged = files.exists(pending) && files.read(pending, raw, MAX_JOURNAL_BYTES) && parse(raw, staged);
   if (haveLive && haveStaged) {
-    // Never older than the live file: a checkpoint always writes pending
-    // before it removes the previous journal.
-    record = staged.durationSeconds >= live.durationSeconds ? staged : live;
+    // The pending file is always the newer write: write() stages it before it
+    // removes the live journal, so a surviving pending copy is the latest
+    // checkpoint even when an older session left a longer summary beside it.
+    record = staged;
     return true;
   }
   if (haveLive) {

@@ -162,4 +162,70 @@ TEST(ReaderSession, MonotonicElapsedHandlesMillisWrap) {
   EXPECT_EQ(session.summary().durationSeconds, 5u);
 }
 
+TEST(ReaderSession, CoveredSpanIsNotReadingTime) {
+  ReaderSession session;
+  anchor(session, 1000, 100, 1000);
+  turnAndRender(session, true, 6000, 105, 1100);  // 5 s on page one
+  session.pause(11000);                           // dictionary opens: 5 s on page two
+  session.pause(16000);                           // a screen pushed over the dictionary
+  session.onRenderComplete(611000, 610, 1100);    // focus returns, same page
+  turnAndRender(session, true, 616000, 615, 1200);
+  session.finish(621000, 620, 1300);
+
+  const ReaderSessionSummary summary = session.summary();
+  EXPECT_EQ(summary.durationSeconds, 20u);  // 5+5+5+5, the 10-minute lookup excluded
+  EXPECT_EQ(summary.startEpoch, 100);
+  EXPECT_EQ(summary.startProgressBp, 1000);
+  EXPECT_EQ(summary.endProgressBp, 1300);
+}
+
+TEST(ReaderSession, CheckpointAndFinishWhileCoveredAddNothing) {
+  ReaderSession session;
+  anchor(session, 1000, 100, 1000);
+  session.pause(3000);  // the 2 s dwell counts, the covered span does not
+
+  EXPECT_EQ(session.projected(600000, 1400).durationSeconds, 2u);
+  session.finish(600000, 600, 1400);  // sleep with the menu still open
+
+  EXPECT_EQ(session.summary().durationSeconds, 2u);
+  EXPECT_EQ(session.summary().endProgressBp, 1000);
+}
+
+TEST(ReaderSession, LateClockSyncStillPlacesTheSessionStart) {
+  ReaderSession session;
+  anchor(session, 1000, 0, 1000);  // cold device: no clock yet
+  turnAndRender(session, true, 6000, 0, 1100);
+  // SNTP landed before this render: the dwell it starts is dated 1730000060 and
+  // 10 s were already counted, so the session began at 1730000050.
+  turnAndRender(session, true, 11000, 1730000060, 1200);
+  session.finish(16000, 1730000065, 1300);
+
+  const ReaderSessionSummary summary = session.summary();
+  EXPECT_EQ(summary.durationSeconds, 15u);
+  EXPECT_EQ(summary.startEpoch, 1730000050);
+  EXPECT_EQ(summary.startProgressBp, 1000);
+}
+
+TEST(ReaderSession, ProjectionAdoptsALateClock) {
+  ReaderSession session;
+  anchor(session, 1000, 0, 1000);
+  turnAndRender(session, true, 6000, 0, 1100);
+  // The clock arrived with this turn, so the dwell it starts is dated.
+  turnAndRender(session, true, 11000, 1730000060, 1200);
+
+  const ReaderSessionSummary projected = session.projected(16000, 1300);
+  EXPECT_EQ(projected.durationSeconds, 15u);
+  EXPECT_EQ(projected.startEpoch, 1730000050);
+  EXPECT_EQ(session.summary().startEpoch, 0);  // projection does not adopt it
+}
+
+TEST(ReaderSession, UnknownClockKeepsStartAtZero) {
+  ReaderSession session;
+  anchor(session, 1000, 0, 1000);
+  turnAndRender(session, true, 6000, 0, 1100);
+  session.finish(11000, 0, 1200);
+
+  EXPECT_EQ(session.summary().startEpoch, 0);
+}
+
 }  // namespace

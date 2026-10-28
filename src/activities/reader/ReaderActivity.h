@@ -87,6 +87,9 @@ class ReaderActivity : public Activity {
   void onEnter() override;
   void onExit() override;
   void prepareForSleep() override;
+  // Another screen (menu, dictionary, sync) took the page: the covered span
+  // must not land in the reading session. Called with the render lock held.
+  void onScreenCovered() override;
   void loop() override;
   void render(RenderLock&& lock) override;
 

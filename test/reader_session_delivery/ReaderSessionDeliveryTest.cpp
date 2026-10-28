@@ -15,6 +15,8 @@ namespace {
 constexpr const char* JOURNAL = "/.crosspoint/reader-session.journal";
 // Same cap as PluginEvents.cpp; the modelled outbox line is "<id> <duration>".
 constexpr size_t OUTBOX_CAP = 4096;
+// Same cadence as SESSION_CHECKPOINT_INTERVAL_MS in ReaderActivity.cpp.
+constexpr uint32_t CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
 struct Files {
   std::map<std::string, std::string> data;
@@ -38,6 +40,18 @@ struct Files {
   }
 };
 
+// Same shape as the firmware's checkpoint records, for preseeding the journal.
+readersession::Record journalRecord(const char* id, const uint32_t durationSeconds) {
+  readersession::Record out;
+  std::snprintf(out.id, sizeof(out.id), "%s", id);
+  out.startEpoch = 1730000000;
+  out.durationSeconds = durationSeconds;
+  out.startProgressBp = 1200;
+  out.endProgressBp = 3400;
+  out.book = "/books/ybx/42.epub";
+  return out;
+}
+
 // Device-side lifecycle around the real ReaderSession, the real checkpoint
 // format and the real FIFO trim/drain logic. Only the SD, the outbox line and
 // the server store are modelled: the server keys its rows by event id, as
@@ -50,8 +64,19 @@ struct Device {
   bool online = false;
   std::set<std::string> server;
   int nextId = 0;
+  // The two failure paths the journal exists for: a card that refuses writes
+  // and an outbox that refuses an event.
+  bool journalWritable = true;
+  bool queueAccepted = true;
+  uint32_t lastCheckpointMs = 0;
+  int journalWrites = 0;
 
-  void openBook() { id = "0badc0de-" + std::to_string(++nextId); }
+  // The id is allocated lazily, by the first checkpoint or flush that needs it.
+  void openBook() { id.clear(); }
+
+  void ensureId() {
+    if (id.empty()) id = "0badc0de-" + std::to_string(++nextId);
+  }
 
   void firstPage(uint32_t ms, int64_t epoch, int progress) { session.onRenderComplete(ms, epoch, progress); }
 
@@ -60,9 +85,7 @@ struct Device {
     session.onRenderComplete(ms, epoch, progress);
   }
 
-  void checkpoint(uint32_t ms, int progress) {
-    const ReaderSessionSummary summary = session.projected(ms, progress);
-    if (summary.durationSeconds < ReaderSession::MIN_SESSION_SECONDS) return;
+  readersession::Record recordFor(const ReaderSessionSummary& summary) const {
     readersession::Record record;
     std::snprintf(record.id, sizeof(record.id), "%s", id.c_str());
     record.startEpoch = summary.startEpoch;
@@ -70,27 +93,65 @@ struct Device {
     record.startProgressBp = summary.startProgressBp;
     record.endProgressBp = summary.endProgressBp;
     record.book = "/books/ybx/42.epub";
-    readersession::write(files, JOURNAL, record);
+    return record;
   }
 
-  // Exit and sleep both end through ReaderActivity::flushReaderSession().
-  void finishReading(uint32_t ms, int progress) {
-    session.finish(ms, 1730000000, progress);
-    if (session.isEmitWorthy()) {
-      outbox += id + " " + std::to_string(session.summary().durationSeconds) + "\n";
-      trim();
+  void queue(const readersession::Record& record) {
+    outbox.append(record.id).append(" ").append(std::to_string(record.durationSeconds)).append("\n");
+    trim();
+  }
+
+  // Mirrors ReaderActivity::checkpointReaderSession(), retry timer included.
+  void checkpoint(uint32_t ms, int progress) {
+    if (lastCheckpointMs != 0 && ms - lastCheckpointMs < CHECKPOINT_INTERVAL_MS) return;
+    const ReaderSessionSummary summary = session.projected(ms, progress);
+    if (summary.durationSeconds < ReaderSession::MIN_SESSION_SECONDS) return;
+    ensureId();
+    readersession::Record stale;
+    if (readersession::read(files, JOURNAL, stale) && std::string(stale.id) != id) {
+      lastCheckpointMs = ms;
+      if (!recoverAtBoot()) return;
     }
-    readersession::remove(files, JOURNAL);
+    journalWrites++;
+    if (journalWritable) readersession::write(files, JOURNAL, recordFor(summary));
+    lastCheckpointMs = ms;
+  }
+
+  // Mirrors ReaderActivity::flushReaderSession(): sleep runs it from
+  // prepareForSleep() and again from onExit(), so one pass must not undo the
+  // other, and a checkpoint that is not this session's is left for a retry.
+  void flush(uint32_t ms, int64_t epoch, int progress) {
+    session.finish(ms, epoch, progress);
+    if (session.isEmitWorthy()) {
+      ensureId();
+      readersession::Record stale;
+      if (readersession::read(files, JOURNAL, stale) && std::string(stale.id) != id) {
+        if (!recoverAtBoot()) return;
+      }
+      const readersession::Record record = recordFor(session.summary());
+      if (queueAccepted) {
+        queue(record);
+        readersession::remove(files, JOURNAL);
+      } else if (journalWritable) {
+        readersession::write(files, JOURNAL, record);
+      }
+    } else if (!id.empty()) {
+      readersession::remove(files, JOURNAL);
+    }
     session.reset();
     id.clear();
+    lastCheckpointMs = 0;
   }
+
+  // Exit and sleep both end through flushReaderSession().
+  void finishReading(uint32_t ms, int progress) { flush(ms, 1730000000, progress); }
 
   // Boot: the journal left by a crash is queued with its original id.
   bool recoverAtBoot(const bool clear = true) {
     readersession::Record record;
     if (!readersession::read(files, JOURNAL, record)) return false;
-    outbox.append(record.id).append(" ").append(std::to_string(record.durationSeconds)).append("\n");
-    trim();
+    if (!queueAccepted) return false;
+    queue(record);
     if (clear) readersession::remove(files, JOURNAL);
     return true;
   }
@@ -229,6 +290,57 @@ TEST(ReaderSessionDelivery, QuickFlipIsNotReported) {
 
   EXPECT_TRUE(device.outbox.empty());
   EXPECT_TRUE(device.files.data.empty());
+}
+
+TEST(ReaderSessionDelivery, SecondFlushOfTheSleepPathKeepsTheRetryCheckpoint) {
+  Device device;
+  device.openBook();
+  device.firstPage(1000, 1730000000, 1000);
+  device.turnAndRender(true, 21000, 1730000020, 1200);
+  device.queueAccepted = false;  // the outbox refuses: the session waits in the journal
+  device.flush(51000, 1730000050, 1500);
+  ASSERT_TRUE(device.files.exists(JOURNAL));
+
+  device.flush(51000, 1730000050, 1500);  // the same sleep path then reaches onExit()
+
+  readersession::Record kept;
+  ASSERT_TRUE(readersession::read(device.files, JOURNAL, kept));
+  EXPECT_STREQ(kept.id, "0badc0de-1");
+  EXPECT_EQ(kept.durationSeconds, 50u);
+
+  Device rebooted;
+  rebooted.files = device.files;
+  rebooted.online = true;
+  ASSERT_TRUE(rebooted.recoverAtBoot());
+  rebooted.drain();
+  EXPECT_EQ(rebooted.server.count("0badc0de-1"), 1u);
+}
+
+TEST(ReaderSessionDelivery, AFailedRecoveryKeepsTheOtherSessionsCheckpoint) {
+  Device device;
+  device.files.data[JOURNAL] = readersession::serialize(journalRecord("deadbeef-1", 900));
+  device.openBook();
+  device.firstPage(1000, 1730000000, 1000);
+  device.turnAndRender(true, 21000, 1730000020, 1200);
+  device.queueAccepted = false;  // queuing the old record fails, so nothing may replace it
+  device.flush(51000, 1730000050, 1500);
+
+  readersession::Record kept;
+  ASSERT_TRUE(readersession::read(device.files, JOURNAL, kept));
+  EXPECT_STREQ(kept.id, "deadbeef-1");
+  EXPECT_EQ(kept.durationSeconds, 900u);
+  EXPECT_TRUE(device.outbox.empty());
+}
+
+TEST(ReaderSessionDelivery, FailingCheckpointIsRetriedOnceAMinute) {
+  Device device;
+  device.journalWritable = false;  // a full or write-protected card
+  device.openBook();
+  device.firstPage(1000, 1730000000, 1000);
+  device.turnAndRender(true, 61000, 1730000060, 1200);
+  for (uint32_t ms = 61000; ms < 241000; ms += 100) device.checkpoint(ms, 1200);
+
+  EXPECT_EQ(device.journalWrites, 3);  // at 61 s, 121 s and 181 s, not every loop pass
 }
 
 }  // namespace

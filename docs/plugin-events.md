@@ -79,11 +79,18 @@ shorter displays are excluded. The page still on screen when reading stops
 (exit, sleep, restart) contributes its trailing interval through the same
 2/1800-second bounds. A session shorter than 5 active seconds is not reported:
 it is an accidental open or a quick flip, not reading. A redraw of the same
-page (menu, forced refresh) does not reset the interval.
+page (full or forced refresh) does not reset the interval. A screen pushed on
+top of the page — the reader menu, dictionary, bookmarks, clipping list,
+KOSync or the frontlight panel — does: its dwell closes when the page loses
+focus and the render after the screen returns opens the next one, so time
+spent in those screens is not reading time.
 
 `start_time` is `0` when the device clock was never set; the session is still
 reported, and the envelope `event.ts` carries the same uncertainty. Both
-`start_time` and `end_time` are `0` in that case. EPUB retains basis-point
+`start_time` and `end_time` are `0` in that case. A clock that arrives
+mid-session (SNTP after boot) still places the start: it is back-computed from
+the first counted dwell whose clock was known, so a session that began before
+the sync is not reported with `start_time` `0`. EPUB retains basis-point
 precision; TXT/XTC may report whole-percent steps. The document hash is
 calculated lazily only when an emit-worthy summary and a subscriber exist.
 
@@ -111,7 +118,17 @@ ignores the duplicate instead of counting the reading time twice.
 
 The 5-second minimum applies when the session ends; a crash can therefore
 recover at most the last checkpointed minute of a session that would have been
-reported anyway.
+reported anyway. Every reader — EPUB, XTC and TXT — writes that checkpoint
+from its own loop, so a power cut costs at most the current minute in any
+format.
+
+A checkpoint is only replaced once the session it holds has been queued: if
+that delivery fails, the record stays on the card for the next boot and the
+session still in RAM does not overwrite it. A flush clears the checkpoint only
+when the record carries its own session id, so the second flush of the sleep
+path (the activity teardown that follows `prepareForSleep`) cannot delete the
+retry record the first flush just wrote. A checkpoint that fails to be written
+is retried on the next minute, not on every loop pass.
 
 A generic consumer can expand one summary into two distinct points without
 firmware knowing the destination schema:

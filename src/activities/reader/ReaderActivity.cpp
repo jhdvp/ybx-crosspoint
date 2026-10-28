@@ -134,6 +134,8 @@ void ReaderActivity::onExit() {
 
 void ReaderActivity::prepareForSleep() { flushReaderSession(); }
 
+void ReaderActivity::onScreenCovered() { readerSession.pause(millis()); }
+
 void ReaderActivity::checkpointReaderSession(const uint32_t monotonicMs) {
   if (!pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) return;
   if (lastSessionCheckpointMs != 0 && monotonicMs - lastSessionCheckpointMs < SESSION_CHECKPOINT_INTERVAL_MS) return;
@@ -161,7 +163,10 @@ void ReaderActivity::checkpointReaderSession(const uint32_t monotonicMs) {
   record.startProgressBp = summary.startProgressBp;
   record.endProgressBp = summary.endProgressBp;
   record.book = bookPath;
-  if (readersession::save(record)) lastSessionCheckpointMs = monotonicMs;
+  readersession::save(record);
+  // A failed write advances the timer too: a full or write-protected card must
+  // not turn every loop pass into a journal read and rewrite.
+  lastSessionCheckpointMs = monotonicMs;
 }
 
 // Emits one reader.session for the interval that just ended. The id was
@@ -174,7 +179,12 @@ void ReaderActivity::flushReaderSession() {
     ensureSessionId();
     // A previous session's flush may have failed and still own the checkpoint.
     readersession::Record stale;
-    if (readersession::load(stale) && strcmp(stale.id, sessionId) != 0) readersession::recoverPending();
+    if (readersession::load(stale) && strcmp(stale.id, sessionId) != 0) {
+      // That record holds another session's reading time: it may be replaced
+      // only once it is queued. If queuing fails, nothing here is rewritten and
+      // the checkpoint stays recoverable at the next boot.
+      if (!readersession::recoverPending()) return;
+    }
     const ReaderSessionSummary summary = readerSession.summary();
     readersession::Record record;
     snprintf(record.id, sizeof(record.id), "%s", sessionId);
@@ -191,7 +201,11 @@ void ReaderActivity::flushReaderSession() {
       readersession::save(record);
       LOG_ERR("READER", "reader session kept for retry after reboot");
     }
-  } else {
+  } else if (sessionId[0] != '\0') {
+    // A session that allocated an id may have checkpointed under it, so the
+    // journal is this one's to clear. Without an id the record belongs to an
+    // earlier session, or to the retry the branch above just saved: leave it
+    // for the next boot.
     readersession::discard();
   }
   readerSession.reset();
@@ -278,7 +292,7 @@ void ReaderActivity::loop() {
       !fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && heldMs >= ReaderUtils::SKIP_HOLD_MS;
 
   const bool changed = skip ? skipPages(prevTriggered ? -10 : 10) : pageTurn(!prevTriggered);
-  // A skip is navigation, not reading: it never counts toward session dwell.
+  // A skip closes no interval: the dwell on the page before it continues.
   notePageTurn(!skip && changed);
   if (changed && (touch.prev || touch.next)) haptic_feedback::touchAction(skip);
   requestUpdate();

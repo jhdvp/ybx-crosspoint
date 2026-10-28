@@ -643,6 +643,7 @@ void EpubReaderActivity::loop() {
   }
 
   rememberBookOnceRendered();
+  checkpointReaderSession(millis());
 
   // The radio stopped for a chapter build: once the render task has let go of the lock, that page
   // is on screen; once the build tick below has finished the chapter, no parser is left alive and
@@ -998,7 +999,7 @@ void EpubReaderActivity::loop() {
   const bool longPress = !fromTilt && heldMs >= ReaderUtils::SKIP_HOLD_MS;
   if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
     const bool succeeded = skipPages(nextTriggered ? 1 : -1);
-    notePageTurn(false);  // a chapter skip is navigation, not reading
+    notePageTurn(false);  // a skip closes no interval: the open dwell continues
     if (succeeded && (touch.prev || touch.next)) haptic_feedback::touchAction(true);
     requestUpdate();
     return;

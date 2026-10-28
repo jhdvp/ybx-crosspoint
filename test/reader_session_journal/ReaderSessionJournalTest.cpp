@@ -80,6 +80,20 @@ TEST(ReaderSessionJournal, NewerPendingSurvivesAPowerCutBeforeTheSwap) {
   EXPECT_EQ(read.durationSeconds, 900u);
 }
 
+TEST(ReaderSessionJournal, PendingCheckpointOfANewSessionWinsOverALongerOldRecord) {
+  Files files;
+  // An earlier session's unsent 900 s checkpoint is still live and the current
+  // session staged its first 60 s checkpoint on top of it: the staged copy is
+  // the newer write, so it must win even though it is shorter.
+  files.data[PATH] = readersession::serialize(record("a1b2c3d4-7", 900));
+  files.data[PENDING] = readersession::serialize(record("e5f60718-9", 60));
+
+  readersession::Record read;
+  ASSERT_TRUE(readersession::read(files, PATH, read));
+  EXPECT_STREQ(read.id, "e5f60718-9");
+  EXPECT_EQ(read.durationSeconds, 60u);
+}
+
 TEST(ReaderSessionJournal, CompletePendingIsRecoveredWithoutALiveJournal) {
   Files files;
   files.data[PENDING] = readersession::serialize(record("a1b2c3d4-9", 42));
