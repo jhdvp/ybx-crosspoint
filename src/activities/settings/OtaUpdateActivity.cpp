@@ -10,6 +10,8 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/OtaUpdater.h"
+#include "network/TlsTransport.h"
+#include "util/TlsFailureText.h"
 
 void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
@@ -41,6 +43,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     LOG_DBG("OTA", "Update check failed: %d", res);
     {
       RenderLock lock(*this);
+      failedDetail = res == OtaUpdater::TLS_ERROR ? tlsui::failureDetail(tlspolicy::lastFailure()) : nullptr;
       state = FAILED;
     }
     return;
@@ -156,7 +159,12 @@ void OtaUpdateActivity::render(RenderLock&&) {
   } else if (state == FAILED) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATE_FAILED), true, EpdFontFamily::BOLD);
     if (failedDetail != nullptr) {
-      renderer.drawCenteredText(UI_10_FONT_ID, top + height + metrics.verticalSpacing, failedDetail);
+      // The TLS explanations wrap over several lines; one centered line clips.
+      const int detailY = top + height + metrics.verticalSpacing;
+      const Rect detailBounds{metrics.contentSidePadding, detailY, pageWidth - metrics.contentSidePadding * 2,
+                              pageHeight - detailY};
+      UITheme::drawCenteredWrappedText(renderer, detailBounds, UI_10_FONT_ID, failedDetail, 3, true,
+                                       EpdFontFamily::REGULAR, UITheme::TextVerticalAlignment::TOP);
     }
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -192,7 +200,9 @@ void OtaUpdateActivity::runUpdateInstall() {
     LOG_DBG("OTA", "Update failed: %d", res);
     {
       RenderLock lock(*this);
-      failedDetail = res == OtaUpdater::WRONG_DEVICE_ERROR ? tr(STR_FIRMWARE_WRONG_DEVICE) : nullptr;
+      failedDetail = res == OtaUpdater::WRONG_DEVICE_ERROR ? tr(STR_FIRMWARE_WRONG_DEVICE)
+                     : res == OtaUpdater::TLS_ERROR      ? tlsui::failureDetail(tlspolicy::lastFailure())
+                                                         : nullptr;
       state = FAILED;
     }
     requestUpdate();
@@ -242,3 +252,4 @@ void OtaUpdateActivity::loop() {
     ESP.restart();
   }
 }
+// format-pass-marker

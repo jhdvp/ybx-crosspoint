@@ -370,11 +370,12 @@ static bool loadSleepFrameBuffer() {
 // subscribes (e.g. fetching a fresh /sleep.bmp so THIS sleep shows it — the
 // drain runs before goToSleep() renders the sleep screen). The connect path
 // has a join deadline and a cooperative drain budget, skipped on low battery.
-// Synchronous DNS may exceed the budget. A failed join or delivery just
-// sleeps with the previous image and the queued events retry on the next
-// drain (at-least-once). The caller's WiFi shutdown tears the radio down
-// either way. Deferrable events already queued (reader.exit) ride along in
-// the same drain.
+// DNS, TCP and the TLS handshake share the request's own timeout, but the
+// budget is still cooperative: WiFi stop and SD writes are outside it. A
+// failed join or delivery just sleeps with the previous image and the queued
+// events retry on the next drain (at-least-once). The caller's WiFi shutdown
+// tears the radio down either way. Deferrable events already queued
+// (reader.exit) ride along in the same drain.
 static void deliverSleepPluginEvents(const bool allowNetwork) {
   // Activity-owned state must be queued before sleep.enter and before this
   // same-sleep drain. The hook is idempotent with ordinary activity teardown.

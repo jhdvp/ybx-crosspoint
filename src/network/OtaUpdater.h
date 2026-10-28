@@ -25,6 +25,7 @@ class OtaUpdater {
     UNTRUSTED_SOURCE_ERROR,  // release metadata points off the fork's release hosts
     IMAGE_SIZE_ERROR,        // published image cannot fit this board's OTA slot
     CORRUPT_IMAGE_ERROR,     // body is not an ESP image or arrived incomplete
+    TLS_ERROR,  // certificate/clock/redirect policy refused the transfer
   };
 
   size_t getOtaSize() const { return otaSize; }

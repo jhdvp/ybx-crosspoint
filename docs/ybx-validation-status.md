@@ -90,8 +90,12 @@ this worktree keeps no build logs.
 - Account statistics and achievements now have YBX-backed native summary panels; local reading statistics are collected on-device. All hardware checks remain open.
 - X4 Pro compiles, but still uses the upstream Home. YBX touch adaptation,
   USB branding and Pro release/OTA assets remain unfinished.
-- Inherited HTTPS certificate verification remains disabled. Transport/OTA
-  trust hardening is a separate release blocker.
+- HTTPS paths carrying tokens or downloads now use peer/hostname validation,
+  bounded SNTP for unset clocks and downgrade/origin checks. The local TLS patch
+  series passes host tests, the C3 compiler and a live trust-anchor/hostname
+  check for six service endpoints. No device handshake or field test is claimed.
+- User-supplied KOReader/KOSync servers still have documented setInsecure()
+  exceptions; these are not covered by the first-party trust boundary.
 - A `start_time` back-computed after a late clock sync is an estimate: the
   first epoch the session saw, minus the seconds already counted. It inherits
   any clock error and treats the counted dwells as contiguous.
@@ -382,3 +386,7 @@ PluginHttp and the new `src/util/PluginShelf.h` policy header:
    entries.
 11. Repeat 1–4 twice to watch heap-driven behavior (auto-reboot is silent; no
    crash/reboot loops while browsing).
+
+## TLS review integration (29 October 2026)
+
+TLS hardening merged as a patch series into the native YBX/OTA code. Cross-origin credential stripping and OTA TLS errors remain separate from generic network and storage faults. Device acceptance and the ESP32-S3 TLS build remain distinct gates.

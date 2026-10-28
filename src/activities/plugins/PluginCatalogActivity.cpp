@@ -670,6 +670,7 @@ void PluginCatalogActivity::startBrowse() {
     // resolve credentials before either path. Token-less catalogs skip the gate.
     loadConfig();
     if (!loadToken() && !(manifest.hasPasswordGrant() && refreshCredentialToken())) {
+      if (failTlsIfAny()) return;
       if (manifest.hasDeviceCode()) {
         beginAuth();  // straight to the QR/code sign-in, no interstitial
       } else {
@@ -688,7 +689,7 @@ void PluginCatalogActivity::startBrowse() {
         requestUpdate();
         return;
       case ListIndexResult::FAILED:
-        fail(StrId::STR_FETCH_FEED_FAILED);
+        if (!failTlsIfAny()) fail(StrId::STR_FETCH_FEED_FAILED);
         return;
     }
   }
@@ -742,6 +743,7 @@ bool PluginCatalogActivity::refreshCredentialToken() {
 bool PluginCatalogActivity::fetchBrowseResponse() {
   loadConfig();
   if (!loadToken() && !(manifest.hasPasswordGrant() && refreshCredentialToken())) {
+    if (failTlsIfAny()) return false;
     state = State::NO_TOKEN;
     requestUpdate();
     return false;
@@ -770,7 +772,7 @@ bool PluginCatalogActivity::fetchBrowseResponse() {
     state = State::NO_TOKEN;
     requestUpdate();
   } else {
-    fail(StrId::STR_FETCH_FEED_FAILED);
+    if (!failTlsIfAny()) fail(StrId::STR_FETCH_FEED_FAILED);
   }
   return false;
 }
@@ -1133,7 +1135,7 @@ void PluginCatalogActivity::beginAuth() {
   const int status = apiRequest(substitutedRequest(manifest.authReq), response);
   JsonDocument doc;
   if (status < 200 || status >= 300 || deserializeJson(doc, response) != DeserializationError::Ok) {
-    fail(StrId::STR_PLUGIN_AUTH_FAILED);
+    if (!failTlsIfAny()) fail(StrId::STR_PLUGIN_AUTH_FAILED);
     return;
   }
   const JsonVariantConst root = doc.as<JsonVariantConst>();
@@ -1168,7 +1170,12 @@ void PluginCatalogActivity::pollAuth() {
 
   String response;
   const int status = apiRequest(req, response);
-  if (status < 0) return;  // transient transport failure: keep polling
+  if (status < 0) {
+    // A rejected certificate is not transient: stop instead of polling until
+    // the code expires and reporting an auth failure.
+    failTlsIfAny();
+    return;  // otherwise a transport failure: keep polling
+  }
 
   JsonDocument doc;
   if (deserializeJson(doc, response) == DeserializationError::Ok) {

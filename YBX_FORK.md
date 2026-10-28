@@ -59,6 +59,9 @@ a build identifier, as in CI:
 CROSSPOINT_RC_HASH="$(git rev-parse --short=7 HEAD)" pio run -e gh_release_rc
 ```
 
+SDK fixes not yet released upstream are carried as reviewed patch assets and
+applied by a build script; see [the SDK patch plan](docs/ybx-sdk-patches.md).
+
 The displayed version is `<version>-rc+<identifier>`; the GitHub preview tag
 uses `<version>rc`. Local uncommitted previews use a source-patch identifier
 recorded in BUILD.json.
@@ -77,18 +80,42 @@ Host tests and a successful build do not establish device heap, battery or
 rendering behavior. Hardware acceptance and ownership of the fork's releases
 remain with the maintainer; no automatic flashing is performed.
 
-## Inherited transport limitation
+## Transport security
 
-The pinned upstream SecureNet transport uses `setInsecure()` in PluginHttp and
-HttpDownloader. HTTPS encrypts traffic but does not authenticate the server
-certificate. This fork has not changed that transport policy; do not describe
-these requests or OTA downloads as certificate-verified. CA/hostname verification
-is a separate release-hardening item requiring SDK work and device memory/time
-validation. Do not treat this preview as a security-reviewed public release.
+Requests that carry the reader token or download a payload verify the server
+certificate chain and host name over wolfSSL: the plugin HTTP client, catalog
+and book downloads, OTA release check and install, the font catalog, and the
+web server's resumable fetch. Verification uses a small built-in CA bundle
+(ISRG Root X1 and X2, Sectigo Public Server Authentication Root E46 and its
+USERTrust ECC issuer, and GTS Root R4 — about 5.6 KB of PEM in
+`src/network/TlsRoots.h`). It covers the YBX hosts, the GitHub API/release-asset
+hosts and the font catalog, the plugin hub (`pluginhub.crosspointreader.com`)
+and the FreeInk LCP service (`lcp.freeink.org`). A user-added OPDS or sync
+server works only when its chain reaches one of those roots; otherwise the
+request fails with a certificate error and is not retried insecurely.
 
-The reader sends its scoped YBX token and reading events to YBX. Provider OAuth
-tokens and LitRes/WB sessions remain on the server. A reader token can authorize
-catalog and owned-book requests, so it still needs protection in transit.
+Before any https request the firmware checks the TrustedTime floor. If the
+clock is unset it makes one bounded SNTP attempt; when time still cannot be
+established the request is refused with a message asking the user to connect
+Wi-Fi, rather than skipping the certificate-date check. Redirects never step
+down from https to http, and Authorization/cookie headers are withheld when a
+redirect leaves the starting origin.
+
+Known exceptions, outside the token/download scope: KOReader sync and clippings
+sync still call `setInsecure()` because they talk to user-supplied servers of
+unknown CA; the SDK's OPDS implicit-auth flow, not wired into this fork, does
+the same. Their traffic is encrypted but not authenticated — treat those
+servers as trusted.
+
+The SDK changes are delivered as a hash-guarded pre-build patch series
+(`scripts/patch_securenet.py`, `scripts/securenet_patches/`: deadline-bounded
+DNS/TCP, then peer and host-name verification) because the pinned FreeInk SDK
+transport offers only `setInsecure()`/`setCACert()` without host name checking.
+The submodule pointer is unchanged; after a build `freeink-sdk` shows thirteen
+modified or added files until the changes are upstreamed. The CA
+bundle's roots, fingerprints, validity dates and re-derivation command
+(`openssl s_client -showcerts`) are documented in `TlsRoots.h`; re-check them
+when a root approaches expiry.
 
 ## YBX home on X3/X4 and X4 Pro
 

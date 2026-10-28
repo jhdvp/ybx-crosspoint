@@ -18,6 +18,7 @@
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
 #include "OtaReleasePolicy.h"
+#include "TlsTransport.h"
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   LOG_DBG("OTA", "Checking for update (current: %s)", CROSSPOINT_VERSION);
@@ -65,6 +66,10 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
     return true;
   });
   if (!ok) {
+    if (tlspolicy::isTrustFailure(tlspolicy::lastFailure())) {
+      LOG_ERR("OTA", "Release check refused: TLS trust failure");
+      return TLS_ERROR;
+    }
     // Rule: a 404 means nothing is published for this board yet; that is "no
     // update", not a failure the reader has to act on.
     if (ota_policy::missingReleaseFromStatus(HttpDownloader::lastStatus())) {
@@ -241,8 +246,12 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   }
 
   if (!fetchOk || !flashOk) {
-    LOG_ERR("OTA", "Firmware install failed (%s)", flashOk ? "download" : "flash write");
     esp_ota_abort(otaHandle);
+    if (flashOk && tlspolicy::isTrustFailure(tlspolicy::lastFailure())) {
+      LOG_ERR("OTA", "Firmware install aborted: TLS trust failure");
+      return TLS_ERROR;
+    }
+    LOG_ERR("OTA", "Firmware install failed (%s)", flashOk ? "download" : "flash write");
     return flashOk ? HTTP_ERROR : INTERNAL_UPDATE_ERROR;
   }
 
