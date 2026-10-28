@@ -146,8 +146,11 @@ class PluginCatalogActivity final : public CatalogActivity {
   // (open/re-download/remove), mirroring pluginHubPopup's plumbing.
   OptionPopup shelfPopup;
   // Destination of the last successful single-file download; the DONE screen
-  // opens it as a book instead of only returning to the list.
+  // opens it as a book instead of only returning to the list. The title is
+  // kept so book.downloaded can fire from downloadFinished, after the file
+  // passed verification, instead of from downloadBook before it.
   std::string lastDownloadPath;
+  std::string lastDownloadTitle;
   bool showOpds = false;
   bool rootMode = false;
   std::string pickerReturnName;  // plugin identity to reselect after leaving a catalog
@@ -239,10 +242,17 @@ class PluginCatalogActivity final : public CatalogActivity {
   HttpDownloader::DownloadError downloadBundle(const Item& item);
   HttpDownloader::DownloadError downloadBook(const Item& item);
   // On-reader shelf state: single-file book catalogs whose planned destination
-  // (same template as downloadBook) already exists on SD.
+  // exists on SD with the firmware download marker.
   bool bookShelfEligible() const;
   std::string plannedFilename(const Item& item) const;
+  // Shelf path under pluginshelf::plannedPath rules: the manifest's own
+  // dest_dir, one safe book-extension component. "" = row has no shelf state.
   std::string plannedBookPath(const Item& item) const;
+  // Resolved "{dest}.meta.json"-style sidecar for removal; "" when absent or
+  // unsafe. Shares the downloadBook substitution.
+  std::string sidecarPathFor(const Item& item, const std::string& dest) const;
+  // On-shelf = planned path exists and carries the firmware download marker.
+  bool shelfBookPresent(const std::string& path) const;
   void computeOnReaderStatus();
   // Reboot into the reader on this file (the catalog's onExit restarts to Home,
   // so a soft navigation here would land on the wrong screen).

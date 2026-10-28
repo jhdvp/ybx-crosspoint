@@ -25,6 +25,11 @@ class FileBrowserActivity final : public UiListActivity {
 
   // Files state
   std::string basepath = "/";
+  // Highest folder the user may navigate from: short Back, long-press Back and
+  // a missing initial path stop here instead of climbing to the SD root.
+  // Defaults to "/" (the whole card). The home "On Reader" shelf passes its
+  // book folder so the browser cannot walk above it.
+  std::string lockedRoot = "/";
   std::vector<std::string> files;
   std::unique_ptr<char[]> fileNameBuffer;
   OptionPopup optionPopup;
@@ -73,7 +78,7 @@ class FileBrowserActivity final : public UiListActivity {
 
  public:
   explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
-                               Mode mode = Mode::Books);
+                               Mode mode = Mode::Books, std::string lockedRoot = {});
   void onEnter() override;
   void onExit() override;
   void render(RenderLock&& lock) override;

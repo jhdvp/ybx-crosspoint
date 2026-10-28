@@ -248,11 +248,6 @@ void HomeActivity::onEnter() {
     ybxHomeUi.reset();
     LOG_ERR("HOME", "OOM: YBX home; using standard home");
   }
-  if (ybxHomeUi) {
-    // Offline shelf entry: the folder the YBX plugin downloads books into
-    // (empty when the plugin is absent or the plugin system is disabled).
-    ybxShelfDir = pluginhttp::catalogDownloadDir(PluginLocations::findPluginDir("ybx"));
-  }
 #endif
   if (!ybxHomeUi && UITheme::getInstance().hasCoverGridHome()) {
     // Screen-lifetime interaction tables and component properties exceed the stack budget.
@@ -681,6 +676,12 @@ void HomeActivity::onPluginsOpen() { activityManager.goToPlugins(hasOpdsServers)
 void HomeActivity::onMoreOpen() {
   if (!ybxMore) return;
   ybxMoreChoice = -1;
+  if (!ybxShelfResolved) {
+    ybxShelfResolved = true;
+    // Offline shelf entry: the folder the YBX plugin downloads books into
+    // (empty when the plugin is absent or the plugin system is disabled).
+    ybxShelfDir = pluginhttp::catalogDownloadDir(PluginLocations::findPluginDir("ybx"));
+  }
   if (!ybxShelfDir.empty()) {
     // "On Reader" leads to the YBX download folder: books are reachable
     // (open/delete/rename) with no network, matching the clients' shelf.
@@ -695,8 +696,8 @@ void HomeActivity::onMoreOpen() {
 }
 
 void HomeActivity::onYbxShelfOpen() {
-  auto shelf =
-      makeUniqueNoThrow<FileBrowserActivity>(renderer, mappedInput, ybxShelfDir, FileBrowserActivity::Mode::Books);
+  auto shelf = makeUniqueNoThrow<FileBrowserActivity>(renderer, mappedInput, ybxShelfDir,
+                                                      FileBrowserActivity::Mode::Books, ybxShelfDir);
   if (!shelf) {
     LOG_ERR("HOME", "OOM: on-reader shelf");
     return;

@@ -36,6 +36,10 @@ class CatalogActivity : public UiListActivity {
   std::string errorMessage, statusMessage;
   size_t downloadProgress = 0, downloadTotal = 0;
   bool cancelDownload = false;
+  // Screen message shown when a download reports FILE_ERROR. Defaults to the
+  // storage-failure text; catalog code overrides it before returning
+  // FILE_ERROR for a non-storage cause (reset at the next beginDownload).
+  StrId downloadFileError = StrId::STR_WRITE_FAILED;
 
   virtual void startBrowse() = 0;
   virtual void retryBrowse() { startBrowse(); }

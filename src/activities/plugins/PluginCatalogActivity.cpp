@@ -42,6 +42,7 @@
 #include "util/PluginHttp.h"
 #include "util/PluginLocations.h"
 #include "util/PluginPickerLayout.h"
+#include "util/PluginShelf.h"
 #include "util/QrUtils.h"
 #include "util/StringUtils.h"
 
@@ -948,13 +949,15 @@ void PluginCatalogActivity::computeInstallStatus() {
 
 // --- on-reader shelf state ------------------------------------------------
 // Book catalogs mirror the desktop clients' "книга на ридере" status: a row is
-// on the shelf when the file downloadBook would write already exists. The
-// destination must therefore be computed identically in both paths, from the
-// same templates and guards.
+// on the shelf when the file downloadBook would have written already exists
+// WITH its firmware provenance marker. The shelf only ever sees the manifest's
+// own download.dest_dir (a config "dest_dir" override can move real downloads
+// but never what the shelf plans or deletes), and pluginshelf::plannedPath
+// gates the name to a single safe book-extension component.
 
 bool PluginCatalogActivity::bookShelfEligible() const {
   return !manifest.isBundle() && !manifest.tracksInstalls() && !manifest.filenameTpl.empty() &&
-         (!manifest.downloadReq.url.empty() || !manifest.dlUrlPath.empty());
+         !manifest.destDir.empty() && (!manifest.downloadReq.url.empty() || !manifest.dlUrlPath.empty());
 }
 
 std::string PluginCatalogActivity::plannedFilename(const Item& item) const {
@@ -968,27 +971,41 @@ std::string PluginCatalogActivity::plannedFilename(const Item& item) const {
 }
 
 std::string PluginCatalogActivity::plannedBookPath(const Item& item) const {
-  const std::string filename = plannedFilename(item);
-  if (filename.empty()) return "";
-  const std::string dir = downloadDir();
-  const std::string path = dir.empty() ? "/" + filename : dir + "/" + filename;
-  if (!protectedpaths::isPluginPath(path)) return "";
-  return path;
+  return pluginshelf::plannedPath(manifest.destDir, plannedFilename(item));
 }
 
-// One stat per item, on the main task right after the page is parsed (the same
-// pass as install badges), so the render path stays storage-free.
+bool PluginCatalogActivity::shelfBookPresent(const std::string& path) const {
+  if (path.empty()) return false;
+  const std::string marker = pluginshelf::markerPath(path);
+  return Storage.exists(path.c_str()) && Storage.exists(marker.c_str());
+}
+
+// One to three stats per item, on the main task right after the page is
+// parsed (the same pass as install badges), so the render path stays
+// storage-free.
 void PluginCatalogActivity::computeOnReaderStatus() {
   const bool eligible = bookShelfEligible();
   for (auto& item : items) {
     item.onReader = false;
     if (!eligible || item.isDir || !item.files.empty()) continue;
     const std::string path = plannedBookPath(item);
-    item.onReader = !path.empty() && Storage.exists(path.c_str());
+    if (path.empty()) continue;
+    const std::string marker = pluginshelf::markerPath(path);
+    const bool book = Storage.exists(path.c_str());
+    const bool stamped = Storage.exists(marker.c_str());
+    if (stamped && !book) {
+      // The book was deleted outside the shelf (e.g. the file browser) while
+      // its marker survived: forget the marker, or a user file later copied
+      // under the same name would look firmware-downloaded and become
+      // removable through this feature.
+      Storage.remove(marker.c_str());
+    }
+    item.onReader = book && stamped;
   }
 }
 
 void PluginCatalogActivity::openDownloadedBook(const std::string& path) {
+  if (!pluginshelf::isBookPath(path)) return;
   // CatalogActivity::onExit restarts to Home to defragment after Wi-Fi, so a
   // soft goToReader from here would boot to the wrong screen. Arm the reader
   // reboot first (same pattern as the LCP loan flow); on boards where the
@@ -999,12 +1016,27 @@ void PluginCatalogActivity::openDownloadedBook(const std::string& path) {
   activityManager.goToReader(path);
 }
 
+std::string PluginCatalogActivity::sidecarPathFor(const Item& item, const std::string& dest) const {
+  if (manifest.sidecarPath.empty()) return "";
+  const std::string md5 = md5Hex(dest);
+  std::string path = substituted(manifest.sidecarPath, &item);
+  substituteAll(path, "{md5}", md5);
+  // {dest} is the sanitized on-SD path of the downloaded file, so a sidecar
+  // can sit next to it ("{dest}.meta.json" - the book metadata convention);
+  // {title} alone cannot express that, since the filename is sanitized.
+  substituteAll(path, "{dest}", dest);
+  // Sidecar paths legitimately contain '/', but the substituted fields must
+  // not climb out of the tree or land on a credential store.
+  if (!protectedpaths::isPluginPath(path)) return "";
+  return path;
+}
+
 bool PluginCatalogActivity::showShelfOptions(const int itemIndex) {
   if (itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return false;
   const Item& item = items[itemIndex];
   if (!item.onReader || !bookShelfEligible()) return false;
   const std::string path = plannedBookPath(item);
-  if (path.empty() || !Storage.exists(path.c_str())) return false;
+  if (!shelfBookPresent(path)) return false;
   static constexpr StrId OPTIONS[] = {StrId::STR_DOWNLOAD_AGAIN, StrId::STR_REMOVE_FROM_SHELF, StrId::STR_CANCEL};
   shelfPopup.show(StrId::STR_ON_READER, OPTIONS, 3, 0, [this, itemIndex](const int selected) {
     if (selected == 0) {
@@ -1018,38 +1050,48 @@ bool PluginCatalogActivity::showShelfOptions(const int itemIndex) {
 }
 
 // File-only removal through the shared delete primitive (book file plus its
-// rebuildable caches and recent entry); settings, tokens, and every other
-// folder stay untouched.
+// rebuildable caches and recent entry), together with the provenance marker
+// and the plugin sidecar downloadBook wrote for this book. Only a file under
+// the manifest's own dest_dir that downloadBook itself marked is ever deleted;
+// settings, tokens, and every other folder stay untouched.
 void PluginCatalogActivity::promptRemoveShelfBook(const int itemIndex) {
   if (itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
   const std::string path = plannedBookPath(items[itemIndex]);
-  if (path.empty() || !Storage.exists(path.c_str())) {
+  if (!shelfBookPresent(path)) {
     computeOnReaderStatus();
     releaseRows();
     requestUpdate();
     return;
   }
+  const std::string marker = pluginshelf::markerPath(path);
+  const std::string sidecar = sidecarPathFor(items[itemIndex], path);
   auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_REMOVE_SHELF_CONFIRM),
                                                               items[itemIndex].title);
   if (!confirmation) {
     LOG_ERR("PCAT", "OOM: shelf removal confirmation");
     return;
   }
-  startActivityForResult(std::move(confirmation), [this, itemIndex, path](const ActivityResult& result) {
-    if (result.isCancelled) {
-      if (itemIndex >= 0 && itemIndex < static_cast<int>(items.size())) computeOnReaderStatus();
-      releaseRows();
-      requestUpdate();
-      return;
-    }
-    if (!removeBookFile(path)) LOG_ERR("PCAT", "cannot delete %s", path.c_str());
-    if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
-    library::markLibraryIndexDirty();
-    if (lastDownloadPath == path) lastDownloadPath.clear();
-    computeOnReaderStatus();
-    releaseRows();
-    requestUpdate();
-  });
+  startActivityForResult(std::move(confirmation),
+                         [this, itemIndex, path, marker, sidecar](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             if (itemIndex >= 0 && itemIndex < static_cast<int>(items.size())) computeOnReaderStatus();
+                             releaseRows();
+                             requestUpdate();
+                             return;
+                           }
+                           if (!removeBookFile(path)) {
+                             LOG_ERR("PCAT", "cannot delete %s", path.c_str());
+                           } else {
+                             Storage.remove(marker.c_str());
+                             if (!sidecar.empty()) Storage.remove(sidecar.c_str());
+                           }
+                           if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
+                           library::markLibraryIndexDirty();
+                           if (lastDownloadPath == path) lastDownloadPath.clear();
+                           computeOnReaderStatus();
+                           releaseRows();
+                           requestUpdate();
+                         });
 }
 
 void PluginCatalogActivity::beginAuth() {
@@ -1144,6 +1186,19 @@ void PluginCatalogActivity::downloadItem(const int itemIndex) {
 
 void PluginCatalogActivity::downloadFinished(const bool cancelled) {
   if (!cancelled && !verifyDownloadedEpub()) return;
+  if (!cancelled && !lastDownloadPath.empty()) {
+    // The file survived verification: stamp the provenance marker that lets
+    // shelf removal trust this path, then announce the download. A rejected
+    // body is deleted above and never reported to book.downloaded subscribers.
+    if (pluginshelf::isBookPath(lastDownloadPath)) {
+      const std::string marker = pluginshelf::markerPath(lastDownloadPath);
+      if (!Storage.writeFile(marker.c_str(), String(""))) {
+        LOG_ERR("PCAT", "marker write failed: %s", marker.c_str());
+      }
+    }
+    emitBookDownloaded(manifestPath, lastDownloadPath, lastDownloadTitle);
+    lastDownloadTitle.clear();
+  }
   state = cancelled ? State::BROWSING : State::DONE;
   requestUpdate();
 }
@@ -1175,6 +1230,7 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBundle(const Item& 
   // Reject traversal, the current-directory alias, and ambiguous backslash separators.
   if (subdir.empty() || subdir == "." || subdir.find("..") != std::string::npos ||
       subdir.find('\\') != std::string::npos || subdir.front() == '/') {
+    downloadFileError = StrId::STR_UNSAFE_FILENAME;
     return HttpDownloader::FILE_ERROR;
   }
   std::string root = downloadDir();
@@ -1221,6 +1277,7 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBundle(const Item& 
       // A manifest listing traversal or credential-store entries is hostile
       // or broken either way; abort rather than install a bundle with holes.
       LOG_ERR("PCAT", "unsafe bundle entry rejected: %s", item.files[i].c_str());
+      downloadFileError = StrId::STR_UNSAFE_FILENAME;
       return HttpDownloader::FILE_ERROR;
     }
     // Create any intermediate folders for nested files ("assets/icon.bin").
@@ -1273,20 +1330,29 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
     fileUrl = substituted(manifest.downloadReq.url, &item);
   }
   if (fileUrl.empty()) {
+    downloadFileError = StrId::STR_NO_DOWNLOAD_URL;
     return HttpDownloader::FILE_ERROR;
   }
 
-  const std::string folderDir = downloadDir();
+  std::string folderDir = downloadDir();
+  // Match pluginshelf::plannedPath's normalization so the written path, the
+  // marker and the shelf plan are byte-identical for one manifest value.
+  while (folderDir.size() > 1 && folderDir.back() == '/') folderDir.pop_back();
   const char* folder = folderDir.c_str();
-  bool haveFolder = folder[0] != '\0';
+  const bool haveFolder = folder[0] != '\0';
+  // A missing destination folder that cannot be created is a storage failure,
+  // not a reason to silently write to the SD root: planned paths and the
+  // provenance marker belong to dest_dir, and a root fallback would let a
+  // later "On Reader" removal target a different file than this download made.
   if (haveFolder && !Storage.exists(folder) && !Storage.mkdir(folder)) {
-    LOG_ERR("PCAT", "mkdir failed for %s, using SD root", folder);
-    haveFolder = false;
+    LOG_ERR("PCAT", "mkdir failed for %s", folder);
+    return HttpDownloader::FILE_ERROR;
   }
 
   const std::string filename = plannedFilename(item);
   if (filename.empty()) {
     LOG_ERR("PCAT", "unsafe filename rejected: %s", substituted(manifest.filenameTpl, &item).c_str());
+    downloadFileError = StrId::STR_UNSAFE_FILENAME;
     return HttpDownloader::FILE_ERROR;
   }
   std::string dest;
@@ -1296,6 +1362,7 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
   dest += filename;
   if (!protectedpaths::isPluginPath(dest)) {
     LOG_ERR("PCAT", "unsafe download dest rejected: %s", dest.c_str());
+    downloadFileError = StrId::STR_UNSAFE_FILENAME;
     return HttpDownloader::FILE_ERROR;
   }
 
@@ -1323,28 +1390,25 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
   // Optional per-book sidecar (e.g. a service book id keyed by the file's
   // path hash) so a later sync stage can associate the file with the service.
   if (!manifest.sidecarPath.empty() && !manifest.sidecarBody.empty()) {
-    const std::string md5 = md5Hex(dest);
-    std::string path = substituted(manifest.sidecarPath, &item);
-    substituteAll(path, "{md5}", md5);
-    // {dest} is the sanitized on-SD path of the downloaded file, so a sidecar
-    // can sit next to it ("{dest}.meta.json" - the book metadata convention);
-    // {title} alone cannot express that, since the filename is sanitized.
-    substituteAll(path, "{dest}", dest);
-    // Sidecar paths legitimately contain '/', but the substituted fields must
-    // not climb out of the tree or land on a credential store.
-    if (!protectedpaths::isPluginPath(path)) {
-      LOG_ERR("PCAT", "unsafe sidecar path rejected: %s", path.c_str());
+    const std::string sidecar = sidecarPathFor(item, dest);
+    if (sidecar.empty()) {
+      LOG_ERR("PCAT", "unsafe sidecar path rejected: %s", substituted(manifest.sidecarPath, &item).c_str());
     } else {
+      const std::string md5 = md5Hex(dest);
       std::string body = substituted(manifest.sidecarBody, &item);
       substituteAll(body, "{md5}", md5);
       substituteAll(body, "{dest}", dest);
-      if (!Storage.writeFile(path.c_str(), String(body.c_str())))
-        LOG_ERR("PCAT", "Sidecar write failed: %s", path.c_str());
+      if (!Storage.writeFile(sidecar.c_str(), String(body.c_str())))
+        LOG_ERR("PCAT", "Sidecar write failed: %s", sidecar.c_str());
     }
   }
 
-  lastDownloadPath = dest;  // the DONE screen offers to open this file
-  emitBookDownloaded(manifestPath, dest, item.title);
+  // Record the finished transfer for the DONE screen; downloadFinished runs
+  // the EPUB magic check and only then stamps the provenance marker and
+  // announces the download, so a body rejected there never reaches
+  // subscribers of book.downloaded.
+  lastDownloadPath = dest;
+  lastDownloadTitle = item.title;
   return HttpDownloader::OK;
 }
 
@@ -1413,14 +1477,19 @@ bool PluginCatalogActivity::handleCustomInput() {
   if (state == State::DONE) {
     int tx = 0;
     int ty = 0;
+    // Back first: a header back tap is also a screen tap, and on this screen
+    // a plain tap starts reading the finished download.
+    const bool back = mappedInput.wasReleased(MappedInputManager::Button::Back);
     const bool selected =
-        mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(tx, ty);
-    if (selected && !lastDownloadPath.empty()) {
+        !back && (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(tx, ty));
+    // Only a reflowable/XTC book can be opened; a plugin that writes another
+    // extension returns to the list instead of rebooting into a failed load.
+    if (selected && !lastDownloadPath.empty() && pluginshelf::isBookPath(lastDownloadPath)) {
       // The finished download is readable now: land on its first page.
       openDownloadedBook(lastDownloadPath);
       return true;
     }
-    if (selected || mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (selected || back) {
       // The just-finished download may have installed/updated a plugin; refresh
       // the install badges so the row no longer reads "Update".
       computeInstallStatus();
@@ -1580,7 +1649,7 @@ void PluginCatalogActivity::activateItem(const int itemIndex) {
   // (long-press still offers re-download and removal).
   if (item.onReader) {
     const std::string path = plannedBookPath(item);
-    if (!path.empty() && Storage.exists(path.c_str())) {
+    if (shelfBookPresent(path)) {
       openDownloadedBook(path);
       return;
     }
@@ -1699,7 +1768,7 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
     Item& item = items[itemIndex];
     if (item.onReader) {
       const std::string path = plannedBookPath(item);
-      if (!path.empty() && Storage.exists(path.c_str())) {
+      if (shelfBookPresent(path)) {
         openDownloadedBook(path);
         return;
       }
@@ -1753,7 +1822,11 @@ void PluginCatalogActivity::drawFooter() {
       labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
       break;
     case State::DONE:
-      labels = mappedInput.mapLabels(tr(STR_BACK), lastDownloadPath.empty() ? "" : tr(STR_OPEN), "", "");
+      // A non-book download (a manifest writing another extension) is not
+      // openable: show plain completion instead of an Open affordance that
+      // would only return to the list.
+      labels =
+          mappedInput.mapLabels(tr(STR_BACK), pluginshelf::isBookPath(lastDownloadPath) ? tr(STR_OPEN) : "", "", "");
       break;
     default:  // CHECK_WIFI / LOADING / AUTH (and child-activity handoffs)
       labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
@@ -1784,7 +1857,7 @@ void PluginCatalogActivity::buildScreen(UiScreen& screen) {
       buildAuthScreen(screen);
       return;
     case State::DONE:
-      if (lastDownloadPath.empty()) {
+      if (!pluginshelf::isBookPath(lastDownloadPath)) {
         catalogCenteredBlock(screen, {{tr(STR_DOWNLOAD_COMPLETE), true}, {statusMessage.c_str()}});
       } else {
         catalogCenteredBlock(screen,

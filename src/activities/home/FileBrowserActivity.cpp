@@ -83,10 +83,11 @@ void formatFileExtension(const std::string& filename, char* buffer, const size_t
 }
 
 FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                         std::string initialPath, const Mode mode)
+                                         std::string initialPath, const Mode mode, std::string lockedRoot)
     : UiListActivity("FileBrowser", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       mode(mode),
-      basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
+      basepath(initialPath.empty() ? "/" : std::move(initialPath)),
+      lockedRoot(lockedRoot.empty() ? "/" : std::move(lockedRoot)) {}
 
 void FileBrowserActivity::loadFiles() {
   files.clear();
@@ -210,11 +211,18 @@ void FileBrowserActivity::onEnter() {
 
   auto root = Storage.open(basepath.c_str());
   if (!root) {
-    basepath = "/";
+    // Unlocked: fall back to the SD root. Locked (On-reader shelf): stay at the
+    // shelf folder with an empty list rather than escaping upward.
+    basepath = lockedRoot;
     loadFiles();
   } else if (!root.isDirectory()) {
     const std::string oldPath = basepath;
-    basepath = FsHelpers::extractFolderPath(basepath);
+    std::string parent = FsHelpers::extractFolderPath(basepath);
+    // Keep a file's parent inside the locked folder when it sits above it.
+    if (parent.size() < lockedRoot.size() && lockedRoot.compare(0, parent.size(), parent) == 0) {
+      parent = lockedRoot;
+    }
+    basepath = parent;
     loadFiles();
 
     const auto pos = oldPath.find_last_of('/');
@@ -520,12 +528,12 @@ bool FileBrowserActivity::handleCustomInput() {
   // Long press BACK (1s+) goes to root folder (Books mode only).
   // In firmware-pick mode we keep navigation simple: short Back = up dir / cancel.
   if (mode == Mode::Books && mappedInput.wasReleased(MappedInputManager::Button::Back) &&
-      mappedInput.getHeldTime() >= GO_HOME_MS && basepath != "/") {
+      mappedInput.getHeldTime() >= GO_HOME_MS && basepath != lockedRoot) {
     {
       // buildScreen() runs on the render task and reads basepath plus `files`
       // through the row provider; mutate only under the render lock.
       RenderLock lock(*this);
-      basepath = "/";
+      basepath = lockedRoot;
       loadFiles();
       nav.selected = 0;
       nav.top = 0;
@@ -552,7 +560,7 @@ bool FileBrowserActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
-      if (basepath != "/") {
+      if (basepath != lockedRoot) {
         const std::string oldPath = basepath;
 
         {
@@ -673,17 +681,18 @@ void FileBrowserActivity::drawChrome() {
   const auto pageWidth = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
-  std::string folderName =
-      (mode == Mode::PickFirmware)
-          ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
-          : ((basepath == "/") ? std::string(tr(STR_SD_CARD)) : basepath.substr(basepath.rfind('/') + 1));
+  std::string folderName = (mode == Mode::PickFirmware)
+                               ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
+                               : ((basepath == "/" && lockedRoot == "/") ? std::string(tr(STR_SD_CARD))
+                                                                         : basepath.substr(basepath.rfind('/') + 1));
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the rest of the screen renders through the app.
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, folderName.c_str());
 }
 
 void FileBrowserActivity::drawFooter() {
-  const char* backLabel = (basepath == "/") ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
+  const char* backLabel =
+      (basepath == lockedRoot) ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
   const bool selectingFirmwareFile = mode == Mode::PickFirmware && !files.empty() && nav.selected >= 0 &&
