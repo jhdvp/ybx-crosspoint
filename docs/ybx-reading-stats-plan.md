@@ -1,3 +1,8 @@
+Implementation update: the native account-summary/cache and explicit refresh
+slice is now in progress; see [Native statistics](ybx-native-statistics.md).
+This is not the local journal/vCodex adaptation described below. The original
+prototype observations remain as design history.
+
 # Reading statistics on the YBX home
 
 Source review: 2026-10-28. The owner requested a compact footer and reading
@@ -31,10 +36,11 @@ stack, themes or unrelated applications just to obtain a home widget.
 
 ## Reuse YBX observations, avoid a second clock
 
-Our ReaderSession already records qualified forward-page dwell (2 to 1,800
-seconds). vCodex has another session state, a heartbeat, a three-minute threshold
-for its session counter, and a goal-based streak. Blindly running both collectors
-would create conflicting definitions. Adapt the analytics/store to consume one
+Our ReaderSession already records qualified page dwell (2 to 1,800 seconds per
+interval, page turns in either direction, the trailing interval at exit, and a
+5-second session minimum). vCodex has another session state, a heartbeat, a
+three-minute threshold for its session counter, and a goal-based streak. Blindly
+running both collectors would create conflicting definitions. Adapt the analytics/store to consume one
 completed session event, with a stable ID shared by local persistence and YBX
 upload. Agree on idle time, midnight splitting, timezone and the streak definition
 before exposing totals. Use existing trusted-time synchronization; an uncertain

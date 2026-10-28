@@ -48,8 +48,10 @@
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
+#include "util/ReaderSessionJournal.h"
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
+#include "util/YbxKosync.h"
 
 #if CROSSPOINT_VECTOR_FONTS
 // Rendering (incl. FreeType TTF rasterization) runs on the Arduino loop task.
@@ -691,6 +693,12 @@ void setup() {
   // Restore the monotonic clock floor before anything reads time() (event
   // timestamps, loan-expiry checks).
   trustedtime::init();
+  // A reading session interrupted by a crash or power loss was checkpointed on
+  // SD; queue it now with its original id, so one read is counted once.
+  readersession::recoverPending();
+  // YBX sync switch and history only; the pairing is reconciled when the sync
+  // settings open or the reader starts a sync, so boot reads no plugin files.
+  ybxkosync::begin();
   bleturner::begin(pageturner::host, SETTINGS.ble);
 
   // Brightness and warmth are always restored. A normal wake starts with the

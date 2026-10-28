@@ -31,7 +31,9 @@ enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, OPDS_BROWSER, FILE_TRANSF
  * wifi network, and get back the selected network when the user is done.
  *
  * Main differences from Android's ActivityManager:
- * - No onPause/onResume, since we don't have a concept of background activities
+ * - No onPause/onResume pair: a screen pushed on top of another only gets
+ *   onScreenCovered(), and the covered activity notices its own return through
+ *   its next render
  * - onActivityResult is implemented via a callback instead of a separate method, for simplicity
  */
 class ActivityManager {

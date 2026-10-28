@@ -97,4 +97,31 @@ TEST(PluginEventQueue, EmptyLinesDoNotConsumeNetworkBudget) {
   EXPECT_TRUE(queue.empty());
   EXPECT_EQ(budget, 0);
 }
+
+TEST(PluginEventQueue, TrimDropsOldestWholeLinesUntilTheTailFits) {
+  std::string queue = "old1\nold2\nnew1\nnew2\n";
+  pluginevents::trimQueueHead(queue, 10);
+  EXPECT_EQ(queue, "new1\nnew2\n");
+}
+
+TEST(PluginEventQueue, TrimNeverSplitsTheLineAtTheBoundary) {
+  std::string queue = "aaaa\nbbbb\ncccc\n";
+  pluginevents::trimQueueHead(queue, 10);
+  EXPECT_EQ(queue, "bbbb\ncccc\n");
+}
+
+TEST(PluginEventQueue, TrimLeavesAFittingQueueAndEmptyQueueAlone) {
+  std::string queue = "aaaa\nbbbb\n";
+  pluginevents::trimQueueHead(queue, 10);
+  EXPECT_EQ(queue, "aaaa\nbbbb\n");
+  std::string empty;
+  pluginevents::trimQueueHead(empty, 10);
+  EXPECT_TRUE(empty.empty());
+}
+
+TEST(PluginEventQueue, TrimEmptiesAQueueWhoseNewestLineAloneIsTooLarge) {
+  std::string queue = "aaaa\nbbbbbbbbbb\n";
+  pluginevents::trimQueueHead(queue, 5);
+  EXPECT_TRUE(queue.empty());
+}
 }  // namespace

@@ -31,7 +31,8 @@
     }
   },
   "download": {
-    "url": "https://my.ybx.app/api/v1/crosspoint/books/{id}/download?v=1.7.0",
+    "url": "https://my.ybx.app/api/v1/crosspoint/books/{id}/download?v=1.9.0",
+    "require_url": true,
     "method": "GET",
     "headers": {
       "Authorization": "Bearer {token}"
@@ -73,7 +74,7 @@
     "reader.open": {
       "request": {
         "method": "POST",
-        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.7.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.0",
         "headers": {
           "Authorization": "Bearer {token}",
           "Content-Type": "application/json"
@@ -84,7 +85,7 @@
     "reader.exit": {
       "request": {
         "method": "POST",
-        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.7.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.0",
         "headers": {
           "Authorization": "Bearer {token}",
           "Content-Type": "application/json"
@@ -95,7 +96,7 @@
     "reader.session": {
       "request": {
         "method": "POST",
-        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.7.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.0",
         "headers": {
           "Authorization": "Bearer {token}",
           "Content-Type": "application/json"
@@ -107,7 +108,7 @@
     "book.downloaded": {
       "request": {
         "method": "POST",
-        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.7.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.0",
         "headers": {
           "Authorization": "Bearer {token}",
           "Content-Type": "application/json"
@@ -118,11 +119,25 @@
     "sleep.enter": {
       "delivery": "latest",
       "download": {
-        "url": "https://my.ybx.app/api/v1/crosspoint/sleep-image?w={cfg.sleep_width}&h={cfg.sleep_height}&v=1.7.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/sleep-image?w={cfg.sleep_width}&h={cfg.sleep_height}&v=1.9.0",
         "headers": {
           "Authorization": "Bearer {token}"
         },
         "dest": "/sleep.bmp"
+      }
+    }
+  },
+  "ybx": {
+    "reading_summary": {
+      "url": "https://my.ybx.app/api/v1/crosspoint/reading/summary?limit=1",
+      "headers": {
+        "Authorization": "Bearer {token}"
+      }
+    },
+    "achievements": {
+      "url": "https://my.ybx.app/api/v1/crosspoint/achievements?limit=50",
+      "headers": {
+        "Authorization": "Bearer {token}"
       }
     }
   },

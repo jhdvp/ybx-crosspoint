@@ -49,9 +49,13 @@ class GfxRenderer;
 namespace pluginevents {
 
 enum class Event : uint8_t {
-  ReaderOpen,      // "reader.open"      vars: book
-  ReaderExit,      // "reader.exit"      vars: book, percent
-  ReaderSession,   // "reader.session"   vars: book, document, active-session summary
+  ReaderOpen,  // "reader.open"      vars: book
+  ReaderExit,  // "reader.exit"      vars: book, percent
+  // "reader.session" vars: book, document, start_time, end_time,
+  // duration_seconds, start_progress_bp, end_progress_bp, progress_scale.
+  // Emitted once per completed reading interval (exit, sleep, restart, or
+  // recovered at boot after a crash) carrying the id allocated for it once.
+  ReaderSession,
   BookDownloaded,  // "book.downloaded"  vars: path, title, plugin
   SleepEnter,      // "sleep.enter"      vars: book, percent when sleeping from a reader, else none
   COUNT
@@ -81,10 +85,23 @@ uint8_t subscriptionMask(const char* plugin);
 // (e.g. a fresh sleep image) instead of in the next online session.
 bool wantsConnectAny();
 
+// Formats a new unique event id ("%08lx-%lu": per-boot nonce and a shared
+// counter). Readers that need the id to survive a reboot allocate it once and
+// pass it back to emit(); the counter keeps it from colliding with ids that
+// emit() allocates itself.
+void allocateEventId(char* out, size_t size);
+
 // Appends the event to each subscribing plugin's outbox. No-op without
-// subscribers. An outbox over the size cap is dropped wholesale first (the
-// newest events carry the current state; stale ones are worthless by then).
-void emit(Event e, const Var* vars, size_t varCount);
+// subscribers. An outbox at the size cap first drops its oldest complete
+// events, so a long offline period keeps the newest history instead of losing
+// everything.
+//
+// When explicitId is non-empty it becomes the event id instead of a fresh one.
+// Returns false when the event could not be appended to every subscribing
+// outbox and another attempt may succeed (SD fault, tail repair). An event
+// that can never fit the line limit is dropped and returns true: retrying
+// cannot shrink it.
+bool emit(Event e, const Var* vars, size_t varCount, const char* explicitId = nullptr);
 
 // Replays queued events through their manifest handlers. Call only while WiFi
 // is connected; requests run synchronously on the calling task. At most

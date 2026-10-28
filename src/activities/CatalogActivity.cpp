@@ -147,6 +147,7 @@ void CatalogActivity::beginDownload(const std::string& title) {
   state = State::DOWNLOADING;
   statusMessage = title;
   downloadProgress = downloadTotal = 0;
+  downloadFileError = StrId::STR_WRITE_FAILED;
   cancelDownload = goHomeAfterCancel = false;
   requestUpdate(true);
 }
@@ -204,7 +205,10 @@ void CatalogActivity::finishDownload(const HttpDownloader::DownloadError result)
     downloadFinished(result == HttpDownloader::ABORTED);
   } else {
     LOG_ERR("CAT", "Download failed: %d", static_cast<int>(result));
-    fail(StrId::STR_DOWNLOAD_FAILED);
+    // FILE_ERROR is a storage fault (disk full, write/replace failure) unless
+    // the catalog narrowed the cause while producing it; a rejected server
+    // name needs a different fix than a full disk.
+    fail(result == HttpDownloader::FILE_ERROR ? downloadFileError : StrId::STR_DOWNLOAD_FAILED);
   }
 }
 

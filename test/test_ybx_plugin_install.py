@@ -21,7 +21,7 @@ class YbxPluginInstall(unittest.TestCase):
         target = self.root / 'plugins/ybx'
         manifest = json.loads((target / 'manifest.json').read_text())
         device = json.loads((target / 'device.json').read_text())
-        self.assertEqual(manifest['version'], '1.7.0')
+        self.assertEqual(manifest['version'], '1.9.0')
         self.assertIn('catalog.lists.auth', manifest['compatibility']['requires'])
         self.assertIn('/catalog/lists', device['browse']['lists_url'])
         self.assertFalse((target / 'token.json').exists())

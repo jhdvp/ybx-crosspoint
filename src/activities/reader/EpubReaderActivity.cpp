@@ -60,6 +60,7 @@
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+#include "util/YbxKosync.h"
 
 namespace {
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -643,6 +644,7 @@ void EpubReaderActivity::loop() {
   }
 
   rememberBookOnceRendered();
+  checkpointReaderSession(millis());
 
   // The radio stopped for a chapter build: once the render task has let go of the lock, that page
   // is on screen; once the build tick below has finished the chapter, no parser is left alive and
@@ -811,7 +813,7 @@ void EpubReaderActivity::loop() {
 
     if ((millis() - lastPageTurnTime) >= pageTurnDuration) {
       const bool succeeded = pageTurn(true);
-      notePageTurn(true, succeeded);
+      notePageTurn(succeeded);
       requestUpdate();
       return;
     }
@@ -969,7 +971,7 @@ void EpubReaderActivity::loop() {
     const bool forward = pendingManualTurn > 0;
     pendingManualTurn = 0;
     const bool succeeded = pageTurn(forward);
-    notePageTurn(forward, succeeded);
+    notePageTurn(succeeded);
     if (succeeded && pendingManualTurnTouch) haptic_feedback::touchAction();
     pendingManualTurnTouch = false;
     requestUpdate();
@@ -998,7 +1000,7 @@ void EpubReaderActivity::loop() {
   const bool longPress = !fromTilt && heldMs >= ReaderUtils::SKIP_HOLD_MS;
   if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
     const bool succeeded = skipPages(nextTriggered ? 1 : -1);
-    notePageTurn(false, succeeded);
+    notePageTurn(false);  // a skip closes no interval: the open dwell continues
     if (succeeded && (touch.prev || touch.next)) haptic_feedback::touchAction(true);
     requestUpdate();
     return;
@@ -1026,7 +1028,7 @@ void EpubReaderActivity::loop() {
   }
 
   const bool succeeded = pageTurn(!prevTriggered);
-  notePageTurn(!prevTriggered, succeeded);
+  notePageTurn(succeeded);
   if (succeeded && (touch.prev || touch.next)) haptic_feedback::touchAction();
   requestUpdate();
 }
@@ -1312,7 +1314,14 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 }
 
 bool EpubReaderActivity::launchKOReaderSync() {
-  flushReaderSession();
+  {
+    RenderLock lock(*this);
+    flushReaderSession();
+  }
+
+  // A pairing made since the last sync is applied here, so a reader that signed in
+  // to YBX syncs without ever typing a server URL or a password.
+  ybxkosync::refresh();
 
   // Without a KOReader server the sync activity only brings the device online
   // and drains that outbox; a failed join exits back to the reader with the
@@ -1547,6 +1556,12 @@ void EpubReaderActivity::beginLoanTimeSync() {
     }
     APP_STATE.openEpubPath = bookPath;
     APP_STATE.saveToFile();
+    // The reboot below would drop the in-RAM session; queue its interval now,
+    // off the time-sync popup, before the chip resets.
+    {
+      RenderLock lock(*this);
+      flushReaderSession();
+    }
     // Reboot straight back into this book with a clean heap (no-op on touch
     // boards, which fall through to the in-place relaunch below).
     silentRestartToReader();
