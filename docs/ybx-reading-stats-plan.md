@@ -74,3 +74,29 @@ SD. Measure the largest free block and opening/TLS/sleep peaks on both devices.
 
 This is a source-based implementation plan. No vCodex code was incorporated or
 built in this change, and no vCodex hardware-validation claim transfers to YBX.
+
+## Implemented slice (28 October 2026)
+
+The first step of the sequence above is in place on the YBX fork:
+
+- One session source: finished `reader.session` intervals feed a device-local
+  store (`/.crosspoint/reading-stats.bin`, `/.crosspoint/reading-books.bin`)
+  next to the existing plugin event, with the same session id for dedupe. No
+  second timer or second session definition was added.
+- A declarative dashboard contract: manifests may set
+  `dashboard.source: "reading-stats.v1"` and pages made of `metric`,
+  `week_bars`, `heatmap_28` and `book_list` widgets. The YBX manifest declares
+  «Ваше чтение», «Неделя», «Календарь» and «Книги»; labels are rendered
+  verbatim from the manifest.
+- The firmware advertises `stats.native.v1` and `ui.dashboard.v1`, so the
+  catalog no longer filters a statistics plugin that requires them.
+- Local semantics: local-midnight splitting, local-day ordinals, no-data days
+  distinct from zero, undated sessions when the clock is unknown, and a
+  freshness footnote.
+- Deliberately not done yet: server streak/goal/achievements (needs a capability
+  and data-source decision), cloud history import, and replacing the vCodex
+  export. The native store does not use `/.crosspoint/reading_stats.json`; the
+  user-initiated export button still writes it for other firmwares.
+
+See [implementation status](ybx-validation-status.md#native-reading-statistics-fw-native-stats-branch)
+for limits and the owner's hardware checklist.

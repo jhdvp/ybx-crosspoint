@@ -141,6 +141,42 @@
       }
     }
   },
+  "dashboard": {
+    "source": "reading-stats.v1",
+    "pages": [
+      {
+        "title": "Ваше чтение",
+        "widgets": [
+          { "type": "metric", "field": "total_seconds" },
+          { "type": "metric", "field": "sessions" },
+          { "type": "metric", "field": "active_days" },
+          { "type": "metric", "field": "latest_day_seconds" }
+        ]
+      },
+      {
+        "title": "Неделя",
+        "widgets": [
+          { "type": "week_bars" },
+          { "type": "metric", "field": "today_seconds" },
+          { "type": "metric", "field": "week_seconds" },
+          { "type": "metric", "field": "streak_days" }
+        ]
+      },
+      {
+        "title": "Календарь",
+        "widgets": [
+          { "type": "heatmap_28" },
+          { "type": "metric", "field": "active_days" }
+        ]
+      },
+      {
+        "title": "Книги",
+        "widgets": [
+          { "type": "book_list" }
+        ]
+      }
+    ]
+  },
   "config": {
     "file": "config.json"
   }

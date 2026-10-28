@@ -87,7 +87,7 @@ this worktree keeps no build logs.
   whole events first instead of the whole queue; a device that stays offline
   long enough still loses its oldest events. Shared attempt limits and
   subscription order can starve later plugins.
-- Native account statistics and achievements are planned, not implemented.
+- Account statistics and achievements now have YBX-backed native summary panels; local reading statistics are collected on-device. All hardware checks remain open.
 - X4 Pro compiles, but still uses the upstream Home. YBX touch adaptation,
   USB branding and Pro release/OTA assets remain unfinished.
 - Inherited HTTPS certificate verification remains disabled. Transport/OTA
@@ -240,6 +240,10 @@ Owner acceptance on the device (Wi-Fi configured):
 See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),
 [statistics plan](ybx-reading-stats-plan.md) and
 [event delivery contract](plugin-events.md) for scope and acceptance steps.
+
+## Native on-device statistics merge (29 October 2026)
+
+Native reading statistics from `agents/fw-native-stats` are displayed separately from the remote account summary. The local screen reads completed reading sessions and is meaningful offline. Source-level and host acceptance require tests; this entry is not hardware or production acceptance.
 
 ## Subsequent native summary slice
 

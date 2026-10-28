@@ -338,6 +338,19 @@ CrossPoint.registerPlugin(async (container, api) => {
     });
     profile.appendChild(metrics);
 
+    // Серверные цифры и локальные счётчики ридера — разные вещи: сервер
+    // складывает YBX-ридер и приложение, а экран «Статистика» в прошивке
+    // считает только сессии, случившиеся на этом устройстве.
+    const localNote = document.createElement('p');
+    localNote.className = 'ybx-hint';
+    localNote.style.marginTop = '10px';
+    localNote.style.paddingTop = '0';
+    localNote.style.borderTop = 'none';
+    localNote.textContent = 'Здесь — серверная статистика YBX (ридер и приложение). '
+      + 'Счётчики этого ридера — Home → Plugins → YBX → Статистика; цели и достижения '
+      + 'остаются в облачном профиле и на устройстве не считаются.';
+    profile.appendChild(localNote);
+
     if (summary.year_goal && typeof summary.year_goal.goal === 'number') {
       const goal = summary.year_goal;
       const done = Math.min(goal.finished || 0, goal.goal);
@@ -802,13 +815,18 @@ CrossPoint.registerPlugin(async (container, api) => {
           return;
         }
         const info = await firmwareStatus();
-        const canImport = info.capabilities.includes('stats.native.v1')
+        // capabilities только говорят, что прошивка умеет свой экран
+        // статистики и декларативный дашборд. Страницы Import Statistics,
+        // которую ждёт файл vCodex, в такой прошивке нет — не отправляем
+        // читателя в несуществующий пункт меню.
+        const nativeStats = info.capabilities.includes('stats.native.v1')
           && info.capabilities.includes('ui.dashboard.v1');
         const steps = document.createElement('p');
         steps.className = 'ybx-hint';
-        steps.textContent = canImport
-          ? 'Импорт: Настройки → Приложения → Reading Stats → Import Statistics → '
-            + 'источник vCodex → выбрать его ещё раз для подтверждения.'
+        steps.textContent = nativeStats
+          ? 'Статистика этого ридера: Home → Plugins → YBX → Статистика. Она считается '
+            + 'на устройстве из сессий чтения и не смешивается с облачными цифрами выше. '
+            + 'Выгруженный файл нужен только прошивкам с Import Statistics и здесь не импортируется.'
           : 'Файл на карте: /.crosspoint/reading_stats.json и /exports/stats_exported. '
             + 'Если в прошивке есть страница Import Statistics, откройте её и выберите '
             + 'источник vCodex (второй раз — для подтверждения); если такой страницы нет, '

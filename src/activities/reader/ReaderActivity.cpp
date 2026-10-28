@@ -18,6 +18,7 @@
 #include "XtcReaderActivity.h"
 #include "util/PluginEvents.h"
 #include "util/ReaderSessionJournal.h"
+#include "util/ReadingStats.h"
 
 namespace {
 // Wall time between crash checkpoints while reading. A power cut can lose at
@@ -175,31 +176,39 @@ void ReaderActivity::checkpointReaderSession(const uint32_t monotonicMs) {
 // server's (device, event id) key makes it idempotent.
 void ReaderActivity::flushReaderSession() {
   readerSession.finish(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
-  if (readerSession.isEmitWorthy() && pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) {
+  if (readerSession.isEmitWorthy()) {
     ensureSessionId();
-    // A previous session's flush may have failed and still own the checkpoint.
-    readersession::Record stale;
-    if (readersession::load(stale) && strcmp(stale.id, sessionId) != 0) {
-      // That record holds another session's reading time: it may be replaced
-      // only once it is queued. If queuing fails, nothing here is rewritten and
-      // the checkpoint stays recoverable at the next boot.
-      if (!readersession::recoverPending()) return;
-    }
     const ReaderSessionSummary summary = readerSession.summary();
-    readersession::Record record;
-    snprintf(record.id, sizeof(record.id), "%s", sessionId);
-    record.startEpoch = summary.startEpoch;
-    record.durationSeconds = summary.durationSeconds;
-    record.startProgressBp = summary.startProgressBp;
-    record.endProgressBp = summary.endProgressBp;
-    record.book = bookPath;
-    if (readersession::queueEvent(record)) {
-      readersession::discard();
-    } else {
-      // Keep the checkpoint current so the next boot retries this final
-      // summary (same id); a delivery that did go through is a duplicate.
-      readersession::save(record);
-      LOG_ERR("READER", "reader session kept for retry after reboot");
+    // Local statistics take the same event id as the plugin event, so a replay
+    // of one session is counted once on the device whether or not a plugin is
+    // subscribed.
+    if (!readingstats::recordSession(sessionId, summary.startEpoch, summary.durationSeconds, bookPath)) {
+      LOG_ERR("READER", "reading stats not updated");
+    }
+    if (pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) {
+      // A previous session's flush may have failed and still own the checkpoint.
+      readersession::Record stale;
+      if (readersession::load(stale) && strcmp(stale.id, sessionId) != 0) {
+        // That record holds another session's reading time: it may be replaced
+        // only once it is queued. If queuing fails, nothing here is rewritten and
+        // the checkpoint stays recoverable at the next boot.
+        if (!readersession::recoverPending()) return;
+      }
+      readersession::Record record;
+      snprintf(record.id, sizeof(record.id), "%s", sessionId);
+      record.startEpoch = summary.startEpoch;
+      record.durationSeconds = summary.durationSeconds;
+      record.startProgressBp = summary.startProgressBp;
+      record.endProgressBp = summary.endProgressBp;
+      record.book = bookPath;
+      if (readersession::queueEvent(record)) {
+        readersession::discard();
+      } else {
+        // Keep the checkpoint current so the next boot retries this final
+        // summary (same id); a delivery that did go through is a duplicate.
+        readersession::save(record);
+        LOG_ERR("READER", "reader session kept for retry after reboot");
+      }
     }
   } else if (sessionId[0] != '\0') {
     // A session that allocated an id may have checkpointed under it, so the
