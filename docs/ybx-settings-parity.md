@@ -52,27 +52,30 @@ this repository.
 | Updates entry (`SettingsPage.qml:469` → `UpdatesPage.qml`) | OTA over the YBX release channel plus SD flashing (`SettingsActivity.cpp:146-147`, `src/activities/settings/OtaUpdateActivity.cpp`, `SdFirmwareUpdateActivity.cpp`) | **extended** — failure states now have a working exit and Retry (see below) |
 | Beta channel switch (`UpdatesPage.qml:101`) | single channel: `https://api.github.com/repos/jhdvp/ybx-crosspoint/releases/latest` (`src/network/OtaUpdater.cpp:22`), asset `ybx-<tag>-<board>.bin` (`:44-57`) | **not copied** — no beta assets exist; adding a switch that can never find a build is a dead end |
 | Open download page (`UpdatesPage.qml:93`) | SD firmware update covers the recovery case where OTA cannot run | **reused** |
-| About page contents (`AboutPage.qml:94-116`: capabilities, safety, TLS state, catalog host, book dir, OS) | `AboutActivity.cpp:101-128`: device profile, firmware version, chip, flash, display controller, resolution, touch, frontlight, RTC, IMU, MAC, and now position-sync state | **extended** — hardware identity is what support needs from a photographed screen |
+| About page contents (`AboutPage.qml:94-116`: capabilities, safety, TLS state, catalog host, book dir, OS) | `AboutActivity.cpp:90-130`: device profile, firmware version, chip, flash, display controller, resolution, touch, frontlight, RTC, IMU, MAC, and now position-sync state | **extended** — hardware identity is what support needs from a photographed screen |
 | Unlink reader from account (`SettingsPage.qml:487`) | pairing/unlink belongs to the plugin account flow (`sd-card/plugins/ybx/plugin.js`), tracked by the pairing row of [client parity](ybx-client-parity.md) | **not copied here** |
 
 ## What this branch changed
 
 1. **OTA failure states have an exit and a Retry.** The check step was extracted into
-   `runUpdateCheck()` (`src/activities/settings/OtaUpdateActivity.cpp:26-77`) so
-   `retryFailedStep()` (`:238-244`) re-enters the step that actually failed instead of
+   `runUpdateCheck()` (`src/activities/settings/OtaUpdateActivity.cpp:32-88`) so
+   `retryFailedStep()` (`:334-340`) re-enters the step that actually failed instead of
    always restarting the release lookup, while the Wi-Fi connection this activity opened
    is still up. `failureStage` records the step; `allowRetry` disables Retry for the one
    failure that repeats identically (a wrong-device image), so that screen offers Back
-   only (`:160-166`, `:254-268`). On the failure screen Back **or a tap** exits and only
-   the Confirm button retries: touch devices draw no hint bar (`BaseTheme::drawButtonHints`
-   returns when `gpio.hasTouch()`), so a tap must never start a slot-erasing re-flash.
+   only. The FAILED screen draws labeled on-screen controls — Back left, Retry right
+   (`failedScreen()`, `:260-306`) — on every profile, including touch boards where the
+   hint bar is suppressed (`BaseTheme::drawButtonHints` returns when `gpio.hasTouch()`).
+   Taps route only to those controls; a tap anywhere else does nothing (`:350-366`).
+   Physical Back always exits, physical Confirm retries while Retry is offered, and the
+   header chevron folds into Back like on every other screen.
 2. **Failures say why.** A detail line under "Update failed" now distinguishes out of
    memory, a network problem (`STR_UPDATE_NETWORK_HINT`, new in
    `lib/I18n/translations/english.yaml` and `russian.yaml`), and a wrong-device image
-   (`:49`, `:201-212`).
+   (`:59`, `:233-244`).
 3. **About reports position-sync state.** New "Position Sync" row is keyed on
    credentials first — `On`, or `No login` when a server URL was set without a login,
-   or `Off` when neither exists (`src/activities/settings/AboutActivity.cpp:103-111`).
+   or `Off` when neither exists (`src/activities/settings/AboutActivity.cpp:108-112`).
    An empty URL is *not* "off": `KOReaderCredentialStore::getBaseUrl()`
    (`lib/KOReaderSync/KOReaderCredentialStore.cpp:151-160`) substitutes the built-in
    `https://sync.crosspointreader.com`, and every sync call gates on
@@ -84,17 +87,30 @@ this repository.
 
 No new setting key, no new persistent state, no new heap-resident list, no new network
 connector. Flash cost of the added string table entries: 407,926 B → 408,093 B
-(i18n generator output).
+(i18n generator output) for the first pass; the second pass's figures are recorded in the
+"Settings/Updates/About parity" section of [validation status](ybx-validation-status.md).
 
-**Deferred, with a reason.** `installUpdate()` opens the slot with
-`esp_ota_begin(..., OTA_SIZE_UNKNOWN, ...)` (`src/network/OtaUpdater.cpp:166`), which erases
-the whole ~6.25 MB app partition before byte 0, so every Retry pays that erase and shows
-"Updating… 0%" for tens of seconds. Passing the already-parsed `getOtaSize()` would shrink it
-to the image size, but it moves the flash-write path onto a size the release asset reports
-rather than the bytes actually received, and neither this repository nor the host suite can
-prove that on hardware — it belongs in the release/OTA task, not in a settings pass. The
-Retry above is deliberately button-only for the same reason: pressing it is an informed
-choice, an unlabeled tap would not be.
+## Owner decisions (2026-10-28)
+
+**1. The failure screen has labeled on-screen Retry/Back controls.** The owner accepted
+drawing two explicit buttons, «Повторить» / «Назад» (Retry / Back), on every profile —
+touch boards included, following the in-repo on-screen control precedent in
+`WifiSelectionActivity.cpp:926-941`. A tap on a control performs its action; a tap
+anywhere else does nothing at all (it neither exits nor retries), because an unlabeled
+tap must never start a slot-erasing re-flash. Physical Confirm still retries and
+physical Back still exits. A wrong-device failure offers Back only, because repeating it
+cannot help.
+
+**2. The whole-slot erase is kept, with a visible "Preparing…" face.** `installUpdate()`
+opens the slot with `esp_ota_begin(..., OTA_SIZE_UNKNOWN, ...)`
+(`src/network/OtaUpdater.cpp:166`), which erases the whole ~6.25 MB app partition before
+byte 0. Passing the already-parsed `getOtaSize()` would shrink that, but it moves the
+flash-write path onto a size the release asset reports rather than the bytes actually
+received, and neither this repository nor the host suite can prove it on hardware. The
+owner chose to keep the erase and make it visible instead: the activity enters
+`UPDATE_PREPARING`, paints «Подготовка…» / "Preparing…" with no percentage while the
+erase runs, and switches to the normal progress bar when `installUpdate()` reports the
+erase is done (`OtaUpdater.cpp:172-175`, `OtaUpdateActivity.cpp:214-231`).
 
 ## Support log: why the native upload is not shipped
 
@@ -133,16 +149,14 @@ have a working exit and a retry. Where each stands now:
 
 - **OTA** — the FAILED screen is the one place a same-screen Retry is honest: this
   activity owns the Wi-Fi connection and keeps it, so Retry re-enters the failed step
-  (`OtaUpdateActivity.cpp:238-244`). Retry is withheld when the failure would repeat
-  identically (wrong-device image), leaving Back as the only exit. Retry is triggered by
-  the physical Confirm key only, and a retry resets both progress counters
-  (`OtaUpdater.cpp:160-163`, `OtaUpdateActivity.cpp:181-190`) so the screen repaints from
-  0 % instead of holding the previous attempt's numbers. **Open on touch:** because the
-  hint bar is suppressed whenever the device has touch, the Retry label is never drawn
-  there even though the key itself works (`MappedInputManager.cpp:115-117`, and a power
-  click folds into Confirm at `:396`). Making it visible means an on-screen control —
-  `WifiSelectionActivity.cpp:926-941` is the in-repo precedent — which is an owner design
-  call rather than part of this parity pass.
+  (`OtaUpdateActivity.cpp:334-340`). Retry is withheld when the failure would repeat
+  identically (wrong-device image), leaving Back as the only exit. Both actions are
+  labeled on-screen controls on every profile (Back left, Retry right), so touch devices
+  have a visible way to act; the physical Back/Confirm keys do the same and keep working.
+  A tap outside the controls does nothing (`:350-366`) — no exit and no re-flash. A retry
+  resets both progress counters (`OtaUpdater.cpp:160-163`, `OtaUpdateActivity.cpp:202-212`)
+  so the screen leaves the previous attempt's numbers, and the slot erase is covered by
+  the "Preparing…" state instead of a 0 % progress bar.
 - **Position sync** — `KOReaderSyncActivity` shows the reason under a translated
   "Sync failed" heading and its Back/Confirm (plus auto-return) all leave the activity
   (`:723-731`, `:734-744`). A Retry button was **not** added: the failure path already
@@ -186,28 +200,27 @@ have a working exit and a retry. Where each stands now:
 
 1. Settings → General → Check for updates, on a network that joins but has no internet
    (router with the WAN cable unplugged). Expect: "Update failed" with "Check the network
-   and try again", hints Back / Retry on a buttons-only profile. Press Back → returns to
-   Settings, no reboot loop, Wi-Fi is torn down. Restore internet, enter again, then press
-   Confirm (Retry) on the failure screen → the lookup re-runs without asking for Wi-Fi
-   again.
+   and try again" and two labeled buttons below the text — Back on the left, Retry on the
+   right (on buttons-only profiles the hint bar still shows Back / Retry as well). Press
+   Back → returns to Settings, no reboot loop, Wi-Fi is torn down. Restore internet, enter
+   again, reach the failure, then either tap Retry or press Confirm → the lookup re-runs
+   without asking for Wi-Fi again.
 2. Same failure screen, leave it up and wait for auto-sleep. Expect: sleep is not blocked
-   by this state (`preventAutoSleep()` covers only checking/installing) and Back still
-   exits after wake.
+   by this state (`preventAutoSleep()` covers only checking/preparing/installing) and
+   Back still exits after wake.
 3. Rename/serve a firmware asset built for a different board (or reuse a wrong-device
-   `.bin` on the SD path). Expect: "Update failed" plus the wrong-device line and only
-   Back as the exit — Retry must not be offered for a failure that repeats.
-4. On a touch profile (X4), reach the retryable failure of step 1 and tap anywhere except
-   the header back chevron. Expect: the screen exits to Settings; it must never start a
-   download. Retry there needs the physical Confirm key — the hint bar is not drawn when
-   the device has touch, so an unlabeled full-screen tap cannot mean "re-flash". Confirm is
-   the mapped front button or a short power click: check both reach Retry on your own
-   remapping, and decide whether an on-screen Retry control is wanted (the Wi-Fi screen's
-   touch retry is the in-repo precedent).
-5. Retry a failure that happened during the download, with Confirm. Expect: "Updating"
-   repaints immediately at 0 % with `0 / <size>`, not the previous attempt's percentage,
-   and the panel does not keep showing the failure screen while the slot is erased. Expect
-   a long pause at 0 %: the whole app partition is erased before the first byte, see
-   "Deferred, with a reason".
+   `.bin` on the SD path). Expect: "Update failed" plus the wrong-device line and a single
+   centered Back button; Retry must not be offered, and physical Confirm must do nothing.
+4. On a touch profile (X4), reach the retryable failure of step 1. Tap (a) Retry — the
+   install must start; (b) after it fails again, Back — the screen must exit; (c) after
+   re-entering the failure, tap the heading, the gap between the buttons, or empty space —
+   the screen must do nothing at all (no exit, no download). The header back chevron is a
+   Back control, like on every screen. Check that Retry is not reachable by an unlabeled
+   tap anywhere else on the panel.
+5. Watch an install (first attempt or a retry after a download failure). Expect, in order:
+   "Preparing…" (`Подготовка…` in Russian) with no percentage for the slot erase — tens of
+   seconds, no progress bar — then "Updating…" with `0 / <size>` and a real bar from 0 %,
+   never the previous attempt's percentage. See the owner decision above.
 6. Settings → General → About on X3 and, if available, on another profile. Expect:
    12 rows, "Position Sync" = `Off` when nothing was ever configured (empty URL and no
    credentials — the empty URL still means the built-in default server, but without a
@@ -222,8 +235,9 @@ have a working exit and a retry. Where each stands now:
    transfers position. Disabling Plugins stops reading events reaching the YBX plugin
    while the explicit native sync still works —
    this is where the Classic "sync on this reader" switch maps.
-9. Update the device language to Russian and revisit Check for updates. Expect: the new
-   network hint appears translated, and About stays English (support-facing labels).
+9. Update the device language to Russian and revisit Check for updates. Expect: the
+   network hint and «Подготовка…» appear translated, the failure screen's buttons read
+   «Назад» / «Повторить», and About stays English (support-facing labels and values).
 10. With KOSync credentials configured, open a book and trigger Sync on a network with no
    internet. Expect: the heading "Ошибка синхронизации" plus the English reason line,
    Back or Confirm returns to the reader, and the device then sleeps

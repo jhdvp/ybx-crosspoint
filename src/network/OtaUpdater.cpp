@@ -169,6 +169,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     return INTERNAL_UPDATE_ERROR;
   }
 
+  // The slot erase above can take tens of seconds. Report once with nothing
+  // written so the caller can leave its "Preparing" face for real progress,
+  // even when the asset size is unknown and no percentage tick follows.
+  if (onProgress) onProgress(ctx);
+
   int lastReportedPct = -1;
   bool flashOk = true;
   // The image streams in chunks; only the first bytes carry the header. Buffer

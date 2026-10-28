@@ -32,8 +32,9 @@ enum MenuItem {
 };
 
 // Deliberately hardcoded English, exempt from the tr() rule: support reads
-// these screenshots across every device language, so the labels must be
-// identical on every unit.
+// these screenshots across every device language, so the labels — and the
+// state values filled below (On / No login / Off) — must be identical on
+// every unit.
 const char* const menuNames[AboutActivity::ITEM_COUNT] = {
     "Device",     "Firmware", "Position Sync",     "Chip",        "Flash", "Display Controller", "Resolution", "Touch",
     "Frontlight", "RTC",      "Tilt Sensor (IMU)", "MAC Address",
