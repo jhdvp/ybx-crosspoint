@@ -53,6 +53,33 @@ parent YBX workspace; generated binaries and logs are not committed here.
   trust hardening is a separate release blocker.
 - No device flashing, hardware validation, release or PR is part of these checks.
 
-See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),
+## Upstream sync acceptance (maintainer, on device)
+
+Host build and suites do not prove any of this. After each upstream merge, before
+publishing a release, walk this list on an X3 or X4 with the current card backed up:
+
+1. Update channel: About shows `YBX <version>`; "Check for update" reports the fork
+   channel and never offers a `crosspoint-*` asset or another board's image.
+2. Branding: boot and default sleep show the YBX mark in all four orientations; the
+   device is reachable at `ybx.local`; the web header, favicon and footer links are YBX.
+3. Home: empty device starts at Library; then one recent book, three recent books, a
+   deleted recent file, a missing or corrupt cover, unknown progress, and a long
+   translated title. Back resumes the latest book; no radio turns on while on Home.
+4. Catalogs: `python3 scripts/install_ybx_plugin.py /path/to/card` keeps an existing
+   `token.json` and `config.json`; zero sources, Yandex only, WB only, LitRes only and
+   combinations; after unlinking one source, reopen YBX and confirm the folder is gone;
+   an expired reader token offers device-code sign-in while a broken provider session
+   stays a separate error.
+5. Sleep events: the plugin sleep image still appears after a normal sleep, including
+   when an earlier event failed, and the queue recovers after an interrupted write.
+6. Reader regression that upstream now owns: RTL focus reading, reader menu selection
+   and toolbar padding on one EPUB and one TXT/Markdown file, with progress cache reuse.
+7. Resources: internal heap above 50 KB free with the largest block recorded across
+   repeated Home, book, dictionary and Wi-Fi transitions.
+8. Record the result: append the sync log entry with the integrated upstream SHA and
+   leave any unresolved conflict or skipped check visible there.
+
+See [the fork notes](../YBX_FORK.md), [the fork inventory](ybx-fork-inventory.md),
+[the sync log](ybx-sync-log.md), [client parity](ybx-client-parity.md),
 [statistics plan](ybx-reading-stats-plan.md) and
 [event delivery contract](plugin-events.md) for scope and acceptance steps.

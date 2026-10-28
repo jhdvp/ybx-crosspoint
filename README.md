@@ -97,8 +97,11 @@ firmware tooling and [fork notes](YBX_FORK.md) for YBX-specific behavior.
 ## Following CrossPoint updates
 
 This fork retains the full CrossPoint Git history and the FreeInk SDK submodule.
-We can fetch later `upstream/develop` changes and merge them into the YBX branch,
-resolve conflicts, and repeat the build and device checks before releasing.
+Later `upstream/develop` changes are fetched and merged into the YBX branch with a
+scripted procedure, then rebuilt and re-checked on the device before release.
+[Following upstream CrossPoint](YBX_FORK.md#syncing-upstream-crosspoint) is the
+runbook, [the fork inventory](docs/ybx-fork-inventory.md) lists every path we own
+and [the sync log](docs/ybx-sync-log.md) records the integrated upstream commit.
 YBX branding, service integration and the separate update channel remain our
 maintenance responsibility. Updates are reviewed and integrated, rather than
 automatically replacing YBX firmware with an upstream binary.
