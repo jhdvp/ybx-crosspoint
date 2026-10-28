@@ -17,6 +17,7 @@ using ybxkosync::Action;
 using ybxkosync::decideAction;
 using ybxkosync::Outcome;
 using ybxkosync::ProvisionState;
+using ybxkosync::ybxDerivedCredentialsRemain;
 
 constexpr char YBX_PLUGIN[] = "ybx";
 // The reader key is the credential the YBX bridge checks as the KOSync password, so
@@ -135,7 +136,8 @@ Action run(const bool forced) {
   state.provisioned = YBX_SYNC.provisioned;
   state.credentialsPresent = KOREADER_STORE.hasCredentials();
   state.pointsAtYbx = pointsAtYbx;
-  state.keyMatches = YBX_SYNC.provisioned ? (YBX_SYNC.keyFp == fp && liveCarriesKey) : liveCarriesKey;
+  state.keyFpMatches = YBX_SYNC.keyFp == fp;
+  state.credentialCarriesKey = liveCarriesKey;
 
   Action action = decideAction(state);
   if (action == Action::KeepManual && forced) action = Action::Apply;
@@ -177,8 +179,16 @@ Action run(const bool forced) {
     case Action::Abandon:
       // The reader's own sync settings again: stop writing over them, keep the
       // pairing visible in the list so "use YBX" stays one tap away.
+      // A hand-typed server must never carry the reader key: drop the YBX-derived
+      // credentials too, keeping only the URL the user entered.
+      if (ybxDerivedCredentialsRemain(KOREADER_STORE.getUsername(), KOREADER_STORE.getPassword(), YBX_SYNC_USER, key)) {
+        KOREADER_STORE.clearCredentials();
+        KOREADER_STORE.saveToFile();
+      }
       YBX_SYNC.provisioned = false;
-      YBX_SYNC.keyFp = 0;
+      // Kept, unlike Clear/Forget: it lets the next pass recognise the stored
+      // password as the user's hand-edit rather than a stale key to rewrite.
+      YBX_SYNC.keyFp = fp;
       resetHistory();
       YBX_SYNC.saveToFile();
       break;

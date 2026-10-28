@@ -53,15 +53,16 @@ const char* matchMethodName(const DocumentMatchMethod method) {
 
 // What a failed request means for the YBX status row: a refused key is fixed by
 // pairing again, a declined account by the service, anything else by the network
-// or the server.
-ybxkosync::Outcome outcomeForFailure(const KOReaderSyncClient::Error result) {
+// or the server. The code belongs to the request that failed: smart sync fires an
+// alternate getProgress that overwrites the client's static, so callers snapshot it.
+ybxkosync::Outcome outcomeForFailure(const KOReaderSyncClient::Error result, const int httpCode) {
   switch (result) {
     case KOReaderSyncClient::NETWORK_ERROR:
       return ybxkosync::Outcome::Offline;
     case KOReaderSyncClient::AUTH_FAILED:
       return ybxkosync::Outcome::AuthRejected;
     case KOReaderSyncClient::SERVER_ERROR:
-      return KOReaderSyncClient::lastHttpCode == 409 ? ybxkosync::Outcome::Refused : ybxkosync::Outcome::Failed;
+      return httpCode == 409 ? ybxkosync::Outcome::Refused : ybxkosync::Outcome::Failed;
     default:
       return ybxkosync::Outcome::Failed;
   }
@@ -226,9 +227,10 @@ void KOReaderSyncActivity::performSync() {
   // Fetch remote progress. In smart mode, retain the alternate document-id
   // record until both records can be mapped after the Epub is reloaded.
   auto result = KOReaderSyncClient::getProgress(documentHash, remoteProgress);
+  const int primaryHttpCode = KOReaderSyncClient::lastHttpCode;
   LOG_DBG("KOSync", "Primary remote (%s): result=%d http=%d doc=%s local=%.6f remote=%.6f xpath=%s",
-          matchMethodName(primaryMethod), result, KOReaderSyncClient::lastHttpCode, documentHash.c_str(),
-          localProgress.percentage, remoteProgress.percentage, remoteProgress.progress.c_str());
+          matchMethodName(primaryMethod), result, primaryHttpCode, documentHash.c_str(), localProgress.percentage,
+          remoteProgress.percentage, remoteProgress.progress.c_str());
 
   KOReaderProgress alternateProgress;
   bool hasAlternateProgress = false;
@@ -274,7 +276,7 @@ void KOReaderSyncActivity::performSync() {
   }
 
   if (result != KOReaderSyncClient::OK) {
-    ybxkosync::noteTransaction(outcomeForFailure(result));
+    ybxkosync::noteTransaction(outcomeForFailure(result, primaryHttpCode));
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;
@@ -456,7 +458,7 @@ void KOReaderSyncActivity::performUpload() {
   esp_wifi_stop();
 
   if (result != KOReaderSyncClient::OK) {
-    ybxkosync::noteTransaction(outcomeForFailure(result));
+    ybxkosync::noteTransaction(outcomeForFailure(result, KOReaderSyncClient::lastHttpCode));
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;

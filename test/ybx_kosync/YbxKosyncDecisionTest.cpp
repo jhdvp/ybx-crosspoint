@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include "util/YbxKosyncDecision.h"
 
 using ybxkosync::Action;
@@ -10,6 +12,7 @@ using ybxkosync::Outcome;
 using ybxkosync::ProvisionState;
 using ybxkosync::remoteJumpNeedsConsent;
 using ybxkosync::Status;
+using ybxkosync::ybxDerivedCredentialsRemain;
 
 namespace {
 // A card that carries a readable key and a settings file with nothing in it: the
@@ -28,12 +31,15 @@ ProvisionState withManualServer() {
   return s;
 }
 
+// YBX wrote the settings; `keyMatches` says the card key and the password on file
+// are both still the ones written (true) or both stale (false, a rotated key).
 ProvisionState configuredByYbx(const bool keyMatches) {
   ProvisionState s = paired();
   s.credentialsPresent = true;
   s.provisioned = true;
   s.pointsAtYbx = true;
-  s.keyMatches = keyMatches;
+  s.keyFpMatches = keyMatches;
+  s.credentialCarriesKey = keyMatches;
   return s;
 }
 }  // namespace
@@ -47,10 +53,10 @@ TEST(YbxKosyncDecision, LeavesAHandConfiguredServerAloneUntilAsked) {
 TEST(YbxKosyncDecision, AdoptsTheConfigurationTheBrowserPageWrote) {
   ProvisionState s = withManualServer();
   s.pointsAtYbx = true;
-  s.keyMatches = true;
+  s.credentialCarriesKey = true;
   EXPECT_EQ(decideAction(s), Action::Adopt);
   // Same target, stale key: write the current one instead of adopting it.
-  s.keyMatches = false;
+  s.credentialCarriesKey = false;
   EXPECT_EQ(decideAction(s), Action::Apply);
 }
 
@@ -63,6 +69,38 @@ TEST(YbxKosyncDecision, GivesTheServerBackWhenTheUserTypedOverIt) {
   ProvisionState s = configuredByYbx(true);
   s.pointsAtYbx = false;
   EXPECT_EQ(decideAction(s), Action::Abandon);
+}
+
+TEST(YbxKosyncDecision, GivesTheServerBackWhenOnlyThePasswordWasEdited) {
+  // URL still the bridge and the card key unchanged, but the password on file is
+  // other text: a hand-edit of the password row, not a rotation. It must survive.
+  ProvisionState s = configuredByYbx(true);
+  s.credentialCarriesKey = false;
+  EXPECT_EQ(decideAction(s), Action::Abandon);
+  // A rotated key differs in the fingerprint instead: re-apply over it.
+  s.keyFpMatches = false;
+  EXPECT_EQ(decideAction(s), Action::Apply);
+  // The pass after that Abandon: unprovisioned, but the fingerprint it kept still
+  // matches, so the hand-typed password is not rewritten again.
+  s.provisioned = false;
+  s.keyFpMatches = true;
+  EXPECT_EQ(decideAction(s), Action::KeepManual);
+  // Only a rotated key after the hand-edit makes YBX write over it again.
+  s.keyFpMatches = false;
+  EXPECT_EQ(decideAction(s), Action::Apply);
+}
+
+TEST(YbxKosyncDecision, AbandonDropsTheYbxKeyFromAHandTypedServer) {
+  const std::string key = "cp_dummyreaderkeydummyreaderkeydummyre";
+  // YBX provisioned, the user retyped only the URL: the derived pair is still on
+  // file and must be cleared with the Abandon.
+  EXPECT_TRUE(ybxDerivedCredentialsRemain("ybx", key, "ybx", key));
+  // The user replaced the password too: what is on file belongs to them.
+  EXPECT_FALSE(ybxDerivedCredentialsRemain("ybx", "hand-typed", "ybx", key));
+  // A different username says the pair is theirs even if the text matches.
+  EXPECT_FALSE(ybxDerivedCredentialsRemain("me", key, "ybx", key));
+  // No key readable on the card: never clear on a guess.
+  EXPECT_FALSE(ybxDerivedCredentialsRemain("ybx", "", "ybx", ""));
 }
 
 TEST(YbxKosyncDecision, OptingOutClearsOnlyWhatYbxWrote) {

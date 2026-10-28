@@ -127,7 +127,11 @@ three moments only — after a plugin token is written, when the sync settings
 open, and before the reader starts a sync — each of which reads two small plugin
 files and writes storage only when something changed. It never rewrites a sync
 server the reader typed by hand: that case offers a "use YBX" row instead, and
-editing the settings after provisioning hands the server back to the reader.
+editing the settings after provisioning — URL, username or only the password —
+hands the server back to the reader. A hand-over that left the YBX-derived
+username and key as the password drops them with it, so the reader key is never
+sent to a non-YBX host. While YBX credentials are active the "Sign up" row is
+disabled: the reader key is not an account password.
 The switch in Settings → CrossPoint Sync is the opt-out; turning it off clears
 only what this module (or the browser page it replaced) wrote.
 

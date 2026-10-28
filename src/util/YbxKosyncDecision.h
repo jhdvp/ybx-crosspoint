@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <string_view>
 
 // Pure decisions behind the YBX sync setup. Kept free of storage, HTTP and UI so
 // the host suite can exercise every branch.
@@ -54,13 +55,14 @@ constexpr float MISMATCH_CONSENT_SHARE = 0.01f;
 // on file. Hashing the reader key and comparing it with what was written last is
 // the caller's job: this only says what a given combination of facts means.
 struct ProvisionState {
-  bool enabled = false;             // the reader's own YBX sync switch
-  bool pluginInstalled = false;     // the YBX plugin folder is on the card
-  bool tokenPresent = false;        // it carries a readable reader key
-  bool provisioned = false;         // KOSync settings were written by this module
-  bool credentialsPresent = false;  // KOSync has any credentials at all
-  bool pointsAtYbx = false;         // those credentials target the YBX bridge
-  bool keyMatches = false;          // and already carry the key read just now
+  bool enabled = false;               // the reader's own YBX sync switch
+  bool pluginInstalled = false;       // the YBX plugin folder is on the card
+  bool tokenPresent = false;          // it carries a readable reader key
+  bool provisioned = false;           // KOSync settings were written by this module
+  bool credentialsPresent = false;    // KOSync has any credentials at all
+  bool pointsAtYbx = false;           // those credentials target the YBX bridge
+  bool keyFpMatches = false;          // the stored fingerprint is the key read just now
+  bool credentialCarriesKey = false;  // the password on file is that key itself
 };
 
 inline Action decideAction(const ProvisionState& s) {
@@ -74,12 +76,29 @@ inline Action decideAction(const ProvisionState& s) {
   if (!s.provisioned) {
     if (!s.credentialsPresent) return Action::Apply;
     if (!s.pointsAtYbx) return Action::KeepManual;
-    return s.keyMatches ? Action::Adopt : Action::Apply;
+    if (s.credentialCarriesKey) return Action::Adopt;
+    // A hand-edit pass already ran (Abandon keeps the fingerprint it saw): the key
+    // on the card is unchanged, yet the password is other text. That is the user's
+    // password; adopting or rewriting it here would loop back over the edit.
+    if (s.keyFpMatches) return Action::KeepManual;
+    return Action::Apply;
   }
   // Editing the sync settings by hand after we wrote them takes the server back:
   // keep what the reader now holds instead of overwriting it again.
   if (!s.pointsAtYbx) return Action::Abandon;
-  return s.keyMatches ? Action::None : Action::Apply;
+  // The key on the card is unchanged but the password is other text: the password
+  // row was edited by hand, not rotated. Give the server back like a URL edit does.
+  if (s.keyFpMatches && !s.credentialCarriesKey) return Action::Abandon;
+  return s.credentialCarriesKey ? Action::None : Action::Apply;
+}
+
+// On Abandon the URL the user typed stays configured. If the username and password
+// are still the pair derived from the reader key, they must go: the built-in client
+// would otherwise send that key as the password, and md5 of it as the device header,
+// to a server outside YBX. An empty key guards the case where none was read.
+inline bool ybxDerivedCredentialsRemain(const std::string_view username, const std::string_view password,
+                                        const std::string_view ybxUser, const std::string_view key) {
+  return !key.empty() && username == ybxUser && password == key;
 }
 
 // True when jumping to the server position is far enough that the reader must

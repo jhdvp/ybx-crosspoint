@@ -200,7 +200,9 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
     KOREADER_STORE.saveToFile();
     requestUpdate();
   } else if (row == IDX_SIGN_UP) {
-    if (!KOREADER_STORE.hasCredentials()) return;
+    // The YBX reader key is not an account password: signing up through it would
+    // post md5(key) to an endpoint the bridge has no use for.
+    if (!KOREADER_STORE.hasCredentials() || ybxkosync::isActive()) return;
     startActivityForResult(
         std::make_unique<KOReaderAuthActivity>(renderer, mappedInput, KOReaderAuthActivity::Mode::SIGN_UP),
         [](const ActivityResult&) {});
@@ -261,6 +263,7 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
   }
   GUI.setCheckboxRow(rowItems_[ybxRows + IDX_SEND_METADATA], KOREADER_STORE.getSendMetadata());
   GUI.setCheckboxRow(rowItems_[ybxRows + IDX_SYNC_CLIPPINGS], KOREADER_STORE.getSyncClippings());
+  rowItems_[ybxRows + IDX_SIGN_UP].enabled = !ybxkosync::isActive();
 
   if (ybxRows > IDX_YBX_TOGGLE) GUI.setCheckboxRow(rowItems_[IDX_YBX_TOGGLE], ybxkosync::isEnabled());
   if (ybxRows > IDX_YBX_STATUS) rowItems_[IDX_YBX_STATUS].value = ybxStatusText().c_str();
