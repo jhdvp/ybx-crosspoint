@@ -204,7 +204,9 @@ void CatalogActivity::finishDownload(const HttpDownloader::DownloadError result)
     downloadFinished(result == HttpDownloader::ABORTED);
   } else {
     LOG_ERR("CAT", "Download failed: %d", static_cast<int>(result));
-    fail(StrId::STR_DOWNLOAD_FAILED);
+    // FILE_ERROR only comes from storage open/write/replace faults: say so,
+    // since "disk full" needs a different fix than a retry.
+    fail(result == HttpDownloader::FILE_ERROR ? StrId::STR_WRITE_FAILED : StrId::STR_DOWNLOAD_FAILED);
   }
 }
 

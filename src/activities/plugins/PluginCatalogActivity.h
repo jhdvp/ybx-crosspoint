@@ -122,6 +122,8 @@ class PluginCatalogActivity final : public CatalogActivity {
     std::string version;  // catalog version (tracksInstalls only)
     std::string status;   // computed install/update badge shown in the row value
     bool isDir = false;   // a container/folder (navigable), not a downloadable file
+    // The planned download destination already exists on SD ("на ридере").
+    bool onReader = false;
     // Bundle download only: base URL + relative file paths for this item.
     std::string base;
     std::vector<std::string> files;
@@ -140,6 +142,12 @@ class PluginCatalogActivity final : public CatalogActivity {
   bool showPluginHubInstallRow = false;
   bool ignoreHubInstallerBackRelease = false;
   OptionPopup pluginHubPopup;
+  // Long-press menu for rows whose book is already on the SD card
+  // (open/re-download/remove), mirroring pluginHubPopup's plumbing.
+  OptionPopup shelfPopup;
+  // Destination of the last successful single-file download; the DONE screen
+  // opens it as a book instead of only returning to the list.
+  std::string lastDownloadPath;
   bool showOpds = false;
   bool rootMode = false;
   std::string pickerReturnName;  // plugin identity to reselect after leaving a catalog
@@ -230,6 +238,19 @@ class PluginCatalogActivity final : public CatalogActivity {
   void downloadItem(int itemIndex);
   HttpDownloader::DownloadError downloadBundle(const Item& item);
   HttpDownloader::DownloadError downloadBook(const Item& item);
+  // On-reader shelf state: single-file book catalogs whose planned destination
+  // (same template as downloadBook) already exists on SD.
+  bool bookShelfEligible() const;
+  std::string plannedFilename(const Item& item) const;
+  std::string plannedBookPath(const Item& item) const;
+  void computeOnReaderStatus();
+  // Reboot into the reader on this file (the catalog's onExit restarts to Home,
+  // so a soft navigation here would land on the wrong screen).
+  void openDownloadedBook(const std::string& path);
+  bool showShelfOptions(int itemIndex);  // false = nothing eligible, popup not shown
+  void promptRemoveShelfBook(int itemIndex);
+  // ZIP-magic gate on a finished .epub download (removed and failed when wrong).
+  bool verifyDownloadedEpub();
   void beginAuth();
   void pollAuth();
   bool refreshCredentialToken();  // password grant: mint a token from config creds

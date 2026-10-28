@@ -26,6 +26,8 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/PluginHttp.h"
+#include "util/PluginLocations.h"
 
 int HomeActivity::getMenuItemCount() const {
   int count = 4;  // File Browser, Library, File transfer, Settings
@@ -246,6 +248,11 @@ void HomeActivity::onEnter() {
     ybxHomeUi.reset();
     LOG_ERR("HOME", "OOM: YBX home; using standard home");
   }
+  if (ybxHomeUi) {
+    // Offline shelf entry: the folder the YBX plugin downloads books into
+    // (empty when the plugin is absent or the plugin system is disabled).
+    ybxShelfDir = pluginhttp::catalogDownloadDir(PluginLocations::findPluginDir("ybx"));
+  }
 #endif
   if (!ybxHomeUi && UITheme::getInstance().hasCoverGridHome()) {
     // Screen-lifetime interaction tables and component properties exceed the stack budget.
@@ -363,7 +370,12 @@ void HomeActivity::loop() {
 
   if (ybxMore && ybxMore->isActive()) {
     ybxMore->handleInput(mappedInput, [this] { requestUpdate(); });
-    const int choice = std::exchange(ybxMoreChoice, -1);
+    int choice = std::exchange(ybxMoreChoice, -1);
+    if (choice == 0 && !ybxShelfDir.empty()) {
+      onYbxShelfOpen();
+      return;
+    }
+    if (!ybxShelfDir.empty()) choice -= 1;  // menu shifted by the shelf entry
     const int destination = ybxhome::moreChoiceAction(recentBooks.size(), hasLibrarySlot(), choice);
     if (destination >= 0) {
       selectorIndex = destination;
@@ -668,8 +680,26 @@ void HomeActivity::onPluginsOpen() { activityManager.goToPlugins(hasOpdsServers)
 
 void HomeActivity::onMoreOpen() {
   if (!ybxMore) return;
-  static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE};
   ybxMoreChoice = -1;
-  ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 3, 0, [this](int choice) { ybxMoreChoice = choice; });
+  if (!ybxShelfDir.empty()) {
+    // "On Reader" leads to the YBX download folder: books are reachable
+    // (open/delete/rename) with no network, matching the clients' shelf.
+    static constexpr StrId OPTIONS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
+                                        StrId::STR_SETTINGS_TITLE};
+    ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 4, 0, [this](int choice) { ybxMoreChoice = choice; });
+  } else {
+    static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE};
+    ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 3, 0, [this](int choice) { ybxMoreChoice = choice; });
+  }
   requestUpdate();
+}
+
+void HomeActivity::onYbxShelfOpen() {
+  auto shelf =
+      makeUniqueNoThrow<FileBrowserActivity>(renderer, mappedInput, ybxShelfDir, FileBrowserActivity::Mode::Books);
+  if (!shelf) {
+    LOG_ERR("HOME", "OOM: on-reader shelf");
+    return;
+  }
+  startActivityForResult(std::move(shelf), [this](const ActivityResult&) { requestUpdate(); });
 }

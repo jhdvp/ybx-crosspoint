@@ -15,6 +15,7 @@
 
 namespace {
 constexpr size_t MAX_TOKEN_FILE_SIZE = 2 * 1024;
+constexpr size_t MAX_DEVICE_MANIFEST_SIZE = 8 * 1024;
 
 // Resolves the caller's reused TLS session (or `tmp`) into a configured,
 // connected client, or nullptr if begin() or the connection failed.
@@ -206,6 +207,34 @@ void loadConfigFile(const std::string& file, Headers& out) {
   for (JsonPairConst kv : fields) {
     out.emplace_back(kv.key().c_str(), variantToString(kv.value()));
   }
+}
+
+std::string pickDownloadDir(const Headers& config, const std::string& manifestDestDir) {
+  for (const auto& kv : config) {
+    if (kv.first != "dest_dir" || kv.second.empty()) continue;
+    std::string dir = kv.second.front() == '/' ? kv.second : "/" + kv.second;
+    while (dir.size() > 1 && dir.back() == '/') dir.pop_back();
+    if (dir == "/") return "";  // SD root
+    if (protectedpaths::isPluginPath(dir)) return dir;
+    LOG_ERR("PHTP", "config dest_dir rejected: %s", kv.second.c_str());
+  }
+  return manifestDestDir;
+}
+
+std::string catalogDownloadDir(const std::string& pluginDir) {
+  if (pluginDir.empty()) return "";
+  std::string raw;
+  if (!Storage.readFileToString("PHTP", pluginDir + "/device.json", MAX_DEVICE_MANIFEST_SIZE, raw)) return "";
+  JsonDocument doc;
+  if (deserializeJson(doc, raw) != DeserializationError::Ok) return "";
+  std::string manifestDir = inPluginDir(pluginDir, doc["download"]["dest_dir"] | "");
+  if (!manifestDir.empty() && !protectedpaths::isPluginPath(manifestDir)) {
+    LOG_ERR("PHTP", "device.json dest_dir outside plugin space: %s", manifestDir.c_str());
+    manifestDir.clear();
+  }
+  Headers config;
+  loadConfigFile(inPluginDir(pluginDir, doc["config"]["file"] | ""), config);
+  return pickDownloadDir(config, manifestDir);
 }
 
 int request(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,

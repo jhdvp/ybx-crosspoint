@@ -77,6 +77,18 @@ bool saveTokenToFile(const std::string& file, const std::string& path, const std
 // Loads a flat JSON config file into {cfg.KEY} pairs. Missing file = empty.
 void loadConfigFile(const std::string& file, Headers& out);
 
+// --- download destination ---
+
+// Where a catalog plugin lands downloads: a config "dest_dir" when present and
+// allowed, else the manifest's (already validated) directory. "" = SD root.
+std::string pickDownloadDir(const Headers& config, const std::string& manifestDestDir);
+
+// Same choice resolved from disk for an installed plugin folder ("" = none):
+// device.json's download.dest_dir and config.file, with the config file's
+// dest_dir overriding. Lets non-UI code (the home shelf entry) find a plugin's
+// books without loading the catalog screen.
+std::string catalogDownloadDir(const std::string& pluginDir);
+
 // --- bounded transport ---
 // `session` is an optional caller-owned TLS session reused across requests
 // (repeated handshakes permanently fragment the heap); pass nullptr to use a

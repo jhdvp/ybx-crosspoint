@@ -24,7 +24,10 @@
 #include <type_traits>
 
 #include "CrossPointSettings.h"
+#include "CrossPointState.h"
 #include "MappedInputManager.h"
+#include "RecentBooksStore.h"
+#include "SilentRestart.h"
 #include "activities/reader/DictionaryDefinitionActivity.h"  // plain-text README viewer
 #include "activities/settings/PluginHubInstallActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -438,17 +441,7 @@ std::string PluginCatalogActivity::substituted(std::string tpl, const Item* item
   return tpl;
 }
 
-std::string PluginCatalogActivity::downloadDir() const {
-  for (const auto& kv : config) {
-    if (kv.first != "dest_dir" || kv.second.empty()) continue;
-    std::string dir = kv.second.front() == '/' ? kv.second : "/" + kv.second;
-    while (dir.size() > 1 && dir.back() == '/') dir.pop_back();
-    if (dir == "/") return "";  // SD root
-    if (protectedpaths::isPluginPath(dir)) return dir;
-    LOG_ERR("PCAT", "config dest_dir rejected: %s", kv.second.c_str());
-  }
-  return manifest.destDir;
-}
+std::string PluginCatalogActivity::downloadDir() const { return pluginhttp::pickDownloadDir(config, manifest.destDir); }
 
 PluginCatalogActivity::PluginCatalogActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                              const bool showOpds, const bool rootMode)
@@ -788,6 +781,7 @@ bool PluginCatalogActivity::parseXmlList() {
     return strcasecmp(a.title.c_str(), b.title.c_str()) < 0;
   });
   hasMore = false;
+  computeOnReaderStatus();
   return true;
 }
 
@@ -918,6 +912,7 @@ bool PluginCatalogActivity::parseBrowseResponse() {
   }
   hasMore = manifest.filtersCompatibility() ? rawHasMore : visibleWindow.hasMore(paging);
   computeInstallStatus();
+  computeOnReaderStatus();
   return true;
 }
 
@@ -949,6 +944,112 @@ void PluginCatalogActivity::computeInstallStatus() {
     item.status =
         PluginLocations::isNewerVersion(item.version, installed) ? tr(STR_UPDATE_AVAILABLE) : tr(STR_INSTALLED);
   }
+}
+
+// --- on-reader shelf state ------------------------------------------------
+// Book catalogs mirror the desktop clients' "книга на ридере" status: a row is
+// on the shelf when the file downloadBook would write already exists. The
+// destination must therefore be computed identically in both paths, from the
+// same templates and guards.
+
+bool PluginCatalogActivity::bookShelfEligible() const {
+  return !manifest.isBundle() && !manifest.tracksInstalls() && !manifest.filenameTpl.empty() &&
+         (!manifest.downloadReq.url.empty() || !manifest.dlUrlPath.empty());
+}
+
+std::string PluginCatalogActivity::plannedFilename(const Item& item) const {
+  // Sanitize after substitution so the byte limit applies to the complete
+  // filename and does not remove an extension already present in {title}.
+  const std::string filename =
+      StringUtils::sanitizeFilenamePreservingExtension(substituted(manifest.filenameTpl, &item));
+  if (filename.empty() || filename.find("..") != std::string::npos || filename.find('/') != std::string::npos)
+    return "";
+  return filename;
+}
+
+std::string PluginCatalogActivity::plannedBookPath(const Item& item) const {
+  const std::string filename = plannedFilename(item);
+  if (filename.empty()) return "";
+  const std::string dir = downloadDir();
+  const std::string path = dir.empty() ? "/" + filename : dir + "/" + filename;
+  if (!protectedpaths::isPluginPath(path)) return "";
+  return path;
+}
+
+// One stat per item, on the main task right after the page is parsed (the same
+// pass as install badges), so the render path stays storage-free.
+void PluginCatalogActivity::computeOnReaderStatus() {
+  const bool eligible = bookShelfEligible();
+  for (auto& item : items) {
+    item.onReader = false;
+    if (!eligible || item.isDir || !item.files.empty()) continue;
+    const std::string path = plannedBookPath(item);
+    item.onReader = !path.empty() && Storage.exists(path.c_str());
+  }
+}
+
+void PluginCatalogActivity::openDownloadedBook(const std::string& path) {
+  // CatalogActivity::onExit restarts to Home to defragment after Wi-Fi, so a
+  // soft goToReader from here would boot to the wrong screen. Arm the reader
+  // reboot first (same pattern as the LCP loan flow); on boards where the
+  // reboot is superseded, fall through to the in-place navigation.
+  APP_STATE.openEpubPath = path;
+  APP_STATE.saveToFile();
+  silentRestartToReader();
+  activityManager.goToReader(path);
+}
+
+bool PluginCatalogActivity::showShelfOptions(const int itemIndex) {
+  if (itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return false;
+  const Item& item = items[itemIndex];
+  if (!item.onReader || !bookShelfEligible()) return false;
+  const std::string path = plannedBookPath(item);
+  if (path.empty() || !Storage.exists(path.c_str())) return false;
+  static constexpr StrId OPTIONS[] = {StrId::STR_DOWNLOAD_AGAIN, StrId::STR_REMOVE_FROM_SHELF, StrId::STR_CANCEL};
+  shelfPopup.show(StrId::STR_ON_READER, OPTIONS, 3, 0, [this, itemIndex](const int selected) {
+    if (selected == 0) {
+      downloadItem(itemIndex);
+    } else if (selected == 1) {
+      promptRemoveShelfBook(itemIndex);
+    }
+  });
+  requestUpdate();
+  return true;
+}
+
+// File-only removal through the shared delete primitive (book file plus its
+// rebuildable caches and recent entry); settings, tokens, and every other
+// folder stay untouched.
+void PluginCatalogActivity::promptRemoveShelfBook(const int itemIndex) {
+  if (itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
+  const std::string path = plannedBookPath(items[itemIndex]);
+  if (path.empty() || !Storage.exists(path.c_str())) {
+    computeOnReaderStatus();
+    releaseRows();
+    requestUpdate();
+    return;
+  }
+  auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_REMOVE_SHELF_CONFIRM),
+                                                             items[itemIndex].title);
+  if (!confirmation) {
+    LOG_ERR("PCAT", "OOM: shelf removal confirmation");
+    return;
+  }
+  startActivityForResult(std::move(confirmation), [this, itemIndex, path](const ActivityResult& result) {
+    if (result.isCancelled) {
+      if (itemIndex >= 0 && itemIndex < static_cast<int>(items.size())) computeOnReaderStatus();
+      releaseRows();
+      requestUpdate();
+      return;
+    }
+    if (!removeBookFile(path)) LOG_ERR("PCAT", "cannot delete %s", path.c_str());
+    if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
+    library::markLibraryIndexDirty();
+    if (lastDownloadPath == path) lastDownloadPath.clear();
+    computeOnReaderStatus();
+    releaseRows();
+    requestUpdate();
+  });
 }
 
 void PluginCatalogActivity::beginAuth() {
@@ -1019,6 +1120,7 @@ void PluginCatalogActivity::pollAuth() {
 }
 
 void PluginCatalogActivity::downloadItem(const int itemIndex) {
+  lastDownloadPath.clear();
   // Own only the selected item's metadata while TLS needs the catalog's heap.
   Item item;
   {
@@ -1041,8 +1143,30 @@ void PluginCatalogActivity::downloadItem(const int itemIndex) {
 }
 
 void PluginCatalogActivity::downloadFinished(const bool cancelled) {
+  if (!cancelled && !verifyDownloadedEpub()) return;
   state = cancelled ? State::BROWSING : State::DONE;
   requestUpdate();
+}
+
+// An EPUB is a ZIP container; a purchase link or misbehaving endpoint can
+// answer 200 with HTML or some other body. Check the magic before accepting
+// the finished download, so the shelf never holds a file the reader cannot
+// open (same gate as the OPDS browser). True = accept (or not an EPUB).
+bool PluginCatalogActivity::verifyDownloadedEpub() {
+  const size_t len = lastDownloadPath.size();
+  if (len < 5 || strcasecmp(lastDownloadPath.c_str() + len - 5, ".epub") != 0) return true;
+  uint8_t magic[4] = {0};
+  {
+    HalFile check;
+    if (Storage.openFileForRead("PCAT", lastDownloadPath.c_str(), check)) check.read(magic, sizeof(magic));
+    if (check.isOpen()) check.close();  // close before any remove() on the same path
+  }
+  if (magic[0] == 'P' && magic[1] == 'K' && magic[2] == 3 && magic[3] == 4) return true;
+  LOG_ERR("PCAT", "Downloaded file is not an EPUB (magic %02x%02x%02x%02x)", magic[0], magic[1], magic[2], magic[3]);
+  Storage.remove(lastDownloadPath.c_str());
+  lastDownloadPath.clear();
+  fail(StrId::STR_OPDS_NOT_A_BOOK);
+  return false;
 }
 
 HttpDownloader::DownloadError PluginCatalogActivity::downloadBundle(const Item& item) {
@@ -1160,12 +1284,9 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
     haveFolder = false;
   }
 
-  // Sanitize after substitution so the byte limit applies to the complete
-  // filename and does not remove an extension already present in {title}.
-  const std::string filename =
-      StringUtils::sanitizeFilenamePreservingExtension(substituted(manifest.filenameTpl, &item));
-  if (filename.empty() || filename.find("..") != std::string::npos || filename.find('/') != std::string::npos) {
-    LOG_ERR("PCAT", "unsafe filename rejected: %s", filename.c_str());
+  const std::string filename = plannedFilename(item);
+  if (filename.empty()) {
+    LOG_ERR("PCAT", "unsafe filename rejected: %s", substituted(manifest.filenameTpl, &item).c_str());
     return HttpDownloader::FILE_ERROR;
   }
   std::string dest;
@@ -1222,21 +1343,32 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
     }
   }
 
+  lastDownloadPath = dest;  // the DONE screen offers to open this file
   emitBookDownloaded(manifestPath, dest, item.title);
   return HttpDownloader::OK;
 }
 
 // Sign-in and completion states precede the shared catalog input handling.
 void PluginCatalogActivity::onRowLongPress(const int index) {
-  if (state != State::PLUGIN_PICKER) return;
-  activeNav().selected = index;
-  confirmUninstallPlugin(index);
+  if (state == State::PLUGIN_PICKER) {
+    activeNav().selected = index;
+    confirmUninstallPlugin(index);
+    return;
+  }
+  if (state == State::BROWSING) {
+    showShelfOptions(index - (prevRowVisible() ? 1 : 0));
+  }
 }
 
 bool PluginCatalogActivity::handleButtons() {
   if (state == State::PLUGIN_PICKER &&
       mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, PLUGIN_UNINSTALL_HOLD_MS)) {
     confirmUninstallPlugin(activeNav().selected);
+    return true;
+  }
+  if (state == State::BROWSING &&
+      mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, PLUGIN_UNINSTALL_HOLD_MS) &&
+      showShelfOptions(activeNav().selected - (prevRowVisible() ? 1 : 0))) {
     return true;
   }
   return UiListActivity::handleButtons();
@@ -1251,6 +1383,7 @@ bool PluginCatalogActivity::handleCustomInput() {
     if (!mappedInput.isPressed(MappedInputManager::Button::Back)) ignoreHubInstallerBackRelease = false;
   }
   if (pluginHubPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
+  if (shelfPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
 
   if (state == State::AUTH) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
@@ -1280,8 +1413,14 @@ bool PluginCatalogActivity::handleCustomInput() {
   if (state == State::DONE) {
     int tx = 0;
     int ty = 0;
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasScreenTapped(tx, ty)) {
+    const bool selected = mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
+                          mappedInput.wasScreenTapped(tx, ty);
+    if (selected && !lastDownloadPath.empty()) {
+      // The finished download is readable now: land on its first page.
+      openDownloadedBook(lastDownloadPath);
+      return true;
+    }
+    if (selected || mappedInput.wasReleased(MappedInputManager::Button::Back)) {
       // The just-finished download may have installed/updated a plugin; refresh
       // the install badges so the row no longer reads "Update".
       computeInstallStatus();
@@ -1437,6 +1576,17 @@ void PluginCatalogActivity::activateItem(const int itemIndex) {
     fetchPage(page);
     return;
   }
+  // Already on the shelf: tapping opens the book instead of downloading again
+  // (long-press still offers re-download and removal).
+  if (item.onReader) {
+    const std::string path = plannedBookPath(item);
+    if (!path.empty() && Storage.exists(path.c_str())) {
+      openDownloadedBook(path);
+      return;
+    }
+    items[itemIndex].onReader = false;  // deleted since the page loaded
+    releaseRows();
+  }
   if (!manifest.isXmlList() && manifest.hasItemDetails()) {
     showItemDetails(itemIndex);
     return;
@@ -1532,9 +1682,13 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
   };
   if (!item.version.empty()) addFact(std::string(tr(STR_VERSION)) + " " + item.version);
   addFact(item.status);
+  if (item.onReader) addFact(tr(STR_ON_READER));
 
   const bool updateAvailable = item.status == tr(STR_UPDATE_AVAILABLE);
-  spec.actionLabel = updateAvailable ? tr(STR_UPDATE) : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH));
+  spec.actionLabel = item.onReader
+                         ? tr(STR_OPEN)
+                         : (updateAvailable ? tr(STR_UPDATE)
+                                            : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH)));
 
   auto detailsActivity = makeUniqueNoThrow<DetailsActivity>(renderer, mappedInput, std::move(spec));
   if (!detailsActivity) {
@@ -1543,6 +1697,16 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
   }
   startActivityForResult(std::move(detailsActivity), [this, itemIndex](const ActivityResult& result) {
     if (result.isCancelled || itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
+    Item& item = items[itemIndex];
+    if (item.onReader) {
+      const std::string path = plannedBookPath(item);
+      if (!path.empty() && Storage.exists(path.c_str())) {
+        openDownloadedBook(path);
+        return;
+      }
+      item.onReader = false;  // deleted while the details were open
+      releaseRows();
+    }
     downloadItem(itemIndex);
   });
 }
@@ -1568,7 +1732,9 @@ void PluginCatalogActivity::drawFooter() {
         const bool onItem = itemSel >= 0 && itemSel < static_cast<int>(items.size());
         const bool onDir = manifest.isXmlList() && onItem && items[itemSel].isDir;
         const bool onDetails = !manifest.isXmlList() && onItem && manifest.hasItemDetails();
-        confirmLabel = count == 0 ? "" : (onDir ? tr(STR_OPEN) : (onDetails ? tr(STR_DETAILS) : tr(STR_FETCH)));
+        const bool onShelf = onItem && items[itemSel].onReader;
+        confirmLabel =
+            count == 0 ? "" : (onDir || onShelf ? tr(STR_OPEN) : (onDetails ? tr(STR_DETAILS) : tr(STR_FETCH)));
       }
       // On the top row of a searchable catalog the previous-nav slot becomes
       // Search (front Left), mirroring the OPDS browser's side-button search.
@@ -1587,7 +1753,10 @@ void PluginCatalogActivity::drawFooter() {
     case State::DOWNLOADING:
       labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
       break;
-    default:  // CHECK_WIFI / LOADING / AUTH / DONE (and child-activity handoffs)
+    case State::DONE:
+      labels = mappedInput.mapLabels(tr(STR_BACK), lastDownloadPath.empty() ? "" : tr(STR_OPEN), "", "");
+      break;
+    default:  // CHECK_WIFI / LOADING / AUTH (and child-activity handoffs)
       labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
       break;
   }
@@ -1596,6 +1765,7 @@ void PluginCatalogActivity::drawFooter() {
 
 void PluginCatalogActivity::render(RenderLock&& lock) {
   if (pluginHubPopup.processRender(renderer, mappedInput)) return;
+  if (shelfPopup.processRender(renderer, mappedInput)) return;
   CatalogActivity::render(std::move(lock));
 }
 
@@ -1615,7 +1785,12 @@ void PluginCatalogActivity::buildScreen(UiScreen& screen) {
       buildAuthScreen(screen);
       return;
     case State::DONE:
-      catalogCenteredBlock(screen, {{tr(STR_DOWNLOAD_COMPLETE), true}, {statusMessage.c_str()}});
+      if (lastDownloadPath.empty()) {
+        catalogCenteredBlock(screen, {{tr(STR_DOWNLOAD_COMPLETE), true}, {statusMessage.c_str()}});
+      } else {
+        catalogCenteredBlock(screen,
+                             {{tr(STR_DOWNLOAD_COMPLETE), true}, {statusMessage.c_str()}, {tr(STR_TAP_TO_READ)}});
+      }
       return;
     case State::NO_TOKEN:
       catalogCenteredBlock(screen,
@@ -1679,8 +1854,11 @@ void PluginCatalogActivity::buildBrowsingScreen(UiScreen& screen) {
   props.items = rowItems.data();
   props.count = static_cast<uint16_t>(rowItems.size());
   props.action = ACTION_ROW;
-  props.inputMask = state == State::PLUGIN_PICKER ? static_cast<uint16_t>(fui::InputTouch | fui::InputLongPress)
-                                                  : static_cast<uint16_t>(fui::InputTouch);
+  // Long-press opens menus: plugin rows uninstall, on-shelf book rows offer
+  // re-download/removal.
+  props.inputMask = (state == State::PLUGIN_PICKER || state == State::BROWSING)
+                        ? static_cast<uint16_t>(fui::InputTouch | fui::InputLongPress)
+                        : static_cast<uint16_t>(fui::InputTouch);
   props.valueInset = 8;  // air between the nav chevron and the row edge
   if (state == State::PLUGIN_PICKER) {
     // Mark the subtitle style caller-owned before resolving the theme.
@@ -1738,7 +1916,10 @@ void PluginCatalogActivity::rebuildRowItems() {
   } else {
     if (prevRowVisible()) addRow(tr(STR_PREV_PAGE), nullptr, ">");
     for (const auto& entry : items) {
-      addRow(entry.title.c_str(), entry.author.c_str(), entry.isDir ? ">" : entry.status.c_str());
+      // Install badges win when both exist; books on the SD card read "On Reader".
+      const char* value =
+          entry.isDir ? ">" : (entry.status.empty() && entry.onReader ? tr(STR_ON_READER) : entry.status.c_str());
+      addRow(entry.title.c_str(), entry.author.c_str(), value);
     }
     if (nextRowVisible()) addRow(tr(STR_NEXT_PAGE), nullptr, ">");
   }

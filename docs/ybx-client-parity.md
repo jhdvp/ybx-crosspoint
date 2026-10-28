@@ -16,7 +16,7 @@ claim that the gaps are implemented.
 | Personal library / reading/wanted/finished | PluginCatalogActivity, authenticated dynamic lists | Native nested provider/shelf/series navigation; shared cloud/local identity |
 | Search / pagination | Existing plugin/native OPDS search and paging | Full provider filters and source-state UX acceptance |
 | Book details / cover / author / series / actions | Existing EPUB/library cover path and generic details | Native thumbnails, real book actions, provider alternatives; no fake Fetch actions |
-| On Reader / downloads / delete | LibraryIndex, FileBrowser, bounded downloader | YBX folder workflow, states and safe deletion/progress-cache acceptance |
+| On Reader / downloads / delete | LibraryIndex, FileBrowser, bounded downloader; catalog shelf states, shelf menu, offline Home→More folder (this branch; firmware and host suites build, not device-tested) | Device acceptance of states, safe deletion and re-download |
 | EPUB reading / TOC / bookmarks / dictionary | Existing reader engine and native UI | Verify the same downloaded files, image books and preserved metadata |
 | Reading position across clients | Existing KOSync, server position conversion | Native pairing-to-KOSync setup, state/errors and mismatch UX without browser JS |
 | Reading summary / month / day / year | ReaderSession events; FreeInkUI widgets | Bounded native account model/cache, views and one session ledger |

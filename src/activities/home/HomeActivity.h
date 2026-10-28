@@ -17,6 +17,8 @@ class HomeActivity final : public Activity {
   std::unique_ptr<YbxHomeUi> ybxHomeUi;
   std::unique_ptr<OptionPopup> ybxMore;
   int ybxMoreChoice = -1;
+  // YBX plugin's download folder ("" = no plugin/feature); first More option.
+  std::string ybxShelfDir;
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
   bool recentsLoading = false;
@@ -76,6 +78,7 @@ class HomeActivity final : public Activity {
   void onOpdsBrowserOpen();
   void onPluginsOpen();
   void onMoreOpen();
+  void onYbxShelfOpen();
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image

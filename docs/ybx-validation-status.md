@@ -56,3 +56,63 @@ parent YBX workspace; generated binaries and logs are not committed here.
 See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),
 [statistics plan](ybx-reading-stats-plan.md) and
 [event delivery contract](plugin-events.md) for scope and acceptance steps.
+
+## On-reader shelf parity — 28 October 2026 (this branch, unreviewed)
+
+Code presence only; no device run was performed. The change adds, in
+PluginCatalogActivity, HomeActivity, CatalogActivity and PluginHttp:
+
+- "На ридере" row/detail state when the planned download destination already
+  exists; the destination is computed by the same code the downloader uses
+  (`pluginhttp::pickDownloadDir`, shared with the new non-UI
+  `pluginhttp::catalogDownloadDir`).
+- Tap/Confirm on such a row opens the book (silent reboot into the reader, the
+  established LCP-loan pattern) instead of downloading again.
+- DONE screen after a download: Confirm opens the just-downloaded book; Back
+  returns to the catalog.
+- Long-press on an on-shelf row: "Скачать заново / Убрать с полки / Отмена".
+  Removal is behind a confirmation dialog and deletes only the book file plus
+  its rebuildable caches and its recent-books entry (shared `removeBookFile`
+  primitive); settings, tokens, sidecar files of others and `/.crosspoint/`
+  are never touched.
+- YBX home More popup gains a first "На ридере" entry (only when the YBX
+  plugin's download folder resolves): an offline FileBrowser rooted at
+  `/books/ybx` — open, rename, delete and progress there are the existing
+  FileBrowser behavior.
+- Finished `.epub` downloads are checked for ZIP magic (rejected as "Сервер
+  прислал не файл книги", file removed); storage write failures now report a
+  distinct "нет места/ошибка записи" message in every catalog.
+
+### Host verification
+
+- `pio run -e default` (X4 profile): passes; RAM 66,712/327,680 bytes, Flash
+  5,558,075/6,553,600 bytes.
+- Host suite (CMake/CTest under `test/`): 898/898 pass. No suite drives
+  PluginCatalogActivity or HomeActivity UI; these checks only prove the shared
+  primitives (protected paths, safe removal, filename planning, i18n keys)
+  still hold.
+- Everything below is unverified until run on hardware.
+
+### Owner acceptance checklist (device)
+
+1. Catalog (YBX) → download a book → progress → "Книга скачана" → OK → reader
+   opens that book at page 1; Back from the reader behaves normally.
+2. Re-enter the catalog: the row reads "На ридере"; Confirm opens the book
+   without network transfer; the footer button label is "Открыть".
+3. Long-press the row → "Скачать заново" re-downloads and overwrites without
+   extra prompts; → "Убрать с полки" shows the confirm with the book title;
+   confirm removes only that file (other books, settings, login intact); the
+   row returns to normal download state.
+4. Home → More → "На ридере" (offline, airplane Wi-Fi off): folder of
+   downloaded books opens; open/rename/delete work; Back returns home. With the
+   plugin absent or Plugin System disabled, the entry is not shown.
+5. Same book from two providers → two files (filenames carry ids) → both rows
+   show "На ридере".
+6. SD full or unplug mid-download → "Ошибка записи"/failure, no `.part`
+   leftovers on the next attempt, retry works.
+7. Server fault returning non-EPUB body → "Сервер прислал не файл книги", no
+   file left in `/books/ybx`.
+8. WB image-only book opens with cover; all four rotations (portrait, inverted,
+   landscape CW/CCW) render rows, popup, DONE screen and shelf entries.
+9. Repeat 1–4 twice to watch heap-driven behavior (auto-reboot is silent; no
+   crash/reboot loops while browsing).
