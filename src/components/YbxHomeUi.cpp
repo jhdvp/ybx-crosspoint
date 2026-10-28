@@ -21,9 +21,15 @@ const auto PAPER = fui::Paint::solid(fui::Color::White);
 
 YbxHomeUi::YbxHomeUi(GfxRenderer& renderer) : UiAppHost(renderer), renderer(renderer), covers(renderer) {}
 
-void YbxHomeUi::begin(const std::vector<RecentBook>& recent, bool hasCatalogs) {
+void YbxHomeUi::begin(const std::vector<RecentBook>& recent, bool hasCatalogs, const uint16_t pluginUpdates) {
   books = &recent;
   catalogs = hasCatalogs;
+  catalogsLabel = tr(STR_YBX_HOME_CATALOGS);
+  if (pluginUpdates > 0) {
+    char suffix[16];
+    snprintf(suffix, sizeof(suffix), " · %u", static_cast<unsigned>(pluginUpdates));
+    catalogsLabel += suffix;
+  }
   // Deliberately do not begin the PSRAM cache: X3/X4 decode bounded SD thumbnails.
   resetUi();
   app.on(SELECT, &YbxHomeUi::onAction, this);
@@ -213,7 +219,7 @@ void YbxHomeUi::draw(UiScreen& screen) {
     const int value = ybxhome::actionForPosition(base, catalogs, base + i);
     const char* label = value == base + 1                              ? tr(STR_LIBRARY)
                         : value == ybxhome::moreAction(base, catalogs) ? tr(STR_TOOL_MORE)
-                                                                       : tr(STR_YBX_HOME_CATALOGS);
+                                                                       : catalogsLabel.c_str();
     drawAction(screen, layout.actions[i], value, label, true);
   }
 }

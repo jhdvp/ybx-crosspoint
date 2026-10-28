@@ -15,7 +15,7 @@
 class YbxHomeUi final : public UiAppHost {
  public:
   explicit YbxHomeUi(GfxRenderer& renderer);
-  void begin(const std::vector<RecentBook>& books, bool catalogs);
+  void begin(const std::vector<RecentBook>& books, bool catalogs, uint16_t pluginUpdates = 0);
   void setSelection(int value) { selected = value; }
   int selectedAction(const MappedInputManager& input);
   void refreshCoverPaths();
@@ -40,6 +40,7 @@ class YbxHomeUi final : public UiAppHost {
   std::array<std::array<char, 12>, ybxhome::MAX_BOOKS> progressText{};
   freeink::ui::BookCardProps card;
   freeink::ui::ButtonProps button;
+  std::string catalogsLabel;
   bool catalogs = false;
   bool thumbsChanged = false;
   int selected = 0;
