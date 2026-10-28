@@ -1,0 +1,607 @@
+[  1%] Building CXX object gif_support/CMakeFiles/animatedgif_host.dir/__/_deps/animatedgif-src/src/AnimatedGIF.cpp.o
+[  2%] Built target gtest
+[  3%] Built target gtest_main
+[  4%] Building CXX object differential_rounding/CMakeFiles/DifferentialRoundingTest.dir/DifferentialRoundingTest.cpp.o
+[  5%] Building CXX object release_json_parser/CMakeFiles/ReleaseJsonParserTest.dir/ReleaseJsonParserTest.cpp.o
+[  5%] Building CXX object opds_feed_error/CMakeFiles/OpdsFeedErrorTest.dir/OpdsFeedErrorTest.cpp.o
+[  5%] Building CXX object hyphenation_eval/CMakeFiles/HyphenationEvaluationTest.dir/HyphenationEvaluationTest.cpp.o
+[  6%] Building CXX object streaming_json_parser/CMakeFiles/StreamingJsonParserTest.dir/StreamingJsonParserTest.cpp.o
+[  6%] Building CXX object utf8_compose/CMakeFiles/Utf8ComposeTest.dir/Utf8ComposeTest.cpp.o
+[  7%] Building CXX object opds_filename/CMakeFiles/OpdsFilenameTest.dir/OpdsFilenameTest.cpp.o
+[  7%] Linking CXX static library libanimatedgif_host.a
+[  7%] Built target animatedgif_host
+[  8%] Building CXX object html_to_plain_text/CMakeFiles/HtmlToPlainTextTest.dir/HtmlToPlainTextTest.cpp.o
+[  8%] Linking CXX executable OpdsFeedErrorTest
+[  8%] Building CXX object opds_filename/CMakeFiles/OpdsFilenameTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/src/util/OpdsFilename.cpp.o
+[  8%] Built target OpdsFeedErrorTest
+[  8%] Building CXX object differential_rounding/CMakeFiles/DifferentialRoundingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/EpdFont/EpdFont.cpp.o
+[  8%] Building CXX object html_to_plain_text/CMakeFiles/HtmlToPlainTextTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/src/util/HtmlToPlainText.cpp.o
+[  8%] Building CXX object opds_filename/CMakeFiles/OpdsFilenameTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/src/util/StringUtils.cpp.o
+[  9%] Building CXX object release_json_parser/CMakeFiles/ReleaseJsonParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/JsonParser/ReleaseJsonParser.cpp.o
+[ 10%] Building CXX object hyphenation_eval/CMakeFiles/HyphenationEvaluationTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/Hyphenator.cpp.o
+[ 11%] Building CXX object differential_rounding/CMakeFiles/DifferentialRoundingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 11%] Building CXX object release_json_parser/CMakeFiles/ReleaseJsonParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/freeink-sdk/libs/network/JsonSax/src/StreamingJsonParser.cpp.o
+[ 12%] Linking CXX executable ReleaseJsonParserTest
+[ 12%] Building CXX object streaming_json_parser/CMakeFiles/StreamingJsonParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/freeink-sdk/libs/network/JsonSax/src/StreamingJsonParser.cpp.o
+[ 12%] Built target ReleaseJsonParserTest
+[ 13%] Building CXX object utf8_compose/CMakeFiles/Utf8ComposeTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 13%] Building CXX object html_to_plain_text/CMakeFiles/HtmlToPlainTextTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/htmlEntities.cpp.o
+[ 13%] Building CXX object library_text/CMakeFiles/LibraryTextTest.dir/LibraryTextTest.cpp.o
+[ 14%] Linking CXX executable StreamingJsonParserTest
+[ 15%] Building CXX object opds_filename/CMakeFiles/OpdsFilenameTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 15%] Built target StreamingJsonParserTest
+[ 15%] Linking CXX executable DifferentialRoundingTest
+[ 15%] Building CXX object library_format/CMakeFiles/LibraryFormatTest.dir/LibraryFormatTest.cpp.o
+[ 15%] Building CXX object hyphenation_eval/CMakeFiles/HyphenationEvaluationTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/LanguageRegistry.cpp.o
+[ 15%] Built target DifferentialRoundingTest
+[ 15%] Building CXX object library_index_file/CMakeFiles/LibraryIndexFileTest.dir/LibraryIndexFileTest.cpp.o
+[ 16%] Linking CXX executable HtmlToPlainTextTest
+[ 16%] Linking CXX executable Utf8ComposeTest
+[ 16%] Built target HtmlToPlainTextTest
+[ 17%] Building CXX object library_builder/CMakeFiles/LibraryBuilderTest.dir/LibraryBuilderTest.cpp.o
+[ 17%] Built target Utf8ComposeTest
+[ 17%] Building CXX object library_builder/CMakeFiles/LibraryBuilderTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/LibraryIndex/LibraryBuilder.cpp.o
+[ 18%] Building CXX object minibidi_arabic/CMakeFiles/MiniBidiArabicTest.dir/MiniBidiArabicTest.cpp.o
+[ 18%] Linking CXX executable OpdsFilenameTest
+[ 18%] Built target OpdsFilenameTest
+[ 19%] Building CXX object combining_marks/CMakeFiles/CombiningMarkAnchorTest.dir/CombiningMarkAnchorTest.cpp.o
+[ 19%] Building CXX object hyphenation_eval/CMakeFiles/HyphenationEvaluationTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/LiangHyphenation.cpp.o
+[ 20%] Building CXX object hyphenation_eval/CMakeFiles/HyphenationEvaluationTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/HyphenationCommon.cpp.o
+[ 21%] Building CXX object library_format/CMakeFiles/LibraryFormatTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/LibraryIndex/LibraryFormat.cpp.o
+[ 21%] Linking CXX executable LibraryFormatTest
+[ 21%] Building CXX object library_text/CMakeFiles/LibraryTextTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/LibraryIndex/LibraryText.cpp.o
+[ 22%] Building CXX object library_index_file/CMakeFiles/LibraryIndexFileTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/LibraryIndex/LibraryIndexFile.cpp.o
+[ 22%] Built target LibraryFormatTest
+[ 22%] Building CXX object library_builder/CMakeFiles/LibraryBuilderTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/LibraryIndex/LibraryIndexFile.cpp.o
+[ 22%] Building C object minibidi_arabic/CMakeFiles/MiniBidiArabicTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/MiniBidi/minibidi.c.o
+[ 22%] Building CXX object hyphenation_eval/CMakeFiles/HyphenationEvaluationTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 22%] Linking CXX executable CombiningMarkAnchorTest
+[ 23%] Building CXX object minibidi_arabic/CMakeFiles/MiniBidiArabicTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/MiniBidi/BidiUtils.cpp.o
+[ 23%] Built target CombiningMarkAnchorTest
+[ 23%] Building CXX object library_index_file/CMakeFiles/LibraryIndexFileTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/LibraryIndex/LibraryFormat.cpp.o
+[ 23%] Building CXX object minibidi_arabic/CMakeFiles/MiniBidiArabicTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 23%] Building CXX object credential_integrity/CMakeFiles/CredentialIntegrityTest.dir/CredentialIntegrityTest.cpp.o
+[ 24%] Building CXX object library_text/CMakeFiles/LibraryTextTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 25%] Linking CXX executable LibraryIndexFileTest
+[ 25%] Built target LibraryIndexFileTest
+[ 26%] Building CXX object library_builder/CMakeFiles/LibraryBuilderTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/LibraryIndex/LibraryFormat.cpp.o
+[ 26%] Building CXX object library_builder/CMakeFiles/LibraryBuilderTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/LibraryIndex/LibraryText.cpp.o
+[ 27%] Linking CXX executable HyphenationEvaluationTest
+[ 27%] Built target HyphenationEvaluationTest
+[ 28%] Building CXX object library_builder/CMakeFiles/LibraryBuilderTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 28%] Building CXX object xml_parser_utils/CMakeFiles/XmlParserUtilsTest.dir/XmlParserUtilsTest.cpp.o
+[ 28%] Linking CXX executable LibraryTextTest
+[ 29%] Building CXX object token_boundary/CMakeFiles/TokenBoundaryTest.dir/TokenBoundaryTest.cpp.o
+[ 29%] Built target LibraryTextTest
+[ 30%] Building CXX object koreader_xpath_resolver/CMakeFiles/KOReaderXPathResolverTest.dir/KOReaderXPathResolverTest.cpp.o
+[ 30%] Linking CXX executable MiniBidiArabicTest
+[ 30%] Built target MiniBidiArabicTest
+[ 30%] Building CXX object token_boundary/CMakeFiles/TokenBoundaryTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/HyphenationCommon.cpp.o
+[ 30%] Building CXX object koreader_xpath_resolver/CMakeFiles/KOReaderXPathResolverTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/KOReaderSync/ChapterXPathResolver.cpp.o
+[ 30%] Building CXX object progress_comparison/CMakeFiles/ProgressComparisonTest.dir/ProgressComparisonTest.cpp.o
+[ 30%] Linking CXX executable LibraryBuilderTest
+[ 30%] Building CXX object token_boundary/CMakeFiles/TokenBoundaryTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 30%] Built target LibraryBuilderTest
+[ 31%] Building CXX object font_cache_manager/CMakeFiles/FontCacheManagerTest.dir/FontCacheManagerTest.cpp.o
+[ 31%] Linking CXX executable CredentialIntegrityTest
+[ 31%] Built target CredentialIntegrityTest
+[ 32%] Building CXX object css_parser/CMakeFiles/CssParserTest.dir/CssParserTest.cpp.o
+[ 33%] Building CXX object koreader_xpath_resolver/CMakeFiles/KOReaderXPathResolverTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 33%] Building CXX object css_parser/CMakeFiles/CssParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/css/CssParser.cpp.o
+[ 34%] Linking CXX executable XmlParserUtilsTest
+[ 34%] Built target XmlParserUtilsTest
+[ 34%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/ChapterHtmlSlimParserTest.cpp.o
+[ 35%] Linking CXX executable TokenBoundaryTest
+[ 35%] Built target TokenBoundaryTest
+[ 36%] Building CXX object progress_comparison/CMakeFiles/ProgressComparisonTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/KOReaderSync/ProgressComparison.cpp.o
+[ 37%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/ParserLinkStubs.cpp.o
+[ 37%] Building CXX object font_cache_manager/CMakeFiles/FontCacheManagerTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/GfxRenderer/FontCacheManager.cpp.o
+[ 37%] Building C object koreader_xpath_resolver/CMakeFiles/KOReaderXPathResolverTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/expat/xmlparse.c.o
+[ 37%] Linking CXX executable ProgressComparisonTest
+[ 37%] Built target ProgressComparisonTest
+[ 38%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/KoreanLineBreakingTest.cpp.o
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/css_parser/CssParserTest.cpp:202:21: warning: loop variable 'style' creates a copy from type 'CssStyle const' [-Wrange-loop-construct]
+  202 |     for (const auto style : {parser->resolveStyle("p", "inherited", "inherited"), parser->resolveStyle("p", "last")}) {
+      |                     ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/css_parser/CssParserTest.cpp:202:10: note: use reference type 'CssStyle const &' to prevent copying
+  202 |     for (const auto style : {parser->resolveStyle("p", "inherited", "inherited"), parser->resolveStyle("p", "last")}) {
+      |          ^~~~~~~~~~~~~~~~~~
+      |                     &
+[ 38%] Building C object koreader_xpath_resolver/CMakeFiles/KOReaderXPathResolverTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/expat/xmlrole.c.o
+[ 38%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/DictionaryHtmlPagesTest.cpp.o
+[ 39%] Building C object koreader_xpath_resolver/CMakeFiles/KOReaderXPathResolverTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/expat/xmltok.c.o
+[ 39%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/EmDashLineBreakingTest.cpp.o
+[ 40%] Building CXX object font_cache_manager/CMakeFiles/FontCacheManagerTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 40%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/ParsedText.cpp.o
+[ 40%] Linking CXX executable KOReaderXPathResolverTest
+[ 40%] Built target KOReaderXPathResolverTest
+[ 41%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/src/util/DictHtmlPages.cpp.o
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:22:9: warning: keyword is hidden by macro definition [-Wkeyword-macro]
+   22 | #define class struct
+      |         ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:23:9: warning: keyword is hidden by macro definition [-Wkeyword-macro]
+   23 | #define private public
+      |         ^
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:24:
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:15:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/ParsedText.h:16:1: warning: struct 'GfxRenderer' was previously declared as a class; this is valid, but may result in linker errors under the Microsoft C++ ABI [-Wmismatched-tags]
+   16 | class GfxRenderer;
+      | ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:22:15: note: expanded from macro 'class'
+   22 | #define class struct
+      |               ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/stubs/GfxRenderer.h:20:7: note: previous use is here
+   20 | class GfxRenderer {
+      |       ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/ParsedText.h:16:1: note: did you mean class here?
+   16 | class GfxRenderer;
+      | ^~~~~
+      | class
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:22:15: note: expanded from macro 'class'
+   22 | #define class struct
+      |               ^
+[ 41%] Linking CXX executable FontCacheManagerTest
+[ 41%] Built target FontCacheManagerTest
+[ 42%] Building CXX object ligature_guard/CMakeFiles/LigatureGuardTest.dir/LigatureGuardTest.cpp.o
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:24:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:21:1: warning: struct 'Page' was previously declared as a class; this is valid, but may result in linker errors under the Microsoft C++ ABI [-Wmismatched-tags]
+   21 | class Page;
+      | ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:22:15: note: expanded from macro 'class'
+   22 | #define class struct
+      |               ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/Page.h:124:7: note: previous use is here
+  124 | class Page {
+      |       ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:21:1: note: did you mean class here?
+   21 | class Page;
+      | ^~~~~
+      | class
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:22:15: note: expanded from macro 'class'
+   22 | #define class struct
+      |               ^
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:24:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:22:1: warning: struct 'GfxRenderer' was previously declared as a struct; this is valid, but may result in linker errors under the Microsoft C++ ABI [-Wmismatched-tags]
+   22 | class GfxRenderer;
+      | ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:22:15: note: expanded from macro 'class'
+   22 | #define class struct
+      |               ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/stubs/GfxRenderer.h:20:7: note: previous use is here
+   20 | class GfxRenderer {
+      |       ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:22:1: note: did you mean class here?
+   22 | class GfxRenderer;
+      | ^~~~~
+      | class
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:22:15: note: expanded from macro 'class'
+   22 | #define class struct
+      |               ^
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:24:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:23:1: warning: struct 'Epub' was previously declared as a class; this is valid, but may result in linker errors under the Microsoft C++ ABI [-Wmismatched-tags]
+   23 | class Epub;
+      | ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:22:15: note: expanded from macro 'class'
+   22 | #define class struct
+      |               ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/stubs/Epub.h:8:7: note: previous use is here
+    8 | class Epub {
+      |       ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:23:1: note: did you mean class here?
+   23 | class Epub;
+      | ^~~~~
+      | class
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:22:15: note: expanded from macro 'class'
+   22 | #define class struct
+      |               ^
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp:24:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:312:9: warning: field 'focusReadingEnabled' will be initialized after field 'completePageFn' [-Wreorder-ctor]
+  305 |         fontId(fontId),
+      |         ~~~~~~~~~~~~~~
+      |         completePageFn(completePageFn)
+  306 |         lineCompression(lineCompression),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         popupFn(popupFn)
+  307 |         extraParagraphSpacing(extraParagraphSpacing),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         fontId(fontId)
+  308 |         paragraphAlignment(paragraphAlignment),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         lineCompression(lineCompression)
+  309 |         viewportWidth(viewportWidth),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         extraParagraphSpacing(extraParagraphSpacing)
+  310 |         viewportHeight(viewportHeight),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         paragraphAlignment(paragraphAlignment)
+  311 |         hyphenationEnabled(hyphenationEnabled),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         viewportWidth(viewportWidth)
+  312 |         focusReadingEnabled(focusReadingEnabled),
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         viewportHeight(viewportHeight)
+  313 |         completePageFn(completePageFn),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         hyphenationEnabled(hyphenationEnabled)
+  314 |         popupFn(popupFn),
+      |         ~~~~~~~~~~~~~~~~
+      |         focusReadingEnabled(focusReadingEnabled)
+1 warning generated.
+[ 42%] Linking CXX executable CssParserTest
+[ 42%] Built target CssParserTest
+[ 43%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/FocusReadingTest.cpp.o
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/ParsedText.cpp:1151:39: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+ 1151 |       const int extraStartOffset = (j == i) ? calculateRubyExtraStartOffset(i, totalWordCount, renderer, fontId) : 0;
+      |                                     ~ ^  ~
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/ParsedText.cpp:1153:43: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+ 1153 |       currlen += wordWidths[j] + gap + (j == i ? extraStartOffset : 0);
+      |                                         ~ ^  ~
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/src/util/DictHtmlPages.cpp:4:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:312:9: warning: field 'focusReadingEnabled' will be initialized after field 'completePageFn' [-Wreorder-ctor]
+  305 |         fontId(fontId),
+      |         ~~~~~~~~~~~~~~
+      |         completePageFn(completePageFn)
+  306 |         lineCompression(lineCompression),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         popupFn(popupFn)
+  307 |         extraParagraphSpacing(extraParagraphSpacing),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         fontId(fontId)
+  308 |         paragraphAlignment(paragraphAlignment),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         lineCompression(lineCompression)
+  309 |         viewportWidth(viewportWidth),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         extraParagraphSpacing(extraParagraphSpacing)
+  310 |         viewportHeight(viewportHeight),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         paragraphAlignment(paragraphAlignment)
+  311 |         hyphenationEnabled(hyphenationEnabled),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         viewportWidth(viewportWidth)
+  312 |         focusReadingEnabled(focusReadingEnabled),
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         viewportHeight(viewportHeight)
+  313 |         completePageFn(completePageFn),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         hyphenationEnabled(hyphenationEnabled)
+  314 |         popupFn(popupFn),
+      |         ~~~~~~~~~~~~~~~~
+      |         focusReadingEnabled(focusReadingEnabled)
+1 warning generated.
+[ 43%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/Page.cpp.o
+[ 43%] Building CXX object ligature_guard/CMakeFiles/LigatureGuardTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/EpdFont/EpdFont.cpp.o
+[ 43%] Building CXX object page_link/CMakeFiles/PageLinkTest.dir/PageLinkTest.cpp.o
+[ 43%] Building CXX object ligature_guard/CMakeFiles/LigatureGuardTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/Page.cpp:6:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Serialization/Serialization.h:79:44: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+   79 |   return len == 0 || file.read(&s[0], len) == static_cast<int>(len);
+      |                      ~~~~~~~~~~~~~~~~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/Page.cpp:100:57: warning: unused parameter 'fontId' [-Wunused-parameter]
+  100 | void PageImage::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) {
+      |                                                         ^
+2 warnings generated.
+[ 43%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/WordStore.cpp.o
+[ 44%] Linking CXX executable LigatureGuardTest
+[ 44%] Built target LigatureGuardTest
+[ 44%] Building CXX object content_opf_parser/CMakeFiles/ContentOpfParserTest.dir/ContentOpfParserTest.cpp.o
+[ 44%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/blocks/TextBlock.cpp.o
+2 warnings generated.
+[ 44%] Building CXX object chapter_position/CMakeFiles/ChapterPositionTest.dir/ChapterPositionTest.cpp.o
+[ 45%] Linking CXX executable PageLinkTest
+[ 45%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/ParsedText.cpp.o
+[ 45%] Built target PageLinkTest
+[ 46%] Building CXX object content_opf_parser/CMakeFiles/ContentOpfParserTest.dir/EncryptionManifestProbeTest.cpp.o
+[ 47%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/CjkBreaks.cpp.o
+[ 48%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/blocks/TextBlock.cpp.o
+[ 48%] Building CXX object book_metadata_cache/CMakeFiles/BookMetadataCacheTest.dir/BookMetadataCacheTest.cpp.o
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/blocks/TextBlock.cpp:8:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Serialization/Serialization.h:79:44: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+   79 |   return len == 0 || file.read(&s[0], len) == static_cast<int>(len);
+      |                      ~~~~~~~~~~~~~~~~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/ParsedText.cpp:1151:39: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+ 1151 |       const int extraStartOffset = (j == i) ? calculateRubyExtraStartOffset(i, totalWordCount, renderer, fontId) : 0;
+      |                                     ~ ^  ~
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/ParsedText.cpp:1153:43: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+ 1153 |       currlen += wordWidths[j] + gap + (j == i ? extraStartOffset : 0);
+      |                                         ~ ^  ~
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/blocks/TextBlock.cpp:8:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Serialization/Serialization.h:79:44: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+   79 |   return len == 0 || file.read(&s[0], len) == static_cast<int>(len);
+      |                      ~~~~~~~~~~~~~~~~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~
+1 warning generated.
+[ 48%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/MiniBidi/BidiUtils.cpp.o
+[ 48%] Linking CXX executable ChapterPositionTest
+[ 48%] Built target ChapterPositionTest
+[ 49%] Building CXX object home_button/CMakeFiles/HomeButtonInputTest.dir/HomeButtonInputTest.cpp.o
+[ 49%] Building CXX object content_opf_parser/CMakeFiles/ContentOpfParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/parsers/ContentOpfParser.cpp.o
+[ 50%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/WordStore.cpp.o
+1 warning generated.
+[ 50%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/CjkBreaks.cpp.o
+[ 50%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/blocks/TextBlock.cpp.o
+[ 50%] Building CXX object book_metadata_cache/CMakeFiles/BookMetadataCacheTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/BookMetadataCache.cpp.o
+[ 50%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/Hyphenator.cpp.o
+[ 50%] Building CXX object button_press_navigation/CMakeFiles/ButtonPressNavigationTest.dir/ButtonPressNavigationTest.cpp.o
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/BookMetadataCache.cpp:5:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Serialization/Serialization.h:79:44: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+   79 |   return len == 0 || file.read(&s[0], len) == static_cast<int>(len);
+      |                      ~~~~~~~~~~~~~~~~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/blocks/TextBlock.cpp:8:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/Serialization/Serialization.h:79:44: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+   79 |   return len == 0 || file.read(&s[0], len) == static_cast<int>(len);
+      |                      ~~~~~~~~~~~~~~~~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/BookMetadataCache.cpp:282:11: warning: variable 'matched' set but not used [-Wunused-but-set-variable]
+  282 |       int matched = 0;
+      |           ^
+[ 50%] Linking CXX executable HomeButtonInputTest
+2 warnings generated.
+[ 50%] Building C object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/MiniBidi/minibidi.c.o
+[ 50%] Built target HomeButtonInputTest
+[ 50%] Building CXX object inflate_stream/CMakeFiles/InflateStreamTest.dir/InflateStreamTest.cpp.o
+[ 52%] Building CXX object book_metadata_cache/CMakeFiles/BookMetadataCacheTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 52%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/LanguageRegistry.cpp.o
+1 warning generated.
+[ 52%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/CjkBreaks.cpp.o
+[ 53%] Linking CXX executable ContentOpfParserTest
+[ 53%] Built target ContentOpfParserTest
+[ 54%] Building CXX object button_press_navigation/CMakeFiles/ButtonPressNavigationTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/src/util/ButtonNavigator.cpp.o
+[ 55%] Building CXX object zip_file/CMakeFiles/ZipFileTest.dir/ZipFileTest.cpp.o
+[ 56%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/Hyphenator.cpp.o
+[ 56%] Building C object inflate_stream/CMakeFiles/InflateStreamTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/miniz/src/miniz_impl.c.o
+[ 56%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/LiangHyphenation.cpp.o
+2 warnings generated.
+[ 56%] Linking CXX executable BookMetadataCacheTest
+[ 56%] Linking CXX executable ButtonPressNavigationTest
+[ 56%] Built target BookMetadataCacheTest
+[ 56%] Building CXX object zip_file/CMakeFiles/ZipFileTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/ZipFile/ZipFile.cpp.o
+[ 56%] Built target ButtonPressNavigationTest
+[ 56%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/LanguageRegistry.cpp.o
+[ 56%] Building CXX object fs_helpers/CMakeFiles/FsHelpersTest.dir/FsHelpersTest.cpp.o
+[ 57%] Building CXX object inflate_stream/CMakeFiles/InflateStreamTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Memory/BuildScratch.cpp.o
+[ 58%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/HyphenationCommon.cpp.o
+[ 58%] Building CXX object inflate_stream/CMakeFiles/InflateStreamTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/hal/HalMemory.cpp.o
+[ 59%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp.o
+[ 59%] Linking CXX executable InflateStreamTest
+[ 59%] Built target InflateStreamTest
+[ 59%] Building CXX object http_header/CMakeFiles/HttpHeaderTest.dir/HttpHeaderTest.cpp.o
+[ 60%] Building CXX object fs_helpers/CMakeFiles/FsHelpersTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/FsHelpers/FsHelpers.cpp.o
+[ 60%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/LiangHyphenation.cpp.o
+[ 60%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/MiniBidi/BidiUtils.cpp.o
+[ 61%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/hyphenation/HyphenationCommon.cpp.o
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp:1:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h:312:9: warning: field 'focusReadingEnabled' will be initialized after field 'completePageFn' [-Wreorder-ctor]
+  305 |         fontId(fontId),
+      |         ~~~~~~~~~~~~~~
+      |         completePageFn(completePageFn)
+  306 |         lineCompression(lineCompression),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         popupFn(popupFn)
+  307 |         extraParagraphSpacing(extraParagraphSpacing),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         fontId(fontId)
+  308 |         paragraphAlignment(paragraphAlignment),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         lineCompression(lineCompression)
+  309 |         viewportWidth(viewportWidth),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         extraParagraphSpacing(extraParagraphSpacing)
+  310 |         viewportHeight(viewportHeight),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         paragraphAlignment(paragraphAlignment)
+  311 |         hyphenationEnabled(hyphenationEnabled),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         viewportWidth(viewportWidth)
+  312 |         focusReadingEnabled(focusReadingEnabled),
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         viewportHeight(viewportHeight)
+  313 |         completePageFn(completePageFn),
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |         hyphenationEnabled(hyphenationEnabled)
+  314 |         popupFn(popupFn),
+      |         ~~~~~~~~~~~~~~~~
+      |         focusReadingEnabled(focusReadingEnabled)
+[ 62%] Building CXX object zip_file/CMakeFiles/ZipFileTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/miniz/src/InflateStream.cpp.o
+[ 62%] Building C object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/MiniBidi/minibidi.c.o
+[ 62%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/css/CssParser.cpp.o
+[ 62%] Building CXX object fs_helpers/CMakeFiles/FsHelpersTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 63%] Building CXX object korean_line_breaking/CMakeFiles/KoreanLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp:2003:40: warning: '&&' within '||' [-Wlogical-op-parentheses]
+ 2003 |       if (strcmp(atts[i], "role") == 0 && strcmp(atts[i + 1], "doc-pagebreak") == 0 ||
+      |           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ~~
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp:2003:40: note: place parentheses around the '&&' expression to silence this warning
+ 2003 |       if (strcmp(atts[i], "role") == 0 && strcmp(atts[i + 1], "doc-pagebreak") == 0 ||
+      |                                        ^
+      |           (                                                                        )
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp:2004:45: warning: '&&' within '||' [-Wlogical-op-parentheses]
+ 2003 |       if (strcmp(atts[i], "role") == 0 && strcmp(atts[i + 1], "doc-pagebreak") == 0 ||
+      |                                                                                     ~~
+ 2004 |           strcmp(atts[i], "epub:type") == 0 && strcmp(atts[i + 1], "pagebreak") == 0) {
+      |           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp:2004:45: note: place parentheses around the '&&' expression to silence this warning
+ 2004 |           strcmp(atts[i], "epub:type") == 0 && strcmp(atts[i + 1], "pagebreak") == 0) {
+      |                                             ^                                       
+      |           (                                                                         )
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp:2387:59: warning: comparison of integers of different signs: 'int' and 'unsigned long' [-Wsign-compare]
+ 2387 |     for (int i = start; (self->currentFootnoteLinkTextLen < sizeof(self->currentFootnote.number) - 1) && (i <= end);
+      |                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[ 63%] Building C object zip_file/CMakeFiles/ZipFileTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/miniz/src/miniz_impl.c.o
+[ 63%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/MiniBidi/BidiUtils.cpp.o
+[ 63%] Building CXX object http_header/CMakeFiles/HttpHeaderTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/HttpHeader/HttpHeader.cpp.o
+[ 63%] Building CXX object zip_file/CMakeFiles/ZipFileTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Memory/BuildScratch.cpp.o
+[ 63%] Linking CXX executable FsHelpersTest
+[ 64%] Building CXX object zip_file/CMakeFiles/ZipFileTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/hal/HalMemory.cpp.o
+[ 64%] Built target FsHelpersTest
+[ 64%] Building CXX object txt_to_html/CMakeFiles/TxtToHtmlTest.dir/TxtToHtmlTest.cpp.o
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/css/CssParser.cpp:1252:10: warning: variable 'totalRead' set but not used [-Wunused-but-set-variable]
+ 1252 |   size_t totalRead = 0;
+      |          ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/css/CssParser.cpp:1839:14: warning: unused variable 'partial' [-Wunused-variable]
+ 1839 |   const bool partial = (flags & CSS_CACHE_FLAG_PARTIAL) != 0;
+      |              ^~~~~~~
+[ 64%] Linking CXX executable KoreanLineBreakingTest
+[ 64%] Linking CXX executable ZipFileTest
+[ 64%] Built target KoreanLineBreakingTest
+[ 64%] Building CXX object absolute_grayscale/CMakeFiles/AbsoluteGrayscaleTest.dir/AbsoluteGrayscaleTest.cpp.o
+[ 65%] Linking CXX executable HttpHeaderTest
+[ 65%] Built target ZipFileTest
+[ 65%] Building CXX object gif_support/CMakeFiles/GifSupportTest.dir/GifSupportTest.cpp.o
+[ 65%] Built target HttpHeaderTest
+[ 66%] Building CXX object gif_support/CMakeFiles/GifBmpTest.dir/GifBmpTest.cpp.o
+[ 67%] Building C object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/MiniBidi/minibidi.c.o
+[ 67%] Building CXX object em_dash_line_breaking/CMakeFiles/EmDashLineBreakingTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+2 warnings generated.
+[ 68%] Building CXX object txt_to_html/CMakeFiles/TxtToHtmlTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Txt/TxtToHtml.cpp.o
+4 warnings generated.
+[ 69%] Building CXX object gif_support/CMakeFiles/GifSupportTest.dir/PixelCacheTest.cpp.o
+[ 69%] Linking CXX executable EmDashLineBreakingTest
+[ 69%] Built target EmDashLineBreakingTest
+[ 70%] Building CXX object sd_card_font/CMakeFiles/SdCardFontTest.dir/SdCardFontTest.cpp.o
+[ 70%] Building CXX object gif_support/CMakeFiles/GifBmpTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/GifToBmpConverter/GifToBmpConverter.cpp.o
+[ 70%] Building CXX object txt_to_html/CMakeFiles/TxtToHtmlTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/FsHelpers/FsHelpers.cpp.o
+[ 70%] Linking CXX executable AbsoluteGrayscaleTest
+[ 71%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/ParsedText.cpp.o
+[ 71%] Built target AbsoluteGrayscaleTest
+[ 71%] Building CXX object sd_card_font/CMakeFiles/SdCardFontTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/EpdFont/EpdFont.cpp.o
+7 warnings generated.
+[ 72%] Building CXX object gif_support/CMakeFiles/GifBmpTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/GfxRenderer/BitmapHelpers.cpp.o
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/GifToBmpConverter/GifToBmpConverter.cpp:3:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/build/test/_deps/animatedgif-src/src/AnimatedGIF.h:234:20: warning: unused parameter 'iEndian' [-Wunused-parameter]
+  234 |     void begin(int iEndian, uint8_t ucPaletteType) { begin(ucPaletteType); };
+      |                    ^
+1 warning generated.
+[ 73%] Building CXX object sd_font_registry/CMakeFiles/SdFontRegistryTest.dir/SdFontRegistryTest.cpp.o
+[ 73%] Building CXX object txt_to_html/CMakeFiles/TxtToHtmlTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 73%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/WordStore.cpp.o
+[ 73%] Linking CXX executable GifBmpTest
+[ 73%] Built target GifBmpTest
+[ 74%] Building CXX object clipping_preview/CMakeFiles/ClippingPreviewTest.dir/ClippingPreviewTest.cpp.o
+[ 74%] Building CXX object gif_support/CMakeFiles/GifSupportTest.dir/GifDecoderTest.cpp.o
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/gif_support/GifDecoderTest.cpp:1:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/build/test/_deps/animatedgif-src/src/AnimatedGIF.h:234:20: warning: unused parameter 'iEndian' [-Wunused-parameter]
+  234 |     void begin(int iEndian, uint8_t ucPaletteType) { begin(ucPaletteType); };
+      |                    ^
+[ 74%] Building CXX object sd_font_registry/CMakeFiles/SdFontRegistryTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/EpdFont/SdCardFontRegistry.cpp.o
+[ 75%] Linking CXX executable TxtToHtmlTest
+[ 75%] Built target TxtToHtmlTest
+[ 75%] Building CXX object glyph_bitmap/CMakeFiles/GlyphBitmapTest.dir/GlyphBitmapTest.cpp.o
+[ 75%] Building CXX object sd_card_font/CMakeFiles/SdCardFontTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/EpdFont/SdCardFont.cpp.o
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/ParsedText.cpp:1151:39: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+ 1151 |       const int extraStartOffset = (j == i) ? calculateRubyExtraStartOffset(i, totalWordCount, renderer, fontId) : 0;
+      |                                     ~ ^  ~
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/ParsedText.cpp:1153:43: warning: comparison of integers of different signs: 'size_t' (aka 'unsigned long') and 'int' [-Wsign-compare]
+ 1153 |       currlen += wordWidths[j] + gap + (j == i ? extraStartOffset : 0);
+      |                                         ~ ^  ~
+[ 75%] Building CXX object clipping_store/CMakeFiles/ClippingStoreTest.dir/ClippingStoreTest.cpp.o
+[ 75%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/converters/ImageDimsProbe.cpp.o
+[ 76%] Building CXX object sd_card_font/CMakeFiles/SdCardFontTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 76%] Linking CXX executable SdFontRegistryTest
+[ 76%] Linking CXX executable GlyphBitmapTest
+[ 76%] Built target SdFontRegistryTest
+[ 76%] Building CXX object clipping_store/CMakeFiles/ClippingStoreTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/src/ClippingStore.cpp.o
+[ 76%] Built target GlyphBitmapTest
+[ 77%] Building CXX object clipping_store/CMakeFiles/ClippingStoreS3Test.dir/ClippingStoreTest.cpp.o
+1 warning generated.
+[ 78%] Linking CXX executable GifSupportTest
+[ 78%] Built target GifSupportTest
+[ 79%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp.o
+[ 79%] Building CXX object chapter_html_slim_parser/CMakeFiles/ChapterHtmlSlimParserTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 79%] Linking CXX executable ClippingPreviewTest
+[ 79%] Linking CXX executable SdCardFontTest
+[ 79%] Built target ClippingPreviewTest
+[ 80%] Building CXX object clipping_store/CMakeFiles/ClippingStoreTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 80%] Built target SdCardFontTest
+[ 80%] Building CXX object clipping_store/CMakeFiles/ClippingStoreS3Test.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/src/ClippingStore.cpp.o
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp:7:94: warning: unused parameter 'format' [-Wunused-parameter]
+    7 |                                                            ImageDimensions& out, const char* format) {
+      |                                                                                              ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp:41:75: warning: unused parameter 'feature' [-Wunused-parameter]
+   41 | void ImageToFramebufferDecoder::warnUnsupportedFeature(const std::string& feature, const std::string& imagePath) {
+      |                                                                           ^
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp:41:103: warning: unused parameter 'imagePath' [-Wunused-parameter]
+   41 | void ImageToFramebufferDecoder::warnUnsupportedFeature(const std::string& feature, const std::string& imagePath) {
+      |                                                                                                       ^
+3 warnings generated.
+[ 80%] Building CXX object reader_session/CMakeFiles/ReaderSessionTest.dir/ReaderSessionTest.cpp.o
+2 warnings generated.
+[ 80%] Building CXX object clipping_store/CMakeFiles/ClippingStoreS3Test.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 81%] Linking CXX executable ChapterHtmlSlimParserTest
+[ 81%] Built target ChapterHtmlSlimParserTest
+[ 81%] Building CXX object plugin_catalog_paging/CMakeFiles/PluginCatalogPagingTest.dir/PluginCatalogPagingTest.cpp.o
+[ 82%] Building CXX object reader_session/CMakeFiles/ReaderSessionTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/src/activities/reader/ReaderSession.cpp.o
+[ 83%] Building CXX object plugin_manifest_classification/CMakeFiles/PluginManifestClassificationTest.dir/PluginManifestClassificationTest.cpp.o
+[ 83%] Building CXX object plugin_picker_layout/CMakeFiles/PluginPickerLayoutTest.dir/PluginPickerLayoutTest.cpp.o
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/plugin_picker_layout/PluginPickerLayoutTest.cpp:2:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/EpdFont/builtinFonts/ubuntu_10_regular.h:3715:1: warning: missing field 'glyphMissHandler' initializer [-Wmissing-field-initializers]
+ 3715 | };
+      | ^
+In file included from /Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/plugin_picker_layout/PluginPickerLayoutTest.cpp:3:
+/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/test/../lib/EpdFont/builtinFonts/ubuntu_12_regular.h:4371:1: warning: missing field 'glyphMissHandler' initializer [-Wmissing-field-initializers]
+ 4371 | };
+      | ^
+[ 83%] Building CXX object protected_paths/CMakeFiles/ProtectedPathsTest.dir/ProtectedPathsTest.cpp.o
+[ 83%] Linking CXX executable ClippingStoreTest
+[ 83%] Built target ClippingStoreTest
+[ 83%] Built target TlsPolicyTest
+[ 83%] Building CXX object ble_link_note_title/CMakeFiles/LinkNoteTitleTest.dir/LinkNoteTitleTest.cpp.o
+[ 83%] Linking CXX executable ReaderSessionTest
+[ 83%] Built target ReaderSessionTest
+[ 84%] Building CXX object ble_chapter_build_gate/CMakeFiles/ChapterBuildGateTest.dir/ChapterBuildGateTest.cpp.o
+[ 85%] Building CXX object plugin_picker_layout/CMakeFiles/PluginPickerLayoutTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/EpdFont/EpdFont.cpp.o
+[ 86%] Linking CXX executable PluginCatalogPagingTest
+[ 86%] Built target PluginCatalogPagingTest
+[ 86%] Building CXX object ble_remote_turn_gate/CMakeFiles/RemoteTurnGateTest.dir/RemoteTurnGateTest.cpp.o
+[ 87%] Linking CXX executable ClippingStoreS3Test
+[ 88%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerPolicyTest.dir/RadioVerdictTest.cpp.o
+[ 88%] Linking CXX executable PluginManifestClassificationTest
+[ 88%] Built target ClippingStoreS3Test
+[ 88%] Building CXX object plugin_picker_layout/CMakeFiles/PluginPickerLayoutTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/Utf8/Utf8.cpp.o
+[ 88%] Built target PluginManifestClassificationTest
+[ 88%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerRuntimeTest.dir/RuntimeTest.cpp.o
+2 warnings generated.
+[ 88%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerPolicyTest.dir/RadioVerdictS3Test.cpp.o
+[ 89%] Linking CXX executable ProtectedPathsTest
+[ 89%] Built target ProtectedPathsTest
+[ 89%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerHomeStartTest.dir/HomeStartTest.cpp.o
+[ 89%] Building CXX object plugin_picker_layout/CMakeFiles/PluginPickerLayoutTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/freeink-sdk/libs/ui/FreeInkUI/src/FreeInkUI.cpp.o
+[ 89%] Linking CXX executable LinkNoteTitleTest
+[ 89%] Built target LinkNoteTitleTest
+[ 89%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerNoRadioTest.dir/NoRadioTest.cpp.o
+[ 89%] Linking CXX executable RemoteTurnGateTest
+[ 89%] Linking CXX executable ChapterBuildGateTest
+[ 89%] Built target RemoteTurnGateTest
+[ 90%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerRuntimeTest.dir/TickTest.cpp.o
+[ 90%] Built target ChapterBuildGateTest
+[ 91%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerConfigTest.dir/ConfigJsonTest.cpp.o
+[ 92%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerHomeStartTest.dir/Fakes.cpp.o
+[ 93%] Linking CXX executable PluginPickerLayoutTest
+[ 93%] Built target PluginPickerLayoutTest
+[ 93%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerHomeStartTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/BlePageTurner/src/Runtime.cpp.o
+[ 93%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerPolicyTest.dir/HeapRestartTest.cpp.o
+[ 93%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerSourceContractTest.dir/SourceContractTest.cpp.o
+[ 93%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerNoRadioTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/BlePageTurner/src/Runtime.cpp.o
+[ 94%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerPolicyTest.dir/KeyBindingTest.cpp.o
+[ 95%] Linking CXX executable BlePageTurnerHomeStartTest
+[ 95%] Built target BlePageTurnerHomeStartTest
+[ 95%] Building CXX object ybx_home/CMakeFiles/YbxHomeLayoutTest.dir/YbxHomeLayoutTest.cpp.o
+[ 96%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerNoRadioTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/BlePageTurner/src/NoRadio.cpp.o
+[ 96%] Building CXX object plugin_event_queue/CMakeFiles/PluginEventQueueTest.dir/PluginEventQueueTest.cpp.o
+[ 96%] Linking CXX executable BlePageTurnerNoRadioTest
+[ 96%] Built target BlePageTurnerNoRadioTest
+[ 96%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerRuntimeTest.dir/LinkNoteTest.cpp.o
+[ 96%] Building CXX object plugin_event_queue/CMakeFiles/PluginEventQueueTest.dir/PluginQueueStorageTest.cpp.o
+[ 96%] Linking CXX executable BlePageTurnerConfigTest
+[ 96%] Built target BlePageTurnerConfigTest
+[ 97%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerRuntimeTest.dir/RequestConnectTest.cpp.o
+[ 97%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerRuntimeTest.dir/Fakes.cpp.o
+[ 97%] Linking CXX executable BlePageTurnerPolicyTest
+[ 97%] Built target BlePageTurnerPolicyTest
+[ 98%] Building CXX object plugin_event_queue/CMakeFiles/PluginEventQueueTest.dir/PluginEventDeadlineTest.cpp.o
+[ 98%] Linking CXX executable YbxHomeLayoutTest
+[ 98%] Building CXX object BlePageTurnerTests/CMakeFiles/BlePageTurnerRuntimeTest.dir/Users/yaraslauhancharou/.local/state/xteink-agent-workspaces/fw-tls-20261028/lib/BlePageTurner/src/Runtime.cpp.o
+[ 98%] Built target YbxHomeLayoutTest
+[ 99%] Linking CXX executable BlePageTurnerSourceContractTest
+[ 99%] Built target BlePageTurnerSourceContractTest
+[100%] Linking CXX executable BlePageTurnerRuntimeTest
+[100%] Built target BlePageTurnerRuntimeTest
+[100%] Linking CXX executable PluginEventQueueTest
+[100%] Built target PluginEventQueueTest

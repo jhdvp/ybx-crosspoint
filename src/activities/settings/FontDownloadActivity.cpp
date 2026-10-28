@@ -22,6 +22,8 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
+#include "network/TlsTransport.h"
+#include "util/TlsFailureText.h"
 
 namespace fui = freeink::ui;
 
@@ -178,13 +180,13 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     return false;
   }
 
-  // No downgradeRedirectsToHttp here, unlike the font transfers below: this
-  // response carries the crc32 values that are the only integrity anchor for
-  // those plain-HTTP downloads.
+  // No downgrade on redirect: font assets are served over verified https, and
+  // an https -> http step-down is refused by the downloader.
   auto result = HttpDownloader::downloadToFile(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
   if (result != HttpDownloader::OK) {
     LOG_ERR("FONT", "Failed to fetch manifest from %s", FONT_MANIFEST_URL);
-    errorMessage_ = "Failed to fetch font list";
+    const char* tlsDetail = tlsui::failureDetail(tlspolicy::lastFailure());
+    errorMessage_ = tlsDetail ? tlsDetail : "Failed to fetch font list";
     Storage.remove(MANIFEST_TMP);
     return false;
   }
@@ -594,11 +596,10 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
           }
           requestUpdate(true);
         },
-        // Bulk font transfers follow GitHub's release-asset redirect over plain
-        // HTTP: the CRC check below (manifest fetched over TLS) covers
-        // integrity, and skipping the second TLS session keeps the C3 heap out
-        // of MEMORY_E territory.
-        &cancelRequested_, "", "", /*headers=*/{}, /*downgradeRedirectsToHttp=*/true);
+        // Bulk font transfers follow GitHub's release-asset redirect over
+        // verified https: the CA bundle covers both github.com and the
+        // release-assets host, so no transport downgrade is needed.
+        &cancelRequested_, "", "", /*headers=*/{});
 
     if (result == HttpDownloader::ABORTED) {
       fontInstaller_.deleteFamily(str(family.name));
@@ -623,7 +624,8 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = std::string("Download failed: ") + str(file.name);
+      const char* tlsDetail = tlsui::failureDetail(tlspolicy::lastFailure());
+      errorMessage_ = tlsDetail ? tlsDetail : std::string("Download failed: ") + str(file.name);
       return;
     }
 
@@ -990,7 +992,13 @@ void FontDownloadActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, tr(STR_FONT_INSTALL_FAILED), true,
                               EpdFontFamily::BOLD);
     if (!errorMessage_.empty()) {
-      renderer.drawCenteredText(UI_10_FONT_ID, centerY + metrics.verticalSpacing, errorMessage_.c_str());
+      // Certificate and clock messages wrap over several lines; a single
+      // centered line would clip them.
+      const int detailY = centerY + metrics.verticalSpacing;
+      const Rect detailBounds{metrics.contentSidePadding, detailY, pageWidth - metrics.contentSidePadding * 2,
+                              pageHeight - detailY};
+      UITheme::drawCenteredWrappedText(renderer, detailBounds, UI_10_FONT_ID, errorMessage_.c_str(), 3, true,
+                                       EpdFontFamily::REGULAR, UITheme::TextVerticalAlignment::TOP);
     }
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_RETRY), "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

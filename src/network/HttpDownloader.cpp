@@ -8,6 +8,7 @@
 #include <functional>
 #include <string>
 
+#include "TlsTransport.h"
 #include "WifiPowerSaveGuard.h"
 
 extern "C" void wolfSSL_Arduino_Serial_Print(const char* const msg) { LOG_DBG("WOLFSSL", "%s", msg); }
@@ -26,7 +27,6 @@ constexpr size_t MAX_RESPONSE_BYTES = 4096;
 
 void applyCommonClientSetup(freeink::SecureHttpClient& http) {
   http.setTimeout(HTTP_TIMEOUT_MS);
-  http.setInsecure();
   // setUserAgent replaces SecureHttpClient's built-in UA; addHeader would
   // append a second User-Agent header, which strict servers reject (aiohttp
   // answers 400 "Duplicate 'User-Agent' header found").
@@ -46,18 +46,23 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
                                            const std::string& password,
                                            const std::vector<HttpDownloader::Header>& headers,
                                            const freeink::FetchSink& sink, const bool* cancelFlag = nullptr,
-                                           size_t* bytesOut = nullptr, const bool downgradeRedirectsToHttp = false) {
+                                           size_t* bytesOut = nullptr) {
   WifiPowerSaveGuard psGuard;
+  tlspolicy::clearFailure();
+  // https downloads must not start before certificate dates are verifiable.
+  if (!tlspolicy::ensureClockFor(url)) return HttpDownloader::TLS_ERROR;
   freeink::FetchOptions options;
-  options.redirectToHttp = downgradeRedirectsToHttp;
   bool answeredBySameOrigin = true;
   const freeink::FetchResult result = freeink::fetchResumable(
       url, options,
       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
         answeredBySameOrigin = sameOrigin;
         applyCommonClientSetup(http);
+        // Every hop is verified: the CA bundle is installed for each attempt
+        // (the transport uses it only for https connections).
+        tlspolicy::installTrust(http);
         // Credentials and caller headers stay with the starting origin; a
-        // redirect elsewhere (or to plain http) gets neither.
+        // redirect elsewhere gets neither.
         if (sameOrigin) {
           if (!username.empty() && !password.empty()) http.setBasicAuth(username, password);
           for (const auto& h : headers) http.addHeader(h.first, h.second);
@@ -73,6 +78,17 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
 
   if (result.aborted) return HttpDownloader::ABORTED;
   if (result.stopped) return HttpDownloader::FILE_ERROR;
+  if (result.insecureRedirect) {
+    LOG_ERR("HTTP", "Refused an insecure redirect: %s", url.c_str());
+    tlspolicy::recordFailure(tlspolicy::Failure::InsecureRedirect);
+    return HttpDownloader::TLS_ERROR;
+  }
+  const tlspolicy::Failure tlsFailure = tlspolicy::failureFromConnect(result.failure);
+  if (tlspolicy::isTrustFailure(tlsFailure)) {
+    LOG_ERR("HTTP", "TLS trust failure (%d): %s", static_cast<int>(tlsFailure), url.c_str());
+    tlspolicy::recordFailure(tlsFailure);
+    return HttpDownloader::TLS_ERROR;
+  }
   if (result.status == 401 || result.status == 403) {
     LOG_ERR("HTTP", "wolfSSL request unauthorized: status %d: %s", result.status, url.c_str());
     return HttpDownloader::UNAUTHORIZED;
@@ -115,11 +131,22 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
   // a manual redirect loop; catalog feeds are small enough that Range resume
   // isn't worth carrying here (books go through downloadToFile, which has it).
   WifiPowerSaveGuard psGuard;
+  tlspolicy::clearFailure();
+  if (!tlspolicy::ensureClockFor(url)) {
+    g_lastStatus = 0;
+    g_lastRedirected = false;
+    if (options.statusOut) *options.statusOut = 0;
+    return false;
+  }
   std::string current = url;
   const std::string startOrigin = freeink::fetchOrigin(url);
   int status = 0;
   bool sinkStopped = false;
   for (int hop = 0; hop <= MAX_REDIRECTS; ++hop) {
+    if (!tlspolicy::ensureClockFor(current)) {
+      status = 0;
+      break;
+    }
     freeink::SecureHttpClient http;
     if (!http.begin(current)) {
       LOG_ERR("HTTP", "bad URL: %s", current.c_str());
@@ -127,6 +154,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
       break;
     }
     applyCommonClientSetup(http);
+    tlspolicy::applyTrustFor(http, current);
     // Credentials belong to the starting origin only: a redirect to another
     // origin (a CDN) must not receive them.
     if (freeink::fetchOrigin(current) == startOrigin) {
@@ -153,8 +181,21 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
     });
     if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
       const std::string location = http.getHeader("location");
-      if (location.empty() || !freeink::SecureHttpClient::resolveUrl(current, location, current)) break;
+      std::string next;
+      if (location.empty() || !freeink::SecureHttpClient::resolveUrl(current, location, next)) break;
+      // The same policy as the resumable path: never follow an https -> http
+      // step-down, and withhold credentials when the hop leaves the origin.
+      const tlspolicy::RedirectDecision redirect = tlspolicy::decideRedirect(current, next);
+      if (!redirect.follow) {
+        LOG_ERR("HTTP", "Refused an insecure redirect: %s", current.c_str());
+        tlspolicy::recordFailure(tlspolicy::Failure::InsecureRedirect);
+        break;
+      }
+      current = next;
       continue;
+    }
+    if (status < 0 && !http.aborted()) {
+      tlspolicy::recordFailure(tlspolicy::failureFromConnect(http.connectFailure()));
     }
     break;
   }
@@ -167,7 +208,12 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
 bool HttpDownloader::postForm(const std::string& url, const std::string& formBody, std::string& outResponse,
                               int* statusOut) {
   WifiPowerSaveGuard psGuard;
+  tlspolicy::clearFailure();
   outResponse.clear();
+  if (!tlspolicy::ensureClockFor(url)) {
+    if (statusOut) *statusOut = 0;
+    return false;
+  }
   freeink::SecureHttpClient http;
   if (!http.begin(url)) {
     LOG_ERR("HTTP", "bad URL: %s", url.c_str());
@@ -175,6 +221,7 @@ bool HttpDownloader::postForm(const std::string& url, const std::string& formBod
     return false;
   }
   applyCommonClientSetup(http);
+  tlspolicy::applyTrustFor(http, url);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
   LOG_DBG("HTTP", "wolfSSL POST: %s", url.c_str());
   const int status = http.sendRequest("POST", reinterpret_cast<const uint8_t*>(formBody.data()), formBody.size(),
@@ -184,6 +231,9 @@ bool HttpDownloader::postForm(const std::string& url, const std::string& formBod
                                         outResponse.append(reinterpret_cast<const char*>(data), std::min(len, room));
                                         return true;
                                       });
+  if (status < 0 && !http.aborted()) {
+    tlspolicy::recordFailure(tlspolicy::failureFromConnect(http.connectFailure()));
+  }
   if (statusOut) *statusOut = status > 0 ? status : 0;
   return status >= 200 && status < 300;
 }
@@ -193,6 +243,8 @@ HttpDownloader::DownloadError HttpDownloader::postToFile(const std::string& url,
                                                          ProgressCallback progress, const bool* cancelFlag) {
   LOG_DBG("HTTP", "POST download: %s -> %s", url.c_str(), destPath.c_str());
   WifiPowerSaveGuard psGuard;
+  tlspolicy::clearFailure();
+  if (!tlspolicy::ensureClockFor(url)) return TLS_ERROR;
 
   const std::string partPath = destPath + ".part";
   Storage.remove(partPath.c_str());
@@ -208,6 +260,7 @@ HttpDownloader::DownloadError HttpDownloader::postToFile(const std::string& url,
     return HTTP_ERROR;
   }
   applyCommonClientSetup(http);
+  tlspolicy::applyTrustFor(http, url);
   http.addHeader("Content-Type", contentType);
 
   size_t downloaded = 0;
@@ -231,8 +284,13 @@ HttpDownloader::DownloadError HttpDownloader::postToFile(const std::string& url,
   if (file.isOpen()) file.close();
 
   DownloadError result = OK;
+  const tlspolicy::Failure tlsFailure = tlspolicy::failureFromConnect(http.connectFailure());
   if (http.aborted()) {
     result = ABORTED;
+  } else if (tlspolicy::isTrustFailure(tlsFailure)) {
+    LOG_ERR("HTTP", "POST TLS trust failure (%d): %s", static_cast<int>(tlsFailure), url.c_str());
+    tlspolicy::recordFailure(tlsFailure);
+    result = TLS_ERROR;
   } else if (writeFailed) {
     result = FILE_ERROR;
   } else if (status < 200 || status >= 300) {
@@ -261,8 +319,7 @@ HttpDownloader::DownloadError HttpDownloader::postToFile(const std::string& url,
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
                                                              ProgressCallback progress, const bool* cancelFlag,
                                                              const std::string& username, const std::string& password,
-                                                             const std::vector<Header>& headers,
-                                                             bool downgradeRedirectsToHttp) {
+                                                             const std::vector<Header>& headers) {
   LOG_DBG("HTTP", "Downloading: %s -> %s", url.c_str(), destPath.c_str());
 
   // Stage in <dest>.part: a failed or cancelled download never replaces an
@@ -286,7 +343,7 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
 
   size_t downloaded = 0;
   const DownloadError result =
-      runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded, downgradeRedirectsToHttp);
+      runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded);
   // Close before any remove() on the same path; DESTRUCTOR_CLOSES_FILE would
   // otherwise close only after the remove. A failed rewind leaves no open handle.
   if (file.isOpen()) file.close();

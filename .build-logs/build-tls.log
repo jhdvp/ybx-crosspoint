@@ -1,0 +1,929 @@
+Processing default (platform: https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip; board: esp32-c3-devkitm-1; framework: arduino)
+--------------------------------------------------------------------------------
+Verbose mode can be enabled via `-v, --verbose` option
+Patched wolfSSL settings: .pio/libdeps/default/Arduino-wolfSSL/src/user_settings.h
+Generated: src/images/logoSvg.generated.h
+  Original: 319 bytes
+  Minified: 319 bytes (100.0%)
+  Compressed: 167 bytes (52.4%)
+Generated: src/network/html/HomePageHtml.generated.h
+  Original: 2674 bytes
+  Minified: 6012 bytes (224.8%)
+  Compressed: 2090 bytes (78.2%)
+Generated: src/network/html/SettingsPageHtml.generated.h
+  Original: 25731 bytes
+  Minified: 36834 bytes (143.2%)
+  Compressed: 9244 bytes (35.9%)
+Generated: src/network/html/FontsPageHtml.generated.h
+  Original: 9078 bytes
+  Minified: 12512 bytes (137.8%)
+  Compressed: 4138 bytes (45.6%)
+Generated: src/network/html/RunnerPageHtml.generated.h
+  Original: 853 bytes
+  Minified: 8156 bytes (956.2%)
+  Compressed: 3074 bytes (360.4%)
+Generated: src/network/html/FilesPageHtml.generated.h
+  Original: 231581 bytes
+  Minified: 238458 bytes (103.0%)
+  Compressed: 55668 bytes (24.0%)
+Generated: src/network/html/js/jszip_minJs.generated.h
+  Original: 97630 bytes
+  Minified: 97630 bytes (100.0%)
+  Compressed: 28379 bytes (29.1%)
+Generated: src/network/html/assets/crosspoint_iconSvg.generated.h
+  Original: 319 bytes
+  Minified: 319 bytes (100.0%)
+  Compressed: 167 bytes (52.4%)
+Generated: src/network/html/assets/iconsSvg.generated.h
+  Original: 1167 bytes
+  Minified: 1167 bytes (100.0%)
+  Compressed: 471 bytes (40.4%)
+Generated: src/network/html/assets/webCss.generated.h
+  Original: 16798 bytes
+  Minified: 16798 bytes (100.0%)
+  Compressed: 3887 bytes (23.1%)
+Generated: src/components/icons/checkbox_onSvg.generated.h
+  Original: 252 bytes
+  Minified: 252 bytes (100.0%)
+  Compressed: 171 bytes (67.9%)
+Language              Code  BCP47        Own  Fallback  Unused  Data (B)
+--------------------  ----  -----------  ---  --------  ------  --------
+English               EN    en           664  0         17      11581   
+العربية               AR    ar           449  215       8       13537   
+Azərbaycanca          AZ    az           540  124       12      11591   
+Беларуская            BE    be           444  220       8       15395   
+Български             BG    bg           423  241       8       15313   
+Bosanski              BS    bs           440  224       8       9049    
+Català                CA    ca           521  143       12      11119   
+Valencià              CAV   ca-valencia  521  143       12      11077   
+Čeština               CS    cs           440  224       8       9476    
+Dansk                 DA    da           329  335       7       5682    
+Deutsch               DE    de           520  144       12      9624    
+Español               ES    es           521  143       12      10551   
+فارسی                 FA    fa           452  212       9       14520   
+Suomi                 FI    fi           301  363       5       5816    
+Français              FR    fr           497  167       12      9781    
+עברית                 HE    he           521  143       12      13214   
+Magyar                HU    hu           440  224       8       9952    
+Bahasa Indonesia      ID    id           440  224       8       8446    
+Italiano              IT    it           521  143       12      9806    
+Қазақша               KK    kk           440  224       8       15428   
+Lietuvių              LT    lt           440  224       8       7882    
+Norsk bokmål          NB    nb           440  224       8       8045    
+Nederlands            NL    nl           329  335       7       5754    
+Orangutan             OOK   ook          333  331       4       2627    
+Polski                PL    pl           441  223       8       9008    
+Português (Brasil)    PT    pt-BR        522  142       12      10159   
+Português (Portugal)  P2    pt-PT        522  142       12      10922   
+Română                RO    ro           329  335       7       6491    
+Русский               RU    ru           529  135       12      17273   
+Slovenčina            SK    sk           440  224       8       9609    
+Slovenščina           SI    sl           440  224       8       8992    
+Svenska               SV    sv           459  205       9       8793    
+Türkçe                TR    tr           441  223       8       9014    
+Українська            UK    uk           442  222       8       15652   
+Tiếng Việt            VI    vi           521  143       12      11545   
+
+  Total: 664  |  Used in code: 647  |  Never used: 17
+  Flash: 362,724 B strings (deduped)  +  46,480 B offset tables  =  409,204 B
+
+  Stripping 17 unused string(s) from output.
+
+Code generation complete!
+  Languages: 35
+  String keys: 647
+YBX build version: 2.0.1-dev-agents/fw-tls-860dd3db
+CONFIGURATION: https://docs.platformio.org/page/boards/espressif32/esp32-c3-devkitm-1.html
+PLATFORM: Espressif 32 (55.3.311) > Espressif ESP32-C3-DevKitM-1
+HARDWARE: ESP32C3 160MHz, 320KB RAM, 16MB Flash
+DEBUG: Current (cmsis-dap) External (cmsis-dap, esp-bridge, esp-builtin, esp-prog, esp-prog-2, iot-bus-jtag, jlink, minimodule, olimex-arm-usb-ocd, olimex-arm-usb-ocd-h, olimex-arm-usb-tiny-h, olimex-jtag-tiny, tumpa)
+PACKAGES: 
+ - contrib-piohome @ 3.4.4 
+ - framework-arduinoespressif32 @ 3.3.11 
+ - framework-arduinoespressif32-libs @ 5.5.5+sha.b774170ff46 
+ - framework-espidf @ 3.50505.0 (5.5.5) 
+ - tool-cmake @ 4.0.3 
+ - tool-cppcheck @ 2.20.1 
+ - tool-esp-rom-elfs @ 2024.10.11 
+ - tool-esptoolpy @ 5.3.0 
+ - tool-ninja @ 1.13.1 
+ - tool-riscv32-esp-elf-gdb @ 17.1.0+20260402 
+ - tool-scons @ 4.40801.0 (4.8.1) 
+ - toolchain-riscv32-esp @ 14.2.0+20260121
+[ComponentManager] BT/BLE protection enabled
+[ComponentManager] Protected BT library: bt
+[ComponentManager] Processed 1 ignored libraries
+[ComponentManager] Session completed with 3 changes
+LDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf
+LDF Modes: Finder ~ chain, Compatibility ~ soft
+Found 105 compatible libraries
+Scanning dependencies...
+Dependency Graph
+|-- BleKeyboardHost @ 1.0.0
+|-- NimBLE-Arduino @ 2.5.1
+|-- BatteryMonitor @ 2.0.0
+|-- InputManager @ 2.0.0
+|-- HapticManager @ 1.0.0
+|-- EInkDisplay @ 2.0.0
+|-- SDCardManager @ 2.0.0
+|-- UsbMassStorage @ 1.0.0
+|-- BoardConfig @ 2.0.0
+|-- XteinkDetect @ 1.0.0
+|-- PowerManager @ 1.0.0
+|-- MemoryManager @ 1.0.0
+|-- FrontlightManager @ 1.0.0
+|-- Rtc @ 1.0.0
+|-- Imu @ 1.0.0
+|-- SecureNet @ 1.0.0
+|-- JsonSax @ 1.0.0
+|-- Opds @ 1.0.0
+|-- CatalogList @ 1.0.0
+|-- ContentProtection @ 0.1.0
+|-- FreeInkUI @ 0.1.0
+|-- Icons @ 1.0.0
+|-- FreeInkFont @ 0.1.0
+|-- ArduinoJson @ 7.4.2
+|-- SdFat @ 2.3.1
+|-- QRCode @ 0.0.1
+|-- PNGdec @ 1.1.6
+|-- JPEGDEC @ 1.2.7+sha.8628297
+|-- AnimatedGIF @ 2.2.0+sha.67cfaca
+|-- WebSockets @ 2.7.3
+|-- Arduino-wolfSSL @ 5.7.2
+|-- hal
+|-- Logging
+|-- Memory
+|-- Serialization
+|-- Utf8
+|-- I18n
+|-- BlePageTurner @ 0.1.0
+|-- GfxRenderer
+|-- EpdFont
+|-- FsHelpers
+|-- WiFi @ 3.3.11
+|-- Epub
+|-- Xtc
+|-- LibraryIndex
+|-- ESPmDNS @ 3.3.11
+|-- DNSServer @ 3.3.11
+|-- TrustedTime
+|-- MiniBidi
+|-- KOReaderSync
+|-- HttpHeader
+|-- SPI @ 3.3.11
+|-- DeviceSecret
+|-- JsonParser
+|-- InflateReader
+|-- Txt
+|-- Networking @ 3.3.11
+|-- WebServer @ 3.3.11
+Building in release mode
+Retrieved `.pio/build/default/libca6/Wire/Wire.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLE2904.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEAddress.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEAdvertisedDevice.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEAdvertisementData.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEAdvertising.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEAttValue.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEBeacon.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLECharacteristic.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEClient.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEDescriptor.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEDevice.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEEddystoneTLM.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEExtAdvertising.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEHIDDevice.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEL2CAPChannel.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEL2CAPServer.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLERemoteCharacteristic.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLERemoteDescriptor.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLERemoteService.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLERemoteValueAttribute.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEServer.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEScan.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEService.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEStream.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEUUID.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/NimBLEUtils.cpp.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/esp_port/esp-hci/src/esp_nimble_hci.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/esp_port/esp-hci/src/na_hci_driver.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/esp_port/esp-hci/src/na_hci_transport.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/esp_port/port/src/exp_nimble_mem.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/aes_decrypt.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/aes_encrypt.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/cbc_mode.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/ccm_mode.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/cmac_mode.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/ctr_mode.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/ctr_prng.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/ecc.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/ecc_dh.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/ecc_dsa.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/ecc_platform_specific.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/hmac_prng.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/hmac.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/sha256.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/ext/tinycrypt/src/utils.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_adv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_conn_hci.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_conn.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_crypto.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_ctrl.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_dtm.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_hci.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_hci_ev.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_hci_supp_cmd.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_hci_vs.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_iso.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_iso_big.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_isoal.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_pdu.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_rand.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_resolv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_rfmgmt.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_scan.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_scan_aux.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_sched.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_sync.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_trace.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_utils.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/controller/src/ble_ll_whitelist.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/drivers/nrf51/src/ble_hw.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/drivers/nrf51/src/ble_phy.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/drivers/nrf5x/src/ble_hw.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/drivers/nrf5x/src/ble_phy.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/drivers/nrf5x/src/ble_phy_trace.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/drivers/nrf5x/src/nrf52/phy.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/drivers/nrf5x/src/nrf53/phy.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/access.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/adv_ext.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/adv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/adv_legacy.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/aes-ccm.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/app_keys.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/beacon.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/cdb.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/cfg.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/cfg_cli.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/cfg_srv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/crypto.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/friend.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/glue.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/health_cli.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/health_srv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/heartbeat.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/light_model.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/lpn.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/mesh.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/model_cli.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/model_srv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/msg.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/net.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/pb_adv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/pb_gatt.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/pb_gatt_srv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/prov.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/prov_device.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/provisioner.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/proxy.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/proxy_msg.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/proxy_srv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/rpl.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/settings.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/subnet.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/shell.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/testing.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/mesh/src/transport.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/services/gap/src/ble_svc_gap.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/services/gatt/src/ble_svc_gatt.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_aes_ccm.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_att.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_att_clt.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_att_cmd.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_att_svr.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_dtm.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_ead.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_eatt.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_eddystone.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_gap.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_gattc.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_gattc_cache.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_gattc_cache_conn.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_gatts.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_gatts_lcl.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_adv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_atomic.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_cfg.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_conn.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_hci.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_flow.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_hci_cmd.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_hci_evt.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_hci_util.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_id.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_log.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_mbuf.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_misc.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_mqueue.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_periodic_sync.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_pvcy.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_resolv.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_shutdown.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_startup.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_hs_stop.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_ibeacon.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_l2cap.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_l2cap_coc.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_l2cap_sig.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_l2cap_sig_cmd.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_sm.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_sm_alg.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_sm_cmd.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_sm_lgcy.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_sm_sc.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_store.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_store_util.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/src/ble_uuid.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/store/config/src/ble_store_config.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/store/config/src/ble_store_config_conf.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/store/config/src/ble_store_nvs.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/store/ram/src/ble_store_ram.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/host/util/src/addr.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/transport/common/hci_h4/src/hci_h4.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/transport/common/hci_ipc/src/hci_ipc.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/transport/esp_ipc/src/hci_esp_ipc.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/transport/esp_ipc_legacy/src/hci_esp_ipc_legacy.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/transport/nrf5340/src/nrf5340_ble_hci.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/nimble/transport/src/transport.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/nimble/src/endian.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/nimble/src/hal_timer.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/nimble/src/mem.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/nimble/src/nimble_port.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/nimble/src/os_cputime.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/nimble/src/os_cputime_pwr2.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/nimble/src/os_mbuf.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/nimble/src/os_mempool.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/nimble/src/os_msys_init.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/npl/freertos/src/nimble_port_freertos.c.o' from cache
+Retrieved `.pio/build/default/lib414/NimBLE-Arduino/nimble/porting/npl/freertos/src/npl_os_freertos.c.o' from cache
+Retrieved `.pio/build/default/lib6bd/Preferences/Preferences.cpp.o' from cache
+Retrieved `.pio/build/default/libed7/BleKeyboardHost/BleKeyboardHost.cpp.o' from cache
+Retrieved `.pio/build/default/libed7/BleKeyboardHost/HidKeymap.cpp.o' from cache
+Retrieved `.pio/build/default/lib640/BatteryMonitor/BatteryMonitor.cpp.o' from cache
+Retrieved `.pio/build/default/libaa1/Logging/Logging.cpp.o' from cache
+Retrieved `.pio/build/default/lib3c0/InputManager/InputManager.cpp.o' from cache
+Retrieved `.pio/build/default/lib045/HapticManager/HapticManager.cpp.o' from cache
+Retrieved `.pio/build/default/lib733/SPI/SPI.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/FreeInkDisplay.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/bus/EpdBus.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/Ed2208M5Driver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/It8951Driver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/LgfxEpdDriver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/M5OfficialDriver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/PaperMonoDriver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/Ssd1677Driver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/Ssd2677Driver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/Uc8179Driver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/Uc8253MurphyDriver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/Uc8253X3Driver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/Uc8279Driver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/Uc8279X4Driver.cpp.o' from cache
+Retrieved `.pio/build/default/libfb9/FreeInkDisplay/driver/Uc8279cA4Driver.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/ExFatLib/ExFatDbg.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/ExFatLib/ExFatFile.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/ExFatLib/ExFatFilePrint.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/ExFatLib/ExFatFileWrite.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/ExFatLib/ExFatFormatter.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/ExFatLib/ExFatName.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/ExFatLib/ExFatPartition.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/ExFatLib/ExFatVolume.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FatLib/FatDbg.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FatLib/FatFile.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FatLib/FatFileLFN.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FatLib/FatFilePrint.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FatLib/FatFileSFN.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FatLib/FatFormatter.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FatLib/FatName.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FatLib/FatPartition.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FatLib/FatVolume.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FreeStack.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FsLib/FsNew.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FsLib/FsFile.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/FsLib/FsVolume.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/MinimumSerial.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/SdCard/PioSdio/PioSdioCard.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/SdCard/SdCardInfo.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/SdCard/SdSpiCard/SdSpiCard.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/SdCard/SdSpiCard/SpiDriver/SdSpiChipSelect.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/SdCard/SdSpiCard/SpiDriver/SdSpiDue.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/SdCard/SdSpiCard/SpiDriver/SdSpiSTM32Core.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/SdCard/SdSpiCard/SpiDriver/SdSpiTeensy3.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/common/FmtNumber.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/SdCard/TeensySdio/TeensySdio.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/common/FsCache.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/common/FsDateTime.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/common/FsName.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/common/FsStructs.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/common/FsUtf.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/common/PrintBasic.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/common/upcase.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/iostream/StdioStream.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/iostream/StreamBaseClass.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/iostream/istream.cpp.o' from cache
+Retrieved `.pio/build/default/lib6b4/SdFat/iostream/ostream.cpp.o' from cache
+Retrieved `.pio/build/default/lib684/SDCardManager/SDCardManager.cpp.o' from cache
+Retrieved `.pio/build/default/lib684/SDCardManager/SdmmcBlockDevice.cpp.o' from cache
+Retrieved `.pio/build/default/libfff/UsbMassStorage/UsbMassStorage.cpp.o' from cache
+Retrieved `.pio/build/default/lib8ea/XteinkDetect/XteinkDetect.cpp.o' from cache
+Retrieved `.pio/build/default/lib59d/PowerManager/PowerManager.cpp.o' from cache
+Retrieved `.pio/build/default/libfd4/MemoryManager/MemoryManager.cpp.o' from cache
+Retrieved `.pio/build/default/lib5ef/FrontlightManager/FrontlightManager.cpp.o' from cache
+Retrieved `.pio/build/default/lib520/Rtc/Rtc.cpp.o' from cache
+Retrieved `.pio/build/default/libdf3/Imu/Imu.cpp.o' from cache
+Retrieved `.pio/build/default/lib4fd/Network/NetworkEvents.cpp.o' from cache
+Retrieved `.pio/build/default/lib4fd/Network/NetworkInterface.cpp.o' from cache
+Retrieved `.pio/build/default/lib4fd/Network/NetworkClient.cpp.o' from cache
+Retrieved `.pio/build/default/lib4fd/Network/NetworkManager.cpp.o' from cache
+Retrieved `.pio/build/default/lib4fd/Network/NetworkServer.cpp.o' from cache
+Retrieved `.pio/build/default/lib4fd/Network/NetworkUdp.cpp.o' from cache
+Retrieved `.pio/build/default/lib9ae/WiFi/AP.cpp.o' from cache
+Retrieved `.pio/build/default/lib9ae/WiFi/STA.cpp.o' from cache
+Retrieved `.pio/build/default/lib9ae/WiFi/WiFi.cpp.o' from cache
+Retrieved `.pio/build/default/lib9ae/WiFi/WiFiAP.cpp.o' from cache
+Retrieved `.pio/build/default/lib9ae/WiFi/WiFiGeneric.cpp.o' from cache
+Retrieved `.pio/build/default/lib9ae/WiFi/WiFiMulti.cpp.o' from cache
+Retrieved `.pio/build/default/lib9ae/WiFi/WiFiSTA.cpp.o' from cache
+Retrieved `.pio/build/default/lib9ae/WiFi/WiFiScan.cpp.o' from cache
+Retrieved `.pio/build/default/lib665/PNGdec/PNGdec.cpp.o' from cache
+Retrieved `.pio/build/default/lib665/PNGdec/adler32.c.o' from cache
+Retrieved `.pio/build/default/lib665/PNGdec/crc32.c.o' from cache
+Retrieved `.pio/build/default/lib665/PNGdec/infback.c.o' from cache
+Retrieved `.pio/build/default/lib665/PNGdec/inffast.c.o' from cache
+Retrieved `.pio/build/default/lib665/PNGdec/inflate.c.o' from cache
+Retrieved `.pio/build/default/lib665/PNGdec/inftrees.c.o' from cache
+Retrieved `.pio/build/default/lib665/PNGdec/s3_simd_rgb565.S.o' from cache
+Retrieved `.pio/build/default/lib665/PNGdec/zutil.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/bio.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/conf.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/crl.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/dtls.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/keys.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/dtls13.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/internal.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/pk.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ocsp.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/quic.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/sniffer.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ssl.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ssl_asn1.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ssl_bn.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ssl_certman.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ssl_crypto.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ssl_load.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ssl_misc.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ssl_p7p12.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/ssl_sess.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/tls.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/tls13.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/wolfio.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/x509_str.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/src/x509.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/aes.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/arc4.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/asm.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/asn.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/async.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/bio.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/blake2s.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/camellia.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/chacha.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/blake2b.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/chacha20_poly1305.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/cmac.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/coding.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/compress.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/cpuid.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/cryptocb.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/curve25519.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/curve448.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/des3.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/dh.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/dilithium.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/dsa.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ecc.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ecc_fp.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/eccsi.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ed25519.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ed448.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/error.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/evp.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ext_kyber.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ext_lms.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ext_xmss.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/falcon.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/fe_448.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/fe_low_mem.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/fe_operations.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/fips.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/fips_test.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ge_448.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ge_low_mem.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ge_operations.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/hash.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/hmac.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/hpke.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/integer.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/kdf.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/logging.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/md2.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/md4.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/memory.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/md5.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/misc.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/pkcs12.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/pkcs7.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/poly1305.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/port/Espressif/esp32_aes.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/port/Espressif/esp32_mp.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/port/Espressif/esp32_sha.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/port/Espressif/esp32_util.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/port/Espressif/esp_sdk_mem_lib.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/port/Espressif/esp_sdk_time_lib.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/port/Espressif/esp_sdk_wifi_lib.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/port/atmel/atmel.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/pwdbased.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/random.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/rc2.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/ripemd.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/rsa.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sakke.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/selftest.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sha.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sha256.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sha3.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sha512.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/signature.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/siphash.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sm2.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sm3.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sm4.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_arm32.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_arm64.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_armthumb.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_c32.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_c64.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_cortexm.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_dsp32.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_int.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_sm2_arm32.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_sm2_arm64.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_sm2_c32.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_sm2_armthumb.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_sm2_c64.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_sm2_cortexm.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_sm2_x86_64.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sp_x86_64.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/sphincs.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/srp.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_dsp.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_encrypt.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_kyber.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/tfm.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_kyber_poly.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_lms.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_lms_impl.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_pkcs11.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_port.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_xmss.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wc_xmss_impl.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wolfcrypt_first.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wolfcrypt_last.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wolfevent.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfcrypt/src/wolfmath.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfssl/bio.c.o' from cache
+Retrieved `.pio/build/default/libaec/Arduino-wolfSSL/wolfssl/evp.c.o' from cache
+Retrieved `.pio/build/default/lib42b/SecureNet/SecureClient.cpp.o' from cache
+Retrieved `.pio/build/default/lib386/JsonSax/StreamingJsonParser.cpp.o' from cache
+Retrieved `.pio/build/default/liba6f/expat/xmlparse.c.o' from cache
+Retrieved `.pio/build/default/liba6f/expat/xmlrole.c.o' from cache
+Retrieved `.pio/build/default/liba6f/expat/xmltok.c.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/Opds2Parser.cpp.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/OpdsAuthDoc.cpp.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/OpdsClient.cpp.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/OpdsFeedParser.cpp.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/OpdsImplicitAuth.cpp.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/OpdsParser.cpp.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/OpdsPublicationDoc.cpp.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/OpdsLoginForm.cpp.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/OpdsSearchTemplate.cpp.o' from cache
+Retrieved `.pio/build/default/lib0c8/Opds/OpenSearchDescParser.cpp.o' from cache
+Retrieved `.pio/build/default/libb63/CatalogList/JsonListParser.cpp.o' from cache
+Retrieved `.pio/build/default/libb63/CatalogList/XmlListParser.cpp.o' from cache
+Retrieved `.pio/build/default/lib817/ContentProtection/LcpLicense.cpp.o' from cache
+Retrieved `.pio/build/default/lib817/ContentProtection/ProtectedBook.cpp.o' from cache
+Retrieved `.pio/build/default/lib817/ContentProtection/Zip.cpp.o' from cache
+Retrieved `.pio/build/default/lib817/ContentProtection/vendor/miniz_impl.c.o' from cache
+Retrieved `.pio/build/default/lib0f7/Utf8/Utf8.cpp.o' from cache
+Retrieved `.pio/build/default/libe8b/uzlib/tinflate.c.o' from cache
+Retrieved `.pio/build/default/lib817/ContentProtection/WolfsslCrypto.cpp.o' from cache
+Retrieved `.pio/build/default/lib314/InflateReader/InflateReader.cpp.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/FontAlloc.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/FtFont.cpp.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/Gpos.cpp.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/Gsub.cpp.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/TtfFont.cpp.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_autofit.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_cff.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_ftbase.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_ftbitmap.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_ftdebug.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_ftglyph.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_ftgzip.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_ftinit.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_ftmm.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_ftsystem.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_psaux.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_pshinter.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_psnames.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_raster.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_sfnt.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_smooth.c.o' from cache
+Retrieved `.pio/build/default/lib060/FreeInkFont/freetype/ft_truetype.c.o' from cache
+Retrieved `.pio/build/default/libe3a/FS/FS.cpp.o' from cache
+Retrieved `.pio/build/default/libe3a/FS/vfs_api.cpp.o' from cache
+Retrieved `.pio/build/default/lib10a/hal/HalClock.cpp.o' from cache
+Retrieved `.pio/build/default/lib10a/hal/HalDisplay.cpp.o' from cache
+Retrieved `.pio/build/default/lib10a/hal/HalFrontlight.cpp.o' from cache
+Retrieved `.pio/build/default/lib10a/hal/HalMemory.cpp.o' from cache
+Retrieved `.pio/build/default/lib10a/hal/HalGPIO.cpp.o' from cache
+Retrieved `.pio/build/default/lib10a/hal/HalPowerManager.cpp.o' from cache
+Retrieved `.pio/build/default/lib10a/hal/HalStorage.cpp.o' from cache
+Retrieved `.pio/build/default/lib10a/hal/HalTiltSensor.cpp.o' from cache
+Retrieved `.pio/build/default/lib10a/hal/HalSystem.cpp.o' from cache
+Retrieved `.pio/build/default/libdc3/Memory/BuildScratch.cpp.o' from cache
+Retrieved `.pio/build/default/lib98f/EpdFont/EpdFont.cpp.o' from cache
+Retrieved `.pio/build/default/lib98f/EpdFont/EpdFontFamily.cpp.o' from cache
+Retrieved `.pio/build/default/lib98f/EpdFont/FontDecompressor.cpp.o' from cache
+Retrieved `.pio/build/default/lib98f/EpdFont/SdCardFont.cpp.o' from cache
+Retrieved `.pio/build/default/lib98f/EpdFont/SdCardFontManager.cpp.o' from cache
+Retrieved `.pio/build/default/lib98f/EpdFont/SdCardFontRegistry.cpp.o' from cache
+Retrieved `.pio/build/default/lib98f/EpdFont/TtfEpdFont.cpp.o' from cache
+Retrieved `.pio/build/default/libe66/MiniBidi/BidiUtils.cpp.o' from cache
+Retrieved `.pio/build/default/libe66/MiniBidi/minibidi.c.o' from cache
+Retrieved `.pio/build/default/lib328/GfxRenderer/Bitmap.cpp.o' from cache
+Retrieved `.pio/build/default/lib328/GfxRenderer/BitmapHelpers.cpp.o' from cache
+Retrieved `.pio/build/default/lib328/GfxRenderer/FontCacheManager.cpp.o' from cache
+Retrieved `.pio/build/default/lib328/GfxRenderer/GfxRenderer.cpp.o' from cache
+Retrieved `.pio/build/default/lib483/FreeInkUI/FreeInkUI.cpp.o' from cache
+Retrieved `.pio/build/default/lib0f1/QRCode/qrcode.c.o' from cache
+Retrieved `.pio/build/default/lib628/JPEGDEC/JPEGDEC.cpp.o' from cache
+Retrieved `.pio/build/default/lib628/JPEGDEC/s3_simd_420.S.o' from cache
+Retrieved `.pio/build/default/lib628/JPEGDEC/s3_simd_444.S.o' from cache
+Retrieved `.pio/build/default/lib628/JPEGDEC/s3_simd_dequant.S.o' from cache
+Retrieved `.pio/build/default/lib23e/AnimatedGIF/AnimatedGIF.cpp.o' from cache
+Retrieved `.pio/build/default/lib089/Ethernet/ETH.cpp.o' from cache
+Retrieved `.pio/build/default/lib9f9/NetworkClientSecure/NetworkClientSecure.cpp.o' from cache
+Retrieved `.pio/build/default/lib9f9/NetworkClientSecure/ssl_client.cpp.o' from cache
+Retrieved `.pio/build/default/lib384/WebSockets/SocketIOclient.cpp.o' from cache
+Retrieved `.pio/build/default/lib384/WebSockets/WebSockets.cpp.o' from cache
+Retrieved `.pio/build/default/lib384/WebSockets/WebSocketsServer.cpp.o' from cache
+Retrieved `.pio/build/default/lib384/WebSockets/libb64/cdecode.c.o' from cache
+Retrieved `.pio/build/default/lib384/WebSockets/libb64/cencode.c.o' from cache
+Retrieved `.pio/build/default/lib384/WebSockets/libsha1/libsha1.c.o' from cache
+Retrieved `.pio/build/default/lib384/WebSockets/WebSocketsClient.cpp.o' from cache
+Retrieved `.pio/build/default/lib154/Serialization/ObfuscationUtils.cpp.o' from cache
+Retrieved `.pio/build/default/lib154/Serialization/PersistableStore.cpp.o' from cache
+Compiling .pio/build/default/lib57d/I18n/I18n.cpp.o
+Compiling .pio/build/default/lib57d/I18n/I18nStrings.cpp.o
+Retrieved `.pio/build/default/lib4fb/BlePageTurner/NoRadio.cpp.o' from cache
+Retrieved `.pio/build/default/lib4fb/BlePageTurner/Runtime.cpp.o' from cache
+Retrieved `.pio/build/default/lib4fb/BlePageTurner/SdkRadio.cpp.o' from cache
+Retrieved `.pio/build/default/libef5/FsHelpers/FsHelpers.cpp.o' from cache
+Retrieved `.pio/build/default/libc88/miniz/InflateStream.cpp.o' from cache
+Retrieved `.pio/build/default/libc88/miniz/miniz_impl.c.o' from cache
+Retrieved `.pio/build/default/lib0f7/ZipFile/ZipFile.cpp.o' from cache
+Retrieved `.pio/build/default/lib6db/GifToBmpConverter/GifToBmpConverter.cpp.o' from cache
+Retrieved `.pio/build/default/libfbe/JpegToBmpConverter/JpegToBmpConverter.cpp.o' from cache
+Retrieved `.pio/build/default/lib118/PngToBmpConverter/PngToBmpConverter.cpp.o' from cache
+Retrieved `.pio/build/default/lib10b/Txt/Txt.cpp.o' from cache
+Retrieved `.pio/build/default/lib10b/Txt/TxtToHtml.cpp.o' from cache
+Retrieved `.pio/build/default/lib7cd/DeviceSecret/DeviceSecret.cpp.o' from cache
+Retrieved `.pio/build/default/lib1f1/TrustedTime/TrustedTime.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/BookKey.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/ContentProtection.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/BookMetadataCache.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/CjkBreaks.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/Page.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/ParsedText.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/Section.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/WordStore.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/blocks/ImageBlock.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/blocks/TextBlock.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/converters/GifToFramebufferConverter.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/converters/ImageDecoderFactory.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/converters/ImageDimsProbe.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/converters/ImageToFramebufferDecoder.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/converters/JpegToFramebufferConverter.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/converters/PngToFramebufferConverter.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/css/CssParser.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/htmlEntities.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/hyphenation/HyphenationCommon.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/hyphenation/Hyphenator.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/hyphenation/LanguageRegistry.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/hyphenation/LiangHyphenation.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/parsers/ContainerParser.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/parsers/ContentOpfParser.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/parsers/TocNavParser.cpp.o' from cache
+Retrieved `.pio/build/default/libae0/Epub/Epub/parsers/TocNcxParser.cpp.o' from cache
+Retrieved `.pio/build/default/libcd0/Xtc/Xtc.cpp.o' from cache
+Retrieved `.pio/build/default/libcd0/Xtc/Xtc/XtcParser.cpp.o' from cache
+Retrieved `.pio/build/default/lib377/LibraryIndex/LibraryBuilder.cpp.o' from cache
+Retrieved `.pio/build/default/lib377/LibraryIndex/LibraryFormat.cpp.o' from cache
+Retrieved `.pio/build/default/lib377/LibraryIndex/LibraryIndexFile.cpp.o' from cache
+Retrieved `.pio/build/default/lib377/LibraryIndex/LibraryText.cpp.o' from cache
+Retrieved `.pio/build/default/lib0ad/ESPmDNS/ESPmDNS.cpp.o' from cache
+Retrieved `.pio/build/default/lib75c/AsyncUDP/AsyncUDP.cpp.o' from cache
+Retrieved `.pio/build/default/lib503/DNSServer/DNSServer.cpp.o' from cache
+Retrieved `.pio/build/default/libd75/HttpHeader/HttpHeader.cpp.o' from cache
+Retrieved `.pio/build/default/lib8df/KOReaderSync/ChapterXPathResolver.cpp.o' from cache
+Retrieved `.pio/build/default/lib8df/KOReaderSync/KOReaderCredentialStore.cpp.o' from cache
+Retrieved `.pio/build/default/lib8df/KOReaderSync/KOReaderDocumentId.cpp.o' from cache
+Retrieved `.pio/build/default/lib8df/KOReaderSync/KOReaderSyncClient.cpp.o' from cache
+Retrieved `.pio/build/default/lib8df/KOReaderSync/ProgressComparison.cpp.o' from cache
+Retrieved `.pio/build/default/lib8df/KOReaderSync/ProgressMapper.cpp.o' from cache
+Retrieved `.pio/build/default/lib282/JsonParser/ReleaseJsonParser.cpp.o' from cache
+Retrieved `.pio/build/default/libc69/Hash/PBKDF2_HMACBuilder.cpp.o' from cache
+Retrieved `.pio/build/default/libc69/Hash/SHA1Builder.cpp.o' from cache
+Retrieved `.pio/build/default/libc69/Hash/SHA2Builder.cpp.o' from cache
+Retrieved `.pio/build/default/libc69/Hash/SHA3Builder.cpp.o' from cache
+Retrieved `.pio/build/default/lib3f2/WebServer/Parsing.cpp.o' from cache
+Retrieved `.pio/build/default/lib3f2/WebServer/WebServer.cpp.o' from cache
+Retrieved `.pio/build/default/lib3f2/WebServer/detail/mimetable.cpp.o' from cache
+Retrieved `.pio/build/default/lib3f2/WebServer/middleware/AuthenticationMiddleware.cpp.o' from cache
+Retrieved `.pio/build/default/lib3f2/WebServer/middleware/CorsMiddleware.cpp.o' from cache
+Retrieved `.pio/build/default/lib3f2/WebServer/middleware/MiddlewareChain.cpp.o' from cache
+Retrieved `.pio/build/default/lib3f2/WebServer/middleware/LoggingMiddleware.cpp.o' from cache
+Retrieved `.pio/build/default/src/ClippingStore.cpp.o' from cache
+Compiling .pio/build/default/src/CrossPointSettings.cpp.o
+Retrieved `.pio/build/default/src/CrossPointState.cpp.o' from cache
+Retrieved `.pio/build/default/src/FontInstaller.cpp.o' from cache
+Retrieved `.pio/build/default/src/LcpPassphraseStore.cpp.o' from cache
+Retrieved `.pio/build/default/src/MappedInputManager.cpp.o' from cache
+Compiling .pio/build/default/src/OpdsServerStore.cpp.o
+Retrieved `.pio/build/default/src/OpdsTokenStore.cpp.o' from cache
+Retrieved `.pio/build/default/src/ReaderFontSizes.cpp.o' from cache
+Retrieved `.pio/build/default/src/RecentBooksStore.cpp.o' from cache
+Retrieved `.pio/build/default/src/SdCardFontSystem.cpp.o' from cache
+Compiling .pio/build/default/src/SettingsList.cpp.o
+Retrieved `.pio/build/default/src/WifiCredentialStore.cpp.o' from cache
+Compiling .pio/build/default/src/activities/Activity.cpp.o
+Compiling .pio/build/default/src/activities/ActivityManager.cpp.o
+Compiling .pio/build/default/src/activities/UiListActivity.cpp.o
+Compiling .pio/build/default/src/activities/UiTabListActivity.cpp.o
+Compiling .pio/build/default/src/activities/CatalogActivity.cpp.o
+Compiling .pio/build/default/src/activities/boot_sleep/BootActivity.cpp.o
+Compiling .pio/build/default/src/activities/boot_sleep/SleepActivity.cpp.o
+Compiling .pio/build/default/src/activities/browser/OpdsBookBrowserActivity.cpp.o
+Compiling .pio/build/default/src/activities/home/CrashActivity.cpp.o
+Compiling .pio/build/default/src/activities/home/FileBrowserActivity.cpp.o
+Compiling .pio/build/default/src/activities/home/HomeActivity.cpp.o
+Compiling .pio/build/default/src/activities/library/LibraryListActivity.cpp.o
+Compiling .pio/build/default/src/activities/network/CalibreConnectActivity.cpp.o
+Compiling .pio/build/default/src/activities/network/CrossPointWebServerActivity.cpp.o
+Compiling .pio/build/default/src/activities/network/NetworkModeSelectionActivity.cpp.o
+Compiling .pio/build/default/src/activities/network/UsbDriveActivity.cpp.o
+Compiling .pio/build/default/src/activities/network/WifiSelectionActivity.cpp.o
+Compiling .pio/build/default/src/activities/plugins/PluginCatalogActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/ClipSelectionActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/DictionaryDefinitionActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/DictionaryWordSelectActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/EndOfBookOptions.cpp.o
+Compiling .pio/build/default/src/activities/reader/EpubReaderActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/EpubReaderBookmarksActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/EpubReaderChapterSelectionActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/EpubReaderClippingListActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/EpubReaderFootnoteSelectActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/EpubReaderMenuActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/EpubReaderPercentSelectionActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/KOReaderSyncActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/QrDisplayActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/ReaderActivity.cpp.o
+Retrieved `.pio/build/default/src/activities/reader/ReaderSession.cpp.o' from cache
+Compiling .pio/build/default/src/activities/reader/ReaderToolbarUi.cpp.o
+Compiling .pio/build/default/src/activities/reader/XtcReaderActivity.cpp.o
+Compiling .pio/build/default/src/activities/reader/XtcReaderChapterSelectionActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/AboutActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/BleSettingsActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/ButtonRemapActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/ClearCacheActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/ClockSettingsActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/ClockSyncActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/FontDownloadActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/HomeButtonSettingsActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/KOReaderAuthActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/KOReaderSettingsActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/KeyboardLayoutsActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/LanguageSelectActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/OpdsServerListActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/OpdsSettingsActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/OtaUpdateActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/PluginHubInstallActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/SdFirmwareUpdateActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/SettingsActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/SettingsListActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/StatusBarSettingsActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/TextSettingsActivity.cpp.o
+Compiling .pio/build/default/src/activities/settings/TextSettingsPreview.cpp.o
+Compiling .pio/build/default/src/activities/settings/TimezonePickerActivity.cpp.o
+Compiling .pio/build/default/src/activities/util/BmpViewerActivity.cpp.o
+Compiling .pio/build/default/src/activities/util/ConfirmationActivity.cpp.o
+Compiling .pio/build/default/src/activities/util/DetailsActivity.cpp.o
+Compiling .pio/build/default/src/activities/util/FrontlightPanelActivity.cpp.o
+Compiling .pio/build/default/src/activities/util/FullScreenMessageActivity.cpp.o
+Compiling .pio/build/default/src/activities/util/IntervalSelectionActivity.cpp.o
+Compiling .pio/build/default/src/activities/util/KeyboardEntryActivity.cpp.o
+Compiling .pio/build/default/src/activities/util/KeyboardLayoutSet.cpp.o
+Retrieved `.pio/build/default/src/clippings/ClippingSync.cpp.o' from cache
+Retrieved `.pio/build/default/src/clippings/ClippingsManager.cpp.o' from cache
+Compiling .pio/build/default/src/components/CatalogScreens.cpp.o
+Compiling .pio/build/default/src/components/CoverGridHomeUi.cpp.o
+Retrieved `.pio/build/default/src/components/HomeCoverCache.cpp.o' from cache
+Retrieved `.pio/build/default/src/components/UITheme.cpp.o' from cache
+Compiling .pio/build/default/src/components/UiAppHost.cpp.o
+Compiling .pio/build/default/src/components/YbxHomeUi.cpp.o
+Compiling .pio/build/default/src/components/themes/BaseTheme.cpp.o
+Retrieved `.pio/build/default/src/components/themes/lyra/Lyra3CoversTheme.cpp.o' from cache
+Compiling .pio/build/default/src/components/themes/lyra/LyraTheme.cpp.o
+Compiling .pio/build/default/src/components/themes/roundedraff/RoundedRaffTheme.cpp.o
+Compiling .pio/build/default/src/main.cpp.o
+Compiling .pio/build/default/src/network/CrossPointWebServer.cpp.o
+Retrieved `.pio/build/default/src/network/FirmwareBoardTag.cpp.o' from cache
+Retrieved `.pio/build/default/src/network/FirmwareFlasher.cpp.o' from cache
+Compiling .pio/build/default/src/network/HttpDownloader.cpp.o
+Compiling .pio/build/default/src/network/LcpDevice.cpp.o
+Compiling .pio/build/default/src/network/OpdsHttpTransport.cpp.o
+Retrieved `.pio/build/default/src/network/OtaBootSwitch.cpp.o' from cache
+Compiling .pio/build/default/src/network/OtaUpdater.cpp.o
+Compiling .pio/build/default/src/network/TlsPolicy.cpp.o
+Retrieved `.pio/build/default/src/network/WebDAVHandler.cpp.o' from cache
+Retrieved `.pio/build/default/src/platform/UsbSerialJtagHandoff.cpp.o' from cache
+Retrieved `.pio/build/default/src/platform/skip_efuse_blk_check.c.o' from cache
+Retrieved `.pio/build/default/src/util/BookCacheUtils.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/BookProgress.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/BookmarkFile.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/BookmarkUtil.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/ButtonNavigator.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/DictHtmlPages.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/DictZip.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/Dictionary.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/DictionaryRegistry.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/HtmlToPlainText.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/NextBookFinder.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/OpdsFilename.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/PluginEvents.cpp.o' from cache
+Compiling .pio/build/default/src/util/PluginHttp.cpp.o
+Retrieved `.pio/build/default/src/util/PluginLocations.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/QrUtils.cpp.o' from cache
+Compiling .pio/build/default/src/util/ScreenshotUtil.cpp.o
+Retrieved `.pio/build/default/src/util/StringUtils.cpp.o' from cache
+Retrieved `.pio/build/default/src/util/Timezones.cpp.o' from cache
+Compiling .pio/build/default/src/util/TlsFailureText.cpp.o
+Retrieved `.pio/build/default/src/util/UrlUtils.cpp.o' from cache
+Retrieved `.pio/build/default/bootloader.bin' from cache
+Retrieved `.pio/build/default/partitions.bin' from cache
+Retrieved `.pio/build/default/FrameworkArduino/ColorFormat.c.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/Esp.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/FirmwareMSC.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/FunctionalInterrupt.cpp.o' from cache
+src/network/TlsPolicy.cpp:17:29: error: 'bool tlspolicy::ensureClock()' should have been declared inside 'tlspolicy'
+   17 | bool tlspolicy::ensureClock() {
+      |                             ^
+Retrieved `.pio/build/default/FrameworkArduino/HEXBuilder.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/HWCDC.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/HardwareSerial.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/HashBuilder.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/IPAddress.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/MD5Builder.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/MacAddress.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/Print.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/Stream.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/StringUtils.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/StreamString.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/Tone.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/USB.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/USBCDC.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/USBMSC.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/WMath.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/WString.cpp.o' from cache
+Retrieved `.pio/build/default/FrameworkArduino/base64.cpp.o' from cache
+*** [.pio/build/default/src/network/TlsPolicy.cpp.o] Error 1
+========================= [FAILED] Took 471.80 seconds =========================
+
+Environment    Status    Duration
+-------------  --------  ------------
+default        FAILED    00:07:51.799
+==================== 1 failed, 0 succeeded in 00:07:51.799 ====================

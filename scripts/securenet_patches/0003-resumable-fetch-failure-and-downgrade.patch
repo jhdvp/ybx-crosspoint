@@ -1,0 +1,58 @@
+diff --git a/include/ResumableFetch.h b/include/ResumableFetch.h
+index 76bc6b8..ead826e 100644
+--- a/include/ResumableFetch.h
++++ b/include/ResumableFetch.h
+@@ -25,9 +25,10 @@ struct FetchOptions {
+   // Bytes the sink already holds from an earlier transfer; the first request
+   // asks for the rest.
+   size_t startOffset = 0;
+-  // Step followed https redirect targets down to http. For payloads that are
+-  // already content-encrypted, this skips a second TLS session and its record
+-  // buffer on low-heap boards; only the URL token loses transport security.
++  // Legacy opt-in: step followed https redirect targets down to http. Off by
++  // default so a redirect cannot silently drop transport security; enable only
++  // for transfers whose payload is already content-encrypted and where the
++  // caller accepts that the URL token crosses in clear text.
+   bool redirectToHttp = false;
+ };
+ 
+@@ -48,6 +49,12 @@ struct FetchResult {
+   bool complete = false;  // the full body arrived
+   bool stopped = false;   // the sink stopped the transfer (write/rewind returned false)
+   bool aborted = false;   // shouldAbort fired
++  // A followed redirect tried to step from https to plain http and was
++  // refused; status holds the 3xx that carried it.
++  bool insecureRedirect = false;
++  // Why the last https connect failed, when status is -1: a rejected
++  // certificate or host name is reported distinctly from a network failure.
++  SecureClient::ConnectFailure failure = SecureClient::ConnectFailure::None;
+ };
+ 
+ // scheme://host:port, lowercased, with the scheme's default port made explicit
+@@ -174,13 +181,24 @@ inline FetchResult fetchResumable(const std::string& startUrl, const FetchOption
+       result.aborted = true;
+       return result;
+     }
++    result.failure = http.connectFailure();
+     const int status = result.status;
+     if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+       const std::string location = http.getHeader("location");
+-      if (redirects++ >= kMaxRedirects || location.empty() || !SecureHttpClient::resolveUrl(url, location, url)) {
++      std::string next;
++      if (redirects++ >= kMaxRedirects || location.empty() ||
++          !SecureHttpClient::resolveUrl(url, location, next)) {
+         return result;
+       }
+-      if (options.redirectToHttp && url.rfind("https://", 0) == 0) url.replace(0, 8, "http://");
++      // A hop from https to http would silently drop transport security (and
++      // send the URL token in clear text). Only an explicit caller opt-in
++      // allows it; otherwise stop on the 3xx so the caller can report it.
++      if (!options.redirectToHttp && url.rfind("https://", 0) == 0 && next.rfind("http://", 0) == 0) {
++        result.insecureRedirect = true;
++        return result;
++      }
++      if (options.redirectToHttp && next.rfind("https://", 0) == 0) next.replace(0, 8, "http://");
++      url = next;
+       --attempt;  // a hop is not a transfer attempt
+       continue;
+     }

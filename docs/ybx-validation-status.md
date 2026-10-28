@@ -17,6 +17,11 @@ acceptance or waive the remaining release checks.
   Append repairs a bounded incomplete trailing event before writing another.
 - Sleep drains use a cooperative time budget; authentication and retry share
   the event deadline. Streamed downloads require successful file close.
+- HTTPS requests that carry the reader token or download payloads verify the
+  certificate chain and host name against a built-in CA bundle, refuse to start
+  before a trustworthy clock (one bounded SNTP attempt), and never follow an
+  https→http redirect or forward credentials to another origin. Delivered as a
+  hash-guarded patch of the pinned SDK; see [the fork notes](../YBX_FORK.md).
 
 ## Verification
 
@@ -36,6 +41,31 @@ not establish physical FAT/SD durability. Build logs, source patches and binary
 checksums were saved locally in `artifacts/ybx-sleep-recovery-20261028` in the
 parent YBX workspace; generated binaries and logs are not committed here.
 
+## TLS verification checks
+
+- Host suite: `TlsPolicyTest` 19/19 passed. It covers the clock-not-set gate
+  (including a sync that claims success without a valid time), origin
+  normalization (case, user info, default ports, IPv6), https→http redirect
+  refusal, and the same-origin decision that controls credential forwarding.
+  The full CTest run passed 917/917 cases.
+- Size: the linked `firmware.elf` grew from 5,562,939 to 5,573,587 bytes of
+  text (+10,648 B, about 10.4 KiB), 4,873 B of which is the PEM bundle; data
+  and bss are unchanged. Runtime heap for a verified connection (wolfSSL CA
+  parse and handshake buffers) is not measured here.
+- Device acceptance still required:
+  - YBX sign-in and catalog browse with a synced clock;
+  - cold boot with Wi-Fi off: catalog/OTA must show the clock message and not
+    connect;
+  - OTA check and install across the GitHub → release-assets redirect;
+  - a captive-portal or otherwise wrong certificate must show the certificate
+    error and abort the transfer;
+  - a user OPDS catalog outside the bundle must fail clearly rather than
+    downgrade;
+  - free-heap and largest-block measurements during a verified multi-MB
+    download, compared with the previous build.
+- Not verified on hardware: SNTP behavior after power loss, wolfSSL handshake
+  memory/time on X3/X4, and root rotation as the bundle ages.
+
 ## Outstanding
 
 - Four independent final reviews are incomplete. OpenCode Go correctness,
@@ -49,8 +79,9 @@ parent YBX workspace; generated binaries and logs are not committed here.
 - Native account statistics and achievements are planned, not implemented.
 - X4 Pro compiles, but still uses the upstream Home. YBX touch adaptation,
   USB branding and Pro release/OTA assets remain unfinished.
-- Inherited HTTPS certificate verification remains disabled. Transport/OTA
-  trust hardening is a separate release blocker.
+- KOReader sync and clippings sync still use `setInsecure()` with
+  user-supplied servers, as does the unwired SDK OPDS implicit-auth flow; those
+  paths are outside the token/download scope and are documented as exceptions.
 - No device flashing, hardware validation, release or PR is part of these checks.
 
 See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),

@@ -40,6 +40,7 @@
 #include "ProtectedPaths.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
+#include "TlsTransport.h"
 #include "WebDAVHandler.h"
 #include "WifiCredentialStore.h"
 #include "WifiPowerSaveGuard.h"
@@ -2392,14 +2393,22 @@ void CrossPointWebServer::handleFetch() {
     keepBrowserAlive();
     return false;  // never aborts; only feeds
   };
+  tlspolicy::clearFailure();
+  if (!tlspolicy::ensureClockFor(url)) {
+    if (file.isOpen()) file.close();
+    Storage.remove(part.c_str());
+    sendFetchResult(502, "{\"error\":\"tls clock\"}");
+    LOG_ERR("WEB", "Refusing download: certificate dates need a trustworthy clock");
+    return;
+  }
   const freeink::FetchResult result = freeink::fetchResumable(
       url, options,
       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
         http.setUserAgent("YBX");
-        // The SecureNet transport ships no CA bundle, so peer verification always
-        // fails (wolfSSL -188); skip it like HttpDownloader does. Traffic stays
-        // TLS-encrypted, just unauthenticated — matching the prior library-lending flow.
-        http.setInsecure();
+        // Verified transport: the transport checks the peer chain and host name
+        // against the firmware CA bundle. A redirect to plain http is refused by
+        // fetchResumable itself.
+        tlspolicy::installTrust(http);
         // Some delivery servers assemble books on the fly and can stall mid-body
         // while packaging; the default 15s no-data timeout truncates those downloads.
         http.setTimeout(60000);
@@ -2426,6 +2435,23 @@ void CrossPointWebServer::handleFetch() {
   // A bounded segment ended mid-body: the browser requests the next one, so
   // the .part stays and nothing is installed yet.
   const bool midSegment = segmentBoundary && !complete && ok2xx;
+
+  const tlspolicy::Failure tlsFailure = tlspolicy::failureFromConnect(result.failure);
+  if (result.insecureRedirect || tlspolicy::isTrustFailure(tlsFailure)) {
+    Storage.remove(part.c_str());
+    const tlspolicy::Failure failure =
+        result.insecureRedirect ? tlspolicy::Failure::InsecureRedirect : tlsFailure;
+    tlspolicy::recordFailure(failure);
+    const char* error = failure == tlspolicy::Failure::Clock        ? "tls clock"
+                        : failure == tlspolicy::Failure::Hostname   ? "tls hostname"
+                        : failure == tlspolicy::Failure::InsecureRedirect ? "insecure redirect"
+                                                                         : "tls certificate";
+    char msg[96];
+    snprintf(msg, sizeof(msg), "{\"error\":\"%s\"}", error);
+    LOG_ERR("WEB", "Refusing download: %s", error);
+    sendFetchResult(502, msg);
+    return;
+  }
 
   if (!complete && ok2xx && !midSegment) {
     Storage.remove(part.c_str());
