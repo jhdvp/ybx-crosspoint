@@ -177,9 +177,11 @@ token, and that a hand-configured server is never overwritten.
 
 The broader native-client scope is tracked in [the parity matrix](docs/ybx-client-parity.md)
 and [the statistics adaptation plan](docs/ybx-reading-stats-plan.md). These are
-implementation plans. The first native account-summary slice is described in
-[Native statistics](docs/ybx-native-statistics.md); achievements and local history
-synchronization are still pending.
+implementation plans. The YBX account summary and remote achievements are
+implemented in [Native statistics](docs/ybx-native-statistics.md); local history
+statistics are also available. The independent Settings / Updates / About UI
+parity lane is documented in [settings parity](docs/ybx-settings-parity.md).
+Physical acceptance is still pending.
 
 Current implementation checks and open release blockers are recorded in
 [the validation status](docs/ybx-validation-status.md).

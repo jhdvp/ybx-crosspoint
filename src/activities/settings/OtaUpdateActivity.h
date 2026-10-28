@@ -2,13 +2,17 @@
 
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
+#include "components/UiAppHost.h"
 #include "network/OtaUpdater.h"
 
-class OtaUpdateActivity : public Activity {
+class OtaUpdateActivity : public Activity, private UiAppHost {
   enum State {
     WIFI_SELECTION,
     CHECKING_FOR_UPDATE,
     WAITING_CONFIRMATION,
+    // The whole app slot is being erased by esp_ota_begin(); no bytes of the
+    // image have been requested yet.
+    UPDATE_PREPARING,
     UPDATE_IN_PROGRESS,
     NO_UPDATE,
     FAILED,
@@ -20,6 +24,16 @@ class OtaUpdateActivity : public Activity {
   static constexpr unsigned int UNINITIALIZED_PERCENTAGE = 111;
 
   State state = WIFI_SELECTION;
+  // Which step produced FAILED, so the Retry hint re-runs that step instead of
+  // always going back to the release lookup.
+  enum FailureStage {
+    FAILURE_CHECK,
+    FAILURE_INSTALL,
+  };
+  FailureStage failureStage = FAILURE_CHECK;
+  // False for failures that repeat identically (a wrong-device image): the
+  // screen then offers Back only.
+  bool allowRetry = false;
   unsigned int lastUpdaterPercentage = UNINITIALIZED_PERCENTAGE;
   OtaUpdater updater;
   // Optional detail line shown under the generic "Update failed" heading.
@@ -31,15 +45,27 @@ class OtaUpdateActivity : public Activity {
   OptionPopup confirmPopup;
 
   void onWifiSelectionComplete(bool success);
+  void runUpdateCheck();
   void runUpdateInstall();
+  void enterFailed(const char* detail, bool canRetry);
+  void retryFailedStep();
+
+  // The failure screen's labeled Retry/Back controls. They are drawn on every
+  // profile (touch boards draw no hint bar) and route to the same actions as
+  // the physical Confirm/Back keys.
+  static void failedScreen(UiScreen& screen, void* user);
+  static void onRetryEvent(const freeink::ui::ActionEvent& event, void* user);
+  static void onBackEvent(const freeink::ui::ActionEvent& event, void* user);
 
  public:
   explicit OtaUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("OtaUpdate", renderer, mappedInput), updater() {}
+      : Activity("OtaUpdate", renderer, mappedInput), UiAppHost(renderer), updater() {}
   void onEnter() override;
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
-  bool preventAutoSleep() override { return state == CHECKING_FOR_UPDATE || state == UPDATE_IN_PROGRESS; }
+  bool preventAutoSleep() override {
+    return state == CHECKING_FOR_UPDATE || state == UPDATE_PREPARING || state == UPDATE_IN_PROGRESS;
+  }
   bool skipLoopDelay() override { return true; }  // Prevent power-saving mode
 };

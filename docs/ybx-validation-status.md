@@ -390,3 +390,7 @@ PluginHttp and the new `src/util/PluginShelf.h` policy header:
 ## TLS review integration (29 October 2026)
 
 TLS hardening merged as a patch series into the native YBX/OTA code. Cross-origin credential stripping and OTA TLS errors remain separate from generic network and storage faults. Device acceptance and the ESP32-S3 TLS build remain distinct gates.
+
+## Settings / Updates / About review merge — 29 October 2026
+
+The OTA screen now distinguishes preparation from download, adds labeled touch-only Retry/Back controls, and preserves TLS-specific and board/image failure messages. Host and firmware builds are checked separately from hardware acceptance. See [settings parity](ybx-settings-parity.md).
