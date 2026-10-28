@@ -12,9 +12,13 @@ Each patch is two files:
 
 The script verifies every touched file against reviewed SHA-256 digests before
 touching anything, fails the build on unknown SDK content, and is idempotent so
-incremental builds do not rewrite sources. It modifies the submodule working
-tree, so `git status` reports `freeink-sdk` as modified while a patch is
-applied; do not commit inside the submodule.
+incremental builds do not rewrite sources. Check and apply run under an
+advisory `flock` on the submodule's `.git` handle, so two concurrent builds of
+the same worktree cannot apply the patch twice at once, and a tree left only
+partially patched by an interrupted apply is restored to the reviewed upstream
+bytes and re-applied instead of failing every later build. It modifies the
+submodule working tree, so `git status` reports `freeink-sdk` as modified while
+a patch is applied; do not commit inside the submodule.
 
 ## Applied patches
 
@@ -35,13 +39,21 @@ out, and a cancelled request could not stop it at all.
 
 What the patch does:
 
-- adds `DeadlineDns` — lwIP's asynchronous IPv4 resolver behind a fixed pool of
+- adds `DeadlineDns` — lwIP's asynchronous resolver behind a fixed pool of
   four static slots. lwIP may answer long after the waiter left; the slot is
   then recycled by the late callback itself, so no callback points at caller
   state, no task is created, and retried lookups cannot grow memory;
+- resolves dual-stack: IPv4 first, and when the A query comes back empty and
+  an interface holds a valid global-scope IPv6, the host is re-queried as IPv6
+  under the same deadline — AAAA-only hosts keep resolving, as they did
+  through the old blocking path. Dotted-quad and literal IPv6 addresses need
+  no DNS. While all four slots hold abandoned queries a new lookup waits for
+  one to recycle (up to the deadline) instead of failing instantly, so a
+  cached host still resolves during a burst of cancelled lookups; the result
+  is reported as `Busy` if the wait used the whole deadline;
 - resolves once per connect in `SecureClient` and connects the socket to the
-  returned `IPAddress`; the hostname still drives SNI, the Host header and
-  logging;
+  returned `IPAddress` (v4 or v6); the hostname still drives SNI, the Host
+  header and logging;
 - shares one absolute `millis()` deadline across DNS, the TCP connect, the TLS
   handshake and the TLS 1.2 retry, and polls the abort callback while DNS is
   pending;
@@ -49,8 +61,12 @@ What the patch does:
 
 Limitations:
 
-- resolution is IPv4-only (the previous blocking path could prefer IPv6 when
-  the stack enabled it);
+- the IPv6 retry only follows an empty A answer; a lookup that times out is
+  not re-asked for AAAA within the same request;
+- the request timeout now covers both handshake attempts, so a TLS-1.2-only
+  server on a slow network gets one budget split across a failed TLS 1.3
+  handshake and the retry, and the retry is skipped when the first handshake
+  used the deadline;
 - the device's steady-state socket timeouts are restored after connect, so a
   slow lookup does not shorten later reads;
 - DNS, TCP and TLS now share the request timeout, but the sleep drain budget
@@ -63,10 +79,16 @@ Host tests (in the SDK test harness; run after a build or after
 sh freeink-sdk/libs/network/SecureNet/test/host/run.sh
 ```
 
-They cover deadline arithmetic across the `millis()` wraparound, literal-address
-parsing, a resolver cache hit, NXDOMAIN, a blackholed resolver stopping at the
-deadline, abort, a late answer after both timeout and abort, and slot
-exhaustion followed by recycling. They do not measure device latency.
+They cover deadline arithmetic across the `millis()` wraparound, literal IPv4
+and IPv6 parsing, a resolver cache hit, NXDOMAIN with and without a global
+IPv6 (the AAAA retry, its skip when IPv4 answers or the A query times out,
+and both-empty staying a failure), a blackholed resolver stopping at the
+deadline, abort, a late answer after both timeout and abort, slot exhaustion
+waiting to `Busy` and recycling, and a two-thread block where a second thread
+plays the lwIP thread completing lookups the first one abandoned, so the
+publish/abandon atomics run for real across threads (the block was also
+checked under `-fsanitize=thread` manually). They do not measure device
+latency.
 
 ## Removing or restoring
 

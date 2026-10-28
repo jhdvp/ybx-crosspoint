@@ -40,12 +40,14 @@ parent YBX workspace; generated binaries and logs are not committed here.
 
 The SecureNet deadline patch described in
 [the SDK patch plan](ybx-sdk-patches.md) replaces the blocking
-`lwip_getaddrinfo()` connect with an asynchronous lookup bounded by the same
-deadline as the TCP connect, TLS handshake and TLS 1.2 retry.
+`lwip_getaddrinfo()` connect with an asynchronous dual-stack lookup bounded by
+the same deadline as the TCP connect, TLS handshake and TLS 1.2 retry.
 
 Host checks: `sh freeink-sdk/libs/network/SecureNet/test/host/run.sh` passes
-(scripted resolver: cache hit, NXDOMAIN, blackhole, abort, late answer after
-timeout/abort, slot exhaustion and recycling, `millis()` wraparound).
+(scripted resolver: cache hit, NXDOMAIN with and without the AAAA retry,
+blackhole, abort, late answer after timeout/abort, slot exhaustion waiting to
+`Busy` and recycling, a two-thread late-completion block, `millis()`
+wraparound; the cross-thread block was also run under `-fsanitize=thread`).
 Firmware build: `pio run -e default` passes.
 
 Hardware acceptance (owner, on X3/X4 and X4 Pro) — record wall-clock duration
@@ -54,14 +56,26 @@ against each case:
 
 - [ ] Wi-Fi up, DNS server unreachable: request fails within its timeout, the
       reader sleeps with the previous image, no watchdog reset.
-- [ ] Wi-Fi up, NXDOMAIN: fast failure, no multi-second stall.
+- [ ] Wi-Fi up, NXDOMAIN: fast failure, no multi-second stall, and no AAAA
+      query on an IPv4-only network.
+- [ ] AAAA-only host with a global IPv6 on the interface (IPv6-only test host
+      or tunnel broker): the connect succeeds; the log shows the A query
+      failing first, then the IPv6 answer.
 - [ ] TCP blackhole (port filtered): fails at the request timeout.
 - [ ] Slow TLS handshake (throttled or 1.2-only host): bounded by the same
       timeout; HTTPS hostname/SNI still works (e.g. YBX catalog opens).
+      Accepted consequence: one budget covers the TLS 1.3 attempt *and* the
+      TLS 1.2 retry; if the first handshake uses the deadline the log shows
+      "TLS 1.2 retry skipped" and the connect fails — confirm this is
+      acceptable for the owner's TLS-1.2-only servers.
 - [ ] Expired reader token: re-authorization still works after a failed
       request, and the retry shares the handler deadline.
 - [ ] Cancel path (back/navigation during a connect): returns promptly and the
       radio stops; a late DNS answer does not crash.
+- [ ] Cancel five connects in a row, then issue a normal request: the next
+      lookup waits for a slot (or succeeds once one recycles) instead of
+      failing instantly; "DNS busy" appears only if the whole deadline was
+      spent waiting.
 - [ ] Repeat 10 delivery attempts: heap before/after shows no growth per retry.
 
 Host tests cannot prove device timing; treat these as required before claiming
