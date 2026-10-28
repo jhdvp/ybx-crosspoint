@@ -10,6 +10,7 @@
 #include "components/controls/button.h"
 #include "components/media/book-card.h"
 #include "util/YbxHomeLayout.h"
+#include "util/YbxReadingSummary.h"
 
 // Local-only home. No service credentials, network jobs or second framebuffer.
 class YbxHomeUi final : public UiAppHost {
@@ -33,6 +34,7 @@ class YbxHomeUi final : public UiAppHost {
 
   GfxRenderer& renderer;
   HomeCoverCache covers;
+  ybx::ReadingSummary summary;
   const std::vector<RecentBook>* books = nullptr;
   std::array<std::string, ybxhome::MAX_BOOKS> coverPaths;
   std::array<int, ybxhome::MAX_BOOKS> thumbHeights{};

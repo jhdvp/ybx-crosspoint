@@ -610,6 +610,31 @@ TEST(ReleaseJsonParser, YbxAssetsDoNotSelectUpstreamOrAnotherBoard) {
   EXPECT_EQ(p.getFirmwareSize(), 300u);
 }
 
+TEST(ReleaseJsonParser, FactoryUsbImageIsNeverSelectedAsOtaAppImage) {
+  // A USB factory image is a merged blob (bootloader + partition table + app) and
+  // is not a bootable application image. It is published under its own name, and
+  // the OTA lookup must not pick it up even when it is the only .bin present.
+  const char* json = R"({"tag_name":"2.0.2","assets":[
+    {"name":"ybx-2.0.2-x3-x4-factory.bin","browser_download_url":"https://factory","size":400},
+    {"name":"ybx-2.0.2-x3-x4.bin","browser_download_url":"https://app","size":5500000}]})";
+  ReleaseJsonParser p;
+  p.setFirmwareAssetName("ybx-2.0.2-x3-x4.bin");
+  for (size_t i = 0; i < strlen(json); i++) p.feed(json + i, 1);
+  ASSERT_TRUE(p.foundFirmware());
+  EXPECT_STREQ(p.getFirmwareUrl(), "https://app");
+  EXPECT_EQ(p.getFirmwareSize(), 5500000u);
+}
+
+TEST(ReleaseJsonParser, FactoryOnlyReleaseReportsNoOtaImage) {
+  const char* json = R"({"tag_name":"2.0.2","assets":[
+    {"name":"ybx-2.0.2-x3-x4-factory.bin","browser_download_url":"https://factory","size":400}]})";
+  ReleaseJsonParser p;
+  p.setFirmwareAssetName("ybx-2.0.2-x3-x4.bin");
+  p.feed(json, strlen(json));
+  EXPECT_TRUE(p.foundTag());
+  EXPECT_FALSE(p.foundFirmware());
+}
+
 TEST(ReleaseJsonParser, LargeSize) {
   // 16MB firmware (maximum flash size)
   const char* json =

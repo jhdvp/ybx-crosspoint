@@ -48,8 +48,10 @@
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
+#include "util/ReaderSessionJournal.h"
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
+#include "util/YbxKosync.h"
 
 #if CROSSPOINT_VECTOR_FONTS
 // Rendering (incl. FreeType TTF rasterization) runs on the Arduino loop task.
@@ -368,11 +370,12 @@ static bool loadSleepFrameBuffer() {
 // subscribes (e.g. fetching a fresh /sleep.bmp so THIS sleep shows it — the
 // drain runs before goToSleep() renders the sleep screen). The connect path
 // has a join deadline and a cooperative drain budget, skipped on low battery.
-// Synchronous DNS may exceed the budget. A failed join or delivery just
-// sleeps with the previous image and the queued events retry on the next
-// drain (at-least-once). The caller's WiFi shutdown tears the radio down
-// either way. Deferrable events already queued (reader.exit) ride along in
-// the same drain.
+// DNS, TCP and the TLS handshake share the request's own timeout, but the
+// budget is still cooperative: WiFi stop and SD writes are outside it. A
+// failed join or delivery just sleeps with the previous image and the queued
+// events retry on the next drain (at-least-once). The caller's WiFi shutdown
+// tears the radio down either way. Deferrable events already queued
+// (reader.exit) ride along in the same drain.
 static void deliverSleepPluginEvents(const bool allowNetwork) {
   // Activity-owned state must be queued before sleep.enter and before this
   // same-sleep drain. The hook is idempotent with ordinary activity teardown.
@@ -691,6 +694,12 @@ void setup() {
   // Restore the monotonic clock floor before anything reads time() (event
   // timestamps, loan-expiry checks).
   trustedtime::init();
+  // A reading session interrupted by a crash or power loss was checkpointed on
+  // SD; queue it now with its original id, so one read is counted once.
+  readersession::recoverPending();
+  // YBX sync switch and history only; the pairing is reconciled when the sync
+  // settings open or the reader starts a sync, so boot reads no plugin files.
+  ybxkosync::begin();
   bleturner::begin(pageturner::host, SETTINGS.ble);
 
   // Brightness and warmth are always restored. A normal wake starts with the

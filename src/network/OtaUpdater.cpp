@@ -17,13 +17,18 @@
 
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
-
-namespace {
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/jhdvp/ybx-crosspoint/releases/latest";
-}  // namespace
+#include "OtaReleasePolicy.h"
+#include "TlsTransport.h"
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   LOG_DBG("OTA", "Checking for update (current: %s)", CROSSPOINT_VERSION);
+
+  // Rule: updates come from the YBX fork's release feed only, never upstream's.
+  // The URL lives in OtaReleasePolicy.h so the host test pins the same constant.
+  if (!ota_policy::releaseFeedAllowed(ota_policy::kReleaseFeedUrl)) {
+    LOG_ERR("OTA", "Release feed is not the YBX fork");
+    return INTERNAL_UPDATE_ERROR;
+  }
 
   // Stream the ~32KB release JSON straight into the parser as it arrives.
   // Buffering the whole body in a std::string would add a growing allocation
@@ -38,33 +43,40 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   }
   ReleaseJsonParser& releaseParser = *releaseParserPtr;
   releaseParser.setFirmwareAssetName("");
-  // Each board updates from ybx-<version>-<device>.bin. The combined
-  // C3 image uses x3-x4; other asset suffixes match their firmware board tag.
-  const bool isX4 = board_tag::boardNameLen() == 2 && memcmp(board_tag::boardName(), "x4", 2) == 0;
-  char assetSuffix[20] = "-x3-x4";
-  if (!isX4) {
-    snprintf(assetSuffix, sizeof(assetSuffix), "-%.*s", static_cast<int>(board_tag::boardNameLen()),
-             board_tag::boardName());
-  }
-  char assetName[48] = {};
+  // Each board updates from ybx-<version>-<device>.bin, named by
+  // ota_policy::appAssetName (the combined X3/X4 C3 image publishes as x3-x4,
+  // every other board under its own compatibility tag). Sized to the parser's own
+  // capacity so the name cannot be truncated on the way in.
+  char assetName[ReleaseJsonParser::kFirmwareAssetNameSize] = {};
+  bool assetNameOk = false;
   bool assetNameSet = false;
-  const bool ok = HttpDownloader::fetchUrl(latestReleaseUrl, [&](const uint8_t* data, size_t len) {
+  const bool ok = HttpDownloader::fetchUrl(ota_policy::kReleaseFeedUrl, [&](const uint8_t* data, size_t len) {
     size_t offset = 0;
     while (!assetNameSet && offset < len) {
       releaseParser.feed(reinterpret_cast<const char*>(data + offset), 1);
       offset++;
       if (releaseParser.foundTag()) {
-        snprintf(assetName, sizeof(assetName), "ybx-%s%s.bin", releaseParser.getTagName(), assetSuffix);
-        releaseParser.setFirmwareAssetName(assetName);
         assetNameSet = true;
+        assetNameOk = ota_policy::appAssetName(releaseParser.getTagName(), board_tag::boardName(),
+                                               board_tag::boardNameLen(), assetName, sizeof(assetName));
+        if (assetNameOk) releaseParser.setFirmwareAssetName(assetName);
       }
     }
     if (offset < len) releaseParser.feed(reinterpret_cast<const char*>(data + offset), len - offset);
     return true;
   });
   if (!ok) {
-    if (HttpDownloader::lastStatus() == 404) return NO_UPDATE;
-    LOG_ERR("OTA", "Release check fetch failed");
+    if (tlspolicy::isTrustFailure(tlspolicy::lastFailure())) {
+      LOG_ERR("OTA", "Release check refused: TLS trust failure");
+      return TLS_ERROR;
+    }
+    // Rule: a 404 means nothing is published for this board yet; that is "no
+    // update", not a failure the reader has to act on.
+    if (ota_policy::missingReleaseFromStatus(HttpDownloader::lastStatus())) {
+      LOG_INF("OTA", "No published release yet (HTTP 404)");
+      return NO_UPDATE;
+    }
+    LOG_ERR("OTA", "Release check fetch failed: status %d", HttpDownloader::lastStatus());
     return HTTP_ERROR;
   }
 
@@ -76,12 +88,39 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
     return JSON_PARSE_ERROR;
   }
 
+  if (!assetNameOk) {
+    LOG_ERR("OTA", "Release tag %s yields no asset name", releaseParser.getTagName());
+    return JSON_PARSE_ERROR;
+  }
+
   if (!releaseParser.foundFirmware()) {
     LOG_INF("OTA", "No %s asset in latest release", assetName);
     return NO_UPDATE;
   }
 
-  latestVersion = releaseParser.getTagName();
+  // Rule: the release body must point the bulk transfer at GitHub's own download
+  // hosts for this fork. Another repo, another owner's server or plain http is
+  // refused before a single byte is fetched.
+  if (!ota_policy::assetDownloadAllowed(releaseParser.getFirmwareUrl())) {
+    LOG_ERR("OTA", "Asset URL outside the fork's release hosts: %s", releaseParser.getFirmwareUrl());
+    return UNTRUSTED_SOURCE_ERROR;
+  }
+
+  // The progress bar and the completeness check in installUpdate both need the
+  // published size; without it a truncated download could not be detected.
+  if (releaseParser.getFirmwareSize() == 0) {
+    LOG_ERR("OTA", "Release asset %s publishes no size", assetName);
+    return JSON_PARSE_ERROR;
+  }
+
+  // Tags are the numeric version with an optional leading 'v'; keep the numeric
+  // part so it compares against CROSSPOINT_VERSION and reads back consistently.
+  char version[32] = {};
+  if (!ota_policy::normalizeVersionTag(releaseParser.getTagName(), version, sizeof(version))) {
+    LOG_ERR("OTA", "Release tag too long: %s", releaseParser.getTagName());
+    return JSON_PARSE_ERROR;
+  }
+  latestVersion = version;
   otaUrl = releaseParser.getFirmwareUrl();
   otaSize = releaseParser.getFirmwareSize();
   totalSize = otaSize;
@@ -93,50 +132,10 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
 }
 
 bool OtaUpdater::isUpdateNewer() const {
-  if (!updateAvailable || latestVersion.empty() || latestVersion == CROSSPOINT_VERSION) {
+  if (!updateAvailable || latestVersion.empty()) {
     return false;
   }
-
-  int currentMajor, currentMinor, currentPatch;
-  int latestMajor, latestMinor, latestPatch;
-  int currentCoreLength = 0, latestCoreLength = 0;
-
-  const auto currentVersion = CROSSPOINT_VERSION;
-
-  // semantic version check (only match on 3 segments)
-  if (sscanf(latestVersion.c_str(), "%d.%d.%d%n", &latestMajor, &latestMinor, &latestPatch, &latestCoreLength) != 3 ||
-      sscanf(currentVersion, "%d.%d.%d%n", &currentMajor, &currentMinor, &currentPatch, &currentCoreLength) != 3) {
-    return false;
-  }
-
-  /*
-   * Compare major versions.
-   * If they differ, return true if latest major version greater than current major version
-   * otherwise return false.
-   */
-  if (latestMajor != currentMajor) return latestMajor > currentMajor;
-
-  /*
-   * Compare minor versions.
-   * If they differ, return true if latest minor version greater than current minor version
-   * otherwise return false.
-   */
-  if (latestMinor != currentMinor) return latestMinor > currentMinor;
-
-  /*
-   * Check patch versions.
-   */
-  if (latestPatch != currentPatch) return latestPatch > currentPatch;
-
-  // If we reach here, it means all segments are equal.
-  // Release builds append "rc" without a hyphen; development builds use "-dev-".
-  const char* currentSuffix = currentVersion + currentCoreLength;
-  const char* latestSuffix = latestVersion.c_str() + latestCoreLength;
-  const bool currentPreview = strcmp(currentSuffix, "rc") == 0 || strncmp(currentSuffix, "-rc", 3) == 0 ||
-                              strncmp(currentSuffix, "-dev-", 5) == 0;
-  const bool latestPreview =
-      strcmp(latestSuffix, "rc") == 0 || strncmp(latestSuffix, "-rc", 3) == 0 || strncmp(latestSuffix, "-dev-", 5) == 0;
-  return currentPreview && !latestPreview;
+  return ota_policy::updateOfferedIsNewer(CROSSPOINT_VERSION, latestVersion.c_str());
 }
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }
@@ -157,6 +156,19 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     return INTERNAL_UPDATE_ERROR;
   }
 
+  // Rule: an image that cannot fit this board's OTA slot, or that is too small to
+  // be an application image, is refused before the slot is opened at all.
+  if (otaSize < ota_policy::kMinAppImageSize || otaSize > updatePartition->size) {
+    LOG_ERR("OTA", "Published size %zu outside slot %u for %s", otaSize, static_cast<unsigned>(updatePartition->size),
+            updatePartition->label);
+    return IMAGE_SIZE_ERROR;
+  }
+
+  // Cleared before the slot erase, not after: esp_ota_begin() can take tens of
+  // seconds, and a retried install must not report the previous attempt's bytes
+  // while the render task paints the "Updating" frame.
+  processedSize = 0;
+
   esp_ota_handle_t otaHandle = 0;
   esp_err_t esp_err = esp_ota_begin(updatePartition, OTA_SIZE_UNKNOWN, &otaHandle);
   if (esp_err != ESP_OK) {
@@ -164,15 +176,21 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     return INTERNAL_UPDATE_ERROR;
   }
 
-  processedSize = 0;
+  // The slot erase above can take tens of seconds. Report once with nothing
+  // written so the caller can leave its "Preparing" face for real progress,
+  // even when the asset size is unknown and no percentage tick follows.
+  if (onProgress) onProgress(ctx);
+
   int lastReportedPct = -1;
   bool flashOk = true;
   // The image streams in chunks; only the first bytes carry the header. Buffer
-  // the first 14 bytes so we can read chip_id (esp_image_header_t offset 12)
-  // and reject a wrong-MCU image before it overwrites the OTA partition.
-  uint8_t hdr[14];
+  // the first 14 bytes so we can check the magic and read chip_id
+  // (esp_image_header_t offset 12) and reject a wrong-MCU or non-image body
+  // before it overwrites the OTA partition.
+  uint8_t hdr[ota_policy::kEspImageChipIdReadLen];
   size_t hdrLen = 0;
   bool wrongChip = false;
+  bool badMagic = false;
   // All S3 boards share a chip_id, so also scan the stream for the embedded
   // board tag (FirmwareBoardTag.h). An untagged image passes; a tag naming a
   // different board aborts the download. The wrong image may partially land in
@@ -185,8 +203,13 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
       std::memcpy(hdr + hdrLen, data, take);
       hdrLen += take;
       if (hdrLen == sizeof(hdr)) {
+        if (!ota_policy::hasEspImageMagic(hdr, hdrLen)) {
+          LOG_ERR("OTA", "not an ESP image: first byte 0x%02X", hdr[0]);
+          badMagic = true;
+          return false;  // abort the transfer
+        }
         uint16_t imageChip;
-        std::memcpy(&imageChip, hdr + 12, sizeof(imageChip));
+        std::memcpy(&imageChip, hdr + ota_policy::kEspImageChipIdOffset, sizeof(imageChip));
         const uint16_t deviceChip = firmware_flash::runningPartitionChipId();
         if (deviceChip != 0xFFFF && imageChip != deviceChip) {
           LOG_ERR("OTA", "wrong chip: image=0x%04X device=0x%04X", imageChip, deviceChip);
@@ -225,10 +248,30 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     return WRONG_DEVICE_ERROR;
   }
 
-  if (!fetchOk || !flashOk) {
-    LOG_ERR("OTA", "Firmware install failed (%s)", flashOk ? "download" : "flash write");
+  if (badMagic) {
+    LOG_ERR("OTA", "Firmware install aborted: body is not an ESP image");
     esp_ota_abort(otaHandle);
+    return CORRUPT_IMAGE_ERROR;
+  }
+
+  if (!fetchOk || !flashOk) {
+    esp_ota_abort(otaHandle);
+    if (flashOk && tlspolicy::isTrustFailure(tlspolicy::lastFailure())) {
+      LOG_ERR("OTA", "Firmware install aborted: TLS trust failure");
+      return TLS_ERROR;
+    }
+    LOG_ERR("OTA", "Firmware install failed (%s)", flashOk ? "download" : "flash write");
     return flashOk ? HTTP_ERROR : INTERNAL_UPDATE_ERROR;
+  }
+
+  // Rule: the stream must be exactly the image the release published. A shorter
+  // or longer body is truncated or corrupt, and is rejected here — before
+  // esp_ota_end() and esp_ota_set_boot_partition() — so it can never become the
+  // boot target whatever the flash writer accepted.
+  if (processedSize != otaSize) {
+    LOG_ERR("OTA", "Incomplete image: received %zu of %zu bytes", processedSize, otaSize);
+    esp_ota_abort(otaHandle);
+    return CORRUPT_IMAGE_ERROR;
   }
 
   esp_err = esp_ota_end(otaHandle);  // verifies the written image

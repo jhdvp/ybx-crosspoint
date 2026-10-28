@@ -178,4 +178,34 @@ TEST(PluginQueueStorage, TailReadAndTruncateFailuresStopAppend) {
   EXPECT_FALSE(pluginevents::repairQueueTail(file, 512));
   EXPECT_EQ(file.data, "complete\npartial");
 }
+
+TEST(PluginQueueStorage, StreamingWriterFailurePreservesOldSnapshot) {
+  Files files;
+  files.data[path] = "old-complete";
+  EXPECT_FALSE(pluginevents::replaceQueueWithWriter(files, path, [&](const std::string& pending) {
+    EXPECT_NE(pending, path);
+    files.data[pending] = "partial-header";
+    EXPECT_EQ(files.data.at(path), "old-complete");
+    return false;
+  }));
+  EXPECT_EQ(files.data.at(path), "old-complete");
+  ASSERT_TRUE(pluginevents::recoverQueue(files, path));
+  EXPECT_EQ(files.data.size(), 1);
+}
+TEST(PluginQueueStorage, StreamingWriterCommitsOnlyItsCompletePendingFile) {
+  Files files;
+  files.data[path] = "old-complete";
+  int calls = 0;
+  EXPECT_TRUE(pluginevents::replaceQueueWithWriter(files, path, [&](const std::string& pending) {
+    ++calls;
+    EXPECT_EQ(files.data.at(path), "old-complete");
+    files.data[pending] = "binding\n";
+    files.data[pending] += "json-part1";
+    files.data[pending] += "json-part2";
+    return true;
+  }));
+  EXPECT_EQ(calls, 1);
+  EXPECT_EQ(files.data.at(path), "binding\njson-part1json-part2");
+  EXPECT_EQ(files.data.size(), 1);
+}
 }  // namespace

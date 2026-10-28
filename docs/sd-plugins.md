@@ -177,7 +177,7 @@ of the plugin-system contract, not hardware detection.
 | `plugin_api` | `1` | Numeric plugin contract level for requirements that need a minimum firmware API generation. |
 | `plugin_capabilities` | comma-separated names below | Fine-grained feature advertisement. A catalog entry may require one or more capabilities without hard-coding a firmware version. |
 
-This YBX fork advertises these catalog capabilities (catalog.lists.auth is a fork extension):
+This YBX fork advertises these catalog capabilities (`catalog.lists.auth`, `stats.native.v1` and `ui.dashboard.v1` are fork extensions):
 
 | Capability | What it means | Why it exists in the plugin system |
 |---|---|---|
@@ -189,6 +189,8 @@ This YBX fork advertises these catalog capabilities (catalog.lists.auth is a for
 | `catalog.compatibility` | JSON catalog entries can be filtered by firmware family, minimum plugin API, and required capabilities. | Any catalog can omit entries that require firmware behavior the current device does not provide, while entries with no compatibility metadata remain backward-compatible. Plugin Hub currently uses this for compatibility-aware discovery. |
 | `catalog.item_details` | JSON catalog items can open a Details page with selected-row metadata and optional bounded on-demand HTML/text content. | Any catalog can keep browse rows concise while offering richer information before Fetch/Install/Update. Rich metadata is additive and failure falls back to the normal item details view. |
 | `catalog.encoded_item_fields` | Download, sidecar, and details templates can use the percent-encoded item variables `{id_enc}`, `{title_enc}`, `{author_enc}`, and `{url_enc}`. | A catalog whose URLs carry item text can require this so older firmware, which would send the variable names literally, does not offer the entry. |
+| `stats.native.v1` | The firmware keeps its own bounded reading-session statistics and exposes them on a native screen. | A statistics plugin can require it so it is offered only where local counters exist; the numbers never come from the catalog. |
+| `ui.dashboard.v1` | A `device.json` may declare a `dashboard` with `source: "reading-stats.v1"` and pages of `metric`, `week_bars`, `heatmap_28` and `book_list` widgets, which the firmware renders natively. | A manifest can describe its statistics pages once; the firmware owns layout, fonts and colors and ignores unknown widget types. |
 
 Capability names describe firmware behavior available to the entire plugin system.
 They must not encode Plugin Hub policy or ownership, and another plugin may use the
@@ -196,6 +198,55 @@ same capability whenever it depends on the same generic firmware behavior.
 Additional firmware features should advertise their own capability names only when
 the corresponding runtime support is actually present. Catalog entries that omit
 compatibility metadata remain visible for backward compatibility.
+
+### Reading-statistics dashboard
+
+A device plugin whose manifest declares a dashboard gets a native statistics
+screen in addition to its catalog. The manifest declares the pages; the firmware
+renders them from its own reading-session data, never from a network source.
+
+```jsonc
+"dashboard": {
+  "source": "reading-stats.v1",       // the only source this firmware accepts
+  "pages": [
+    { "title": "Your reading", "widgets": [
+        { "type": "metric", "field": "total_seconds" },
+        { "type": "metric", "field": "sessions" } ] },
+    { "title": "Week", "widgets": [
+        { "type": "week_bars" },
+        { "type": "metric", "field": "today_seconds" } ] },
+    { "title": "Calendar", "widgets": [ { "type": "heatmap_28" } ] },
+    { "title": "Books", "widgets": [ { "type": "book_list" } ] }
+  ]
+}
+```
+
+Widget vocabulary (anything else is skipped, not approximated):
+
+| Widget | What it draws |
+|---|---|
+| `metric` | One label/value row. `field` selects the value; an optional `label` overrides the localized default. |
+| `week_bars` | Seven daily bars ending at today (or the newest recorded day when the clock is unset), with dates and the maximum caption. |
+| `heatmap_28` | A Monday-first 28-day grid; filled cells scale with reading time, hollow cells mean the device recorded nothing that day. |
+| `book_list` | Most-read books with time and a paged "More" row. |
+
+Supported `field` values: `total_seconds`, `sessions`, `active_days`,
+`latest_day_seconds`, `today_seconds`, `week_seconds`, `streak_days`. Unknown
+fields and `scope: "current-book"` render as "—".
+
+Semantics worth relying on:
+
+- Data is the device's own finished reader sessions, recorded even when the
+  plugin is not subscribed. The store is bounded (64-day ring, 32 books) and
+  never reads the vCodex export.
+- A day without data is not zero; it is drawn as absent or reported as "—".
+  With an unset clock, sessions stay in the totals as undated and are reported
+  separately; they are not counted as today.
+- Labels from the manifest are shown verbatim, so their language follows the
+  manifest, not the firmware language.
+- This firmware renders the vocabulary above only; colors, arbitrary widgets,
+  month navigation and per-day detail are not part of `reading-stats.v1`.
+  Server streak/goal/achievements need a separate data source and capability.
 
 ### Schema
 
@@ -315,11 +366,16 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
     "body": "{}",
     "url_path": "url",                      // response field with the file URL;
                                             // omit to treat "url" itself as the file URL
+    "require_url": true,                    // json: a row whose mapped "url" field is empty
+                                            // has no file — see "Rows without a file" below
     "username": "{cfg.user}",              // optional HTTP Basic creds for the file GET
     "password": "{cfg.pass}",             // omit for token/header auth
-    "dest_dir": "/ServiceName",             // created if missing; falls back to SD root
+    "dest_dir": "/ServiceName",             // created if missing; a failure to create
+                                            // or write fails the download (no SD-root fallback)
                                             // a "dest_dir" in the config file overrides it,
                                             // so the plugin's web card can offer the setting
+                                            // (the "On Reader" shelf planning/removal always
+                                            // follows this manifest value, never the override)
     "filename": "{title}.epub",             // rendered filename is sanitized to 100 bytes;
                                             // a conventional extension is preserved
     "sidecar": {                            // optional per-book metadata file
@@ -395,6 +451,12 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
   defaults to the list title, and omitted button labels use the firmware's
   translated Cancel/Confirm defaults. Back from the book list returns to the
   picker.
+- **Rows without a file** (json): with `download.require_url`, a row whose mapped
+  `url` field is empty is marked as not available in the list and its Details
+  card offers no action — for a catalog that mixes books with informational rows
+  (the YBX update notice carries an id but no file). Without the flag the row
+  keeps its Fetch action, so a download built from `{id}`/`{title}` still works
+  and a genuinely broken one reports the server error.
 - **XML navigation**: Confirm on a folder (an item carrying `container_element`)
   descends into it, Back climbs out (Back at the root leaves the screen).
   With `resolve_urls`, server-relative URLs resolve against the browse URL's
@@ -420,7 +482,9 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
   containing only the declared field paths, so a page parses into a few KB
   no matter the body size.
 - One TLS session is kept alive across browse requests: repeated handshakes
-  permanently fragment the heap.
+  permanently fragment the heap. Plugin endpoints must use https; the
+  certificate chain and host name are verified against the firmware CA bundle,
+  so a server whose chain is not covered fails instead of downgrading.
 - The book download streams to SD via `HttpDownloader`; file size is
   unconstrained.
 - An XML list is parsed from the temp file in 2KB chunks; the engine stops

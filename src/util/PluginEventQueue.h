@@ -60,4 +60,22 @@ bool drainQueue(std::string& raw, size_t& budget, IsLatest isLatest, Deliver del
   return kept != originalSize;
 }
 
+// Drops whole leading lines until the queue fits maxBytes. Never splits a
+// line: when the cap would cut through an event, that event stays and older
+// ones go instead. A queue whose newest single line exceeds maxBytes is
+// emptied for the caller to append fresh.
+inline void trimQueueHead(std::string& raw, const size_t maxBytes) {
+  if (raw.size() <= maxBytes) return;
+  size_t drop = 0;
+  while (raw.size() - drop > maxBytes) {
+    const size_t newline = raw.find('\n', drop);
+    if (newline == std::string::npos) {
+      drop = raw.size();
+      break;
+    }
+    drop = newline + 1;
+  }
+  raw.erase(0, drop);
+}
+
 }  // namespace pluginevents

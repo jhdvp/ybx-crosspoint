@@ -35,7 +35,15 @@ class OpdsBookBrowserActivity final : public CatalogActivity {
   // a ListItem vector per render.
   std::vector<freeink::ui::ListItem> rowItems;
   void rebuildRowItems();
-  std::vector<std::string> navigationHistory;
+  // One level of the Back stack: the feed to return to, the search term it
+  // was opened under, and the row that was selected when the reader left it.
+  // Restoring the row means Back lands on the same card, not the top.
+  struct HistoryEntry {
+    std::string path;
+    std::string searchQuery;
+    int selected = 0;
+  };
+  std::vector<HistoryEntry> navigationHistory;
   std::string currentPath;
   // The active search query. While browsing its results the header shows it
   // (quoted, library-view convention) instead of the server name, and
@@ -43,9 +51,13 @@ class OpdsBookBrowserActivity final : public CatalogActivity {
   std::string searchQuery;
   // Quoted form of searchQuery for the header; derived by setSearchQuery().
   std::string headerSearchTitle;
-  // searchQuery per navigationHistory entry, pushed/popped in lockstep, so
-  // Back restores the search term (or its absence) of the feed it returns to.
-  std::vector<std::string> searchQueryHistory;
+  // Row to select after the next feed load; -1 = top. Set by Back, by a search
+  // or page turn, and by leaving for a book card; applied and cleared in
+  // fetchFeed(). The row left behind is always the live list selection.
+  int pendingSelection = -1;
+  // The row the reader is on: button navigation and taps both move it, so it
+  // also covers a feed scrolled without activating anything.
+  int selectedRow() const { return nav.selected.load(); }
   // Raw pagination hrefs of the current feed: following them keeps the
   // search-term header (page 2 of results is still the same search).
   std::string pageNextHref;

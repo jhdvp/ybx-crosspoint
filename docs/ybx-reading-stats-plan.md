@@ -1,3 +1,8 @@
+Implementation update: the native account-summary/cache and explicit refresh
+slice is now in progress; see [Native statistics](ybx-native-statistics.md).
+This is not the local journal/vCodex adaptation described below. The original
+prototype observations remain as design history.
+
 # Reading statistics on the YBX home
 
 Source review: 2026-10-28. The owner requested a compact footer and reading
@@ -31,10 +36,11 @@ stack, themes or unrelated applications just to obtain a home widget.
 
 ## Reuse YBX observations, avoid a second clock
 
-Our ReaderSession already records qualified forward-page dwell (2 to 1,800
-seconds). vCodex has another session state, a heartbeat, a three-minute threshold
-for its session counter, and a goal-based streak. Blindly running both collectors
-would create conflicting definitions. Adapt the analytics/store to consume one
+Our ReaderSession already records qualified page dwell (2 to 1,800 seconds per
+interval, page turns in either direction, the trailing interval at exit, and a
+5-second session minimum). vCodex has another session state, a heartbeat, a
+three-minute threshold for its session counter, and a goal-based streak. Blindly
+running both collectors would create conflicting definitions. Adapt the analytics/store to consume one
 completed session event, with a stable ID shared by local persistence and YBX
 upload. Agree on idle time, midnight splitting, timezone and the streak definition
 before exposing totals. Use existing trusted-time synchronization; an uncertain
@@ -68,3 +74,29 @@ SD. Measure the largest free block and opening/TLS/sleep peaks on both devices.
 
 This is a source-based implementation plan. No vCodex code was incorporated or
 built in this change, and no vCodex hardware-validation claim transfers to YBX.
+
+## Implemented slice (28 October 2026)
+
+The first step of the sequence above is in place on the YBX fork:
+
+- One session source: finished `reader.session` intervals feed a device-local
+  store (`/.crosspoint/reading-stats.bin`, `/.crosspoint/reading-books.bin`)
+  next to the existing plugin event, with the same session id for dedupe. No
+  second timer or second session definition was added.
+- A declarative dashboard contract: manifests may set
+  `dashboard.source: "reading-stats.v1"` and pages made of `metric`,
+  `week_bars`, `heatmap_28` and `book_list` widgets. The YBX manifest declares
+  «Ваше чтение», «Неделя», «Календарь» and «Книги»; labels are rendered
+  verbatim from the manifest.
+- The firmware advertises `stats.native.v1` and `ui.dashboard.v1`, so the
+  catalog no longer filters a statistics plugin that requires them.
+- Local semantics: local-midnight splitting, local-day ordinals, no-data days
+  distinct from zero, undated sessions when the clock is unknown, and a
+  freshness footnote.
+- Deliberately not done yet: server streak/goal/achievements (needs a capability
+  and data-source decision), cloud history import, and replacing the vCodex
+  export. The native store does not use `/.crosspoint/reading_stats.json`; the
+  user-initiated export button still writes it for other firmwares.
+
+See [implementation status](ybx-validation-status.md#native-reading-statistics-fw-native-stats-branch)
+for limits and the owner's hardware checklist.

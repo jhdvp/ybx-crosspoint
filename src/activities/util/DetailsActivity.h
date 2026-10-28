@@ -26,6 +26,9 @@ struct DetailsSpec {
   std::string description;         // plain text, or HTML when descriptionHtml
   bool descriptionHtml = false;
   std::string actionLabel;  // primary button; confirming finishes with a non-cancelled result
+  // False for a page with nothing to act on: the primary button is not drawn,
+  // its tap/key routing is absent, and the page can only be cancelled.
+  bool hasPrimaryAction = true;
 };
 
 // Title, metadata and the start of the description, with the primary action

@@ -11,10 +11,12 @@
 #include <cstring>
 
 #include "network/ProtectedPaths.h"
+#include "network/TlsTransport.h"
 #include "network/WifiPowerSaveGuard.h"
 
 namespace {
 constexpr size_t MAX_TOKEN_FILE_SIZE = 2 * 1024;
+constexpr size_t MAX_DEVICE_MANIFEST_SIZE = 8 * 1024;
 
 // Resolves the caller's reused TLS session (or `tmp`) into a configured,
 // connected client, or nullptr if begin() or the connection failed.
@@ -24,14 +26,20 @@ freeink::SecureHttpClient* openClient(freeink::SecureHttpClient* session, freein
   if (timeoutMs == 0 || (shouldAbort && shouldAbort())) return nullptr;
   freeink::SecureHttpClient& http = session ? *session : tmp;
   http.setUserAgent("YBX");
-  // Same trust posture as every other SecureNet consumer: no CA bundle ships
-  // with the transport, so verification is skipped; traffic stays encrypted.
-  http.setInsecure();
   http.setTimeout(timeoutMs);
   if (!http.begin(pluginhttp::escapeUrl(url))) return nullptr;
+  // Plugin endpoints carry the reader's YBX token: https only, with the peer
+  // chain and host name verified against the firmware CA bundle, and only
+  // once the clock can validate certificate dates.
+  if (!tlspolicy::prepareHttpsClient(http, url)) return nullptr;
   // Handshake first: the client's copy of a large header (a session cookie can
   // be several KB) would otherwise take heap the handshake needs.
-  if (!http.connect(shouldAbort)) return nullptr;
+  if (!http.connect(shouldAbort)) {
+    if (!http.aborted()) {
+      tlspolicy::recordFailure(tlspolicy::failureFromConnect(http.connectFailure()));
+    }
+    return nullptr;
+  }
   for (const auto& h : headers) http.addHeader(h.first, h.second);
   return &http;
 }
@@ -208,10 +216,39 @@ void loadConfigFile(const std::string& file, Headers& out) {
   }
 }
 
+std::string pickDownloadDir(const Headers& config, const std::string& manifestDestDir) {
+  for (const auto& kv : config) {
+    if (kv.first != "dest_dir" || kv.second.empty()) continue;
+    std::string dir = kv.second.front() == '/' ? kv.second : "/" + kv.second;
+    while (dir.size() > 1 && dir.back() == '/') dir.pop_back();
+    if (dir == "/") return "";  // SD root
+    if (protectedpaths::isPluginPath(dir)) return dir;
+    LOG_ERR("PHTP", "config dest_dir rejected: %s", kv.second.c_str());
+  }
+  return manifestDestDir;
+}
+
+std::string catalogDownloadDir(const std::string& pluginDir) {
+  if (pluginDir.empty()) return "";
+  std::string raw;
+  if (!Storage.readFileToString("PHTP", pluginDir + "/device.json", MAX_DEVICE_MANIFEST_SIZE, raw)) return "";
+  JsonDocument doc;
+  if (deserializeJson(doc, raw) != DeserializationError::Ok) return "";
+  std::string manifestDir = inPluginDir(pluginDir, doc["download"]["dest_dir"] | "");
+  if (!manifestDir.empty() && !protectedpaths::isPluginPath(manifestDir)) {
+    LOG_ERR("PHTP", "device.json dest_dir outside plugin space: %s", manifestDir.c_str());
+    manifestDir.clear();
+  }
+  Headers config;
+  loadConfigFile(inPluginDir(pluginDir, doc["config"]["file"] | ""), config);
+  return pickDownloadDir(config, manifestDir);
+}
+
 int request(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
             const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
             Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
   WifiPowerSaveGuard psGuard;
+  tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
   freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
   if (!httpPtr) return -1;
@@ -252,6 +289,7 @@ int requestToFile(freeink::SecureHttpClient* session, const std::string& url, co
                   const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
                   const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
   WifiPowerSaveGuard psGuard;
+  tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
   freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
   if (!httpPtr) return -1;

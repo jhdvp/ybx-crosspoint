@@ -17,6 +17,12 @@ class HomeActivity final : public Activity {
   std::unique_ptr<YbxHomeUi> ybxHomeUi;
   std::unique_ptr<OptionPopup> ybxMore;
   int ybxMoreChoice = -1;
+  // YBX plugin's download folder ("" = no plugin/feature); first More option.
+  // Resolved lazily on the first More press and cached for this home instance:
+  // resolving reads device.json + config.json from SD, which does not belong
+  // on every home enter (each child-activity return re-runs onEnter).
+  std::string ybxShelfDir;
+  bool ybxShelfResolved = false;
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
   bool recentsLoading = false;
@@ -76,6 +82,7 @@ class HomeActivity final : public Activity {
   void onOpdsBrowserOpen();
   void onPluginsOpen();
   void onMoreOpen();
+  void onYbxShelfOpen();
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image
