@@ -95,7 +95,10 @@ void emit(Event e, const Var* vars, size_t varCount);
 // non-null, a handler's "toast" template is shown via the standard popup after
 // its request succeeds.
 // maxMillis=0 preserves the normal online drain. A nonzero budget stops new
-// requests and cooperatively aborts SDK waits; synchronous DNS can overrun it.
+// requests and cooperatively aborts SDK waits; a request's DNS, TCP and TLS
+// handshake share its own timeout (SecureNet), so a stalled lookup no longer
+// runs on a separate clock, but a connect already in flight can still reach
+// that timeout before the abort is seen.
 void drain(GfxRenderer* renderer, size_t maxEvents = 4, uint32_t maxMillis = 0);
 
 }  // namespace pluginevents
