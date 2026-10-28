@@ -42,7 +42,7 @@ acceptance or waive the remaining release checks.
 - Formatting (`bin/clang-format-fix`, clang-format 21) and `git diff --check`:
   passed.
 - `default` build: passed; static RAM 66,712/327,680 bytes, flash
-  5,549,521/6,553,600 bytes.
+  5,549,683/6,553,600 bytes.
 - The release-configuration `gh_release_rc` and `x4pro-gh_release_rc` builds
   were verified on the parent state but not re-run after this change.
 - FreeInk SDK remains pinned at

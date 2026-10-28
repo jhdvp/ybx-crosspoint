@@ -7,6 +7,7 @@
 #include <TrustedTime.h>
 
 #include <cstdio>
+#include <cstring>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -145,6 +146,14 @@ void ReaderActivity::checkpointReaderSession(const uint32_t monotonicMs) {
   if (summary.durationSeconds < ReaderSession::MIN_SESSION_SECONDS) return;
 
   ensureSessionId();
+  // An earlier session whose flush could not queue its event still owns the
+  // checkpoint. Queue it under its own id before this session's record can
+  // replace it; if that fails, keep the old record and retry in a minute.
+  readersession::Record stale;
+  if (readersession::load(stale) && strcmp(stale.id, sessionId) != 0) {
+    lastSessionCheckpointMs = monotonicMs;
+    if (!readersession::recoverPending()) return;
+  }
   readersession::Record record;
   snprintf(record.id, sizeof(record.id), "%s", sessionId);
   record.startEpoch = summary.startEpoch;
@@ -163,6 +172,9 @@ void ReaderActivity::flushReaderSession() {
   readerSession.finish(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
   if (readerSession.isEmitWorthy() && pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) {
     ensureSessionId();
+    // A previous session's flush may have failed and still own the checkpoint.
+    readersession::Record stale;
+    if (readersession::load(stale) && strcmp(stale.id, sessionId) != 0) readersession::recoverPending();
     const ReaderSessionSummary summary = readerSession.summary();
     readersession::Record record;
     snprintf(record.id, sizeof(record.id), "%s", sessionId);
