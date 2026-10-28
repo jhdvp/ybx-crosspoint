@@ -27,6 +27,8 @@ struct PluginRef {
   std::string manifestPath;  // device.json path, "" for a web-only plugin
   std::string readmePath;    // README.md path when present
   PluginLocations::DeviceKind deviceKind = PluginLocations::DeviceKind::None;
+  // device.json declares a native "reading-stats.v1" dashboard.
+  bool hasDashboard = false;
 };
 
 // Rescan plugin roots on demand; metadata is owned by the picker.
@@ -172,6 +174,10 @@ class PluginCatalogActivity final : public CatalogActivity {
   void enterPluginPicker();
   void enterCatalog();
   void exitCatalog();
+  // Picker entries with a native dashboard open either the catalog or the
+  // statistics screen; both helpers re-read the plugin by index.
+  void openPluginCatalog(int pluginIndex);
+  void openPluginStats(int pluginIndex);
   // Clear items, paging, list and search state, and the row buffer.
   void resetBrowse();
   // JSON catalog with named lists and none picked yet.

@@ -25,6 +25,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/plugins/ReadingStatsActivity.h"
 #include "activities/reader/DictionaryDefinitionActivity.h"  // plain-text README viewer
 #include "activities/settings/PluginHubInstallActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -183,6 +184,7 @@ void readPluginMetadata(const std::string& path, PluginRef& ref, const bool clas
   if (classifyDevice) {
     filter["browse"]["url"] = true;
     filter["events"] = true;
+    filter["dashboard"]["source"] = true;
   }
   JsonDocument doc;
   if (deserializeJson(doc, raw, DeserializationOption::Filter(filter)) != DeserializationError::Ok) return;
@@ -192,6 +194,7 @@ void readPluginMetadata(const std::string& path, PluginRef& ref, const bool clas
     const char* browseUrl = doc["browse"]["url"] | "";
     const bool hasEvents = !doc["events"].as<JsonObjectConst>().isNull() && doc["events"].size() > 0;
     ref.deviceKind = PluginLocations::classifyDeviceManifest(browseUrl[0] != '\0', hasEvents);
+    ref.hasDashboard = strcmp(doc["dashboard"]["source"] | "", "reading-stats.v1") == 0;
   }
 }
 }  // namespace
@@ -585,6 +588,29 @@ void PluginCatalogActivity::enterCatalog() {
 // sign-in screen): return to the plugin picker. Wi-Fi stays up so the next
 // pick connects instantly; onExit tears it down when the activity ends.
 void PluginCatalogActivity::exitCatalog() { enterPluginPicker(); }
+
+void PluginCatalogActivity::openPluginCatalog(const int pluginIndex) {
+  if (pluginIndex < 0 || pluginIndex >= static_cast<int>(installedPlugins.size())) return;
+  const PluginRef& plugin = installedPlugins[pluginIndex];
+  app.clearTapFlash();  // the row leaves this screen
+  pickerReturnName = plugin.name;
+  manifestPath = plugin.manifestPath;
+  catalogTitle = plugin.title;
+  enterCatalog();
+}
+
+void PluginCatalogActivity::openPluginStats(const int pluginIndex) {
+  if (pluginIndex < 0 || pluginIndex >= static_cast<int>(installedPlugins.size())) return;
+  const PluginRef& plugin = installedPlugins[pluginIndex];
+  if (plugin.manifestPath.empty()) return;
+  auto stats = makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput, plugin.title, plugin.manifestPath);
+  if (!stats) {
+    LOG_ERR("PCAT", "OOM: reading statistics screen");
+    return;
+  }
+  app.clearTapFlash();  // the row leaves this screen
+  startActivityForResult(std::move(stats), [](const ActivityResult&) {});
+}
 
 void PluginCatalogActivity::resetBrowse() {
   items.clear();
@@ -1377,7 +1403,26 @@ void PluginCatalogActivity::activateIndex(const int index) {
       return;
     }
     const int syntheticHubRows = showPluginHubInstallRow ? 1 : 0;
-    const PluginRef& plugin = installedPlugins[index - pluginStart - syntheticHubRows];
+    const int pluginIndex = index - pluginStart - syntheticHubRows;
+    const PluginRef& plugin = installedPlugins[pluginIndex];
+    if (plugin.hasDashboard) {
+      if (plugin.deviceKind == PluginLocations::DeviceKind::Catalog) {
+        // Both surfaces exist for this plugin; the row cannot show two
+        // destinations, so the first press asks which one to open.
+        const char* options[] = {tr(STR_STATS_CATALOG), tr(STR_READING_STATS), tr(STR_CANCEL)};
+        pluginHubPopup.show(plugin.title.c_str(), options, 3, 0, [this, pluginIndex](const int selected) {
+          if (selected == 0) {
+            openPluginCatalog(pluginIndex);
+          } else if (selected == 1) {
+            openPluginStats(pluginIndex);
+          }
+        });
+        requestUpdate();
+        return;
+      }
+      openPluginStats(pluginIndex);
+      return;
+    }
     const auto action = PluginLocations::pickerAction(plugin.deviceKind, !plugin.readmePath.empty());
     if (action == PluginLocations::PickerAction::Readme) {
       // A plain paged text view, not the book reader: viewing instructions must
@@ -1721,6 +1766,11 @@ void PluginCatalogActivity::rebuildRowItems() {
       //   Catalog    -> browsable, own description, chevron
       //   Background -> events-only, own description, chevron only with a readme
       const char* subtitle = plugin.description.empty() ? nullptr : plugin.description.c_str();
+      if (plugin.hasDashboard) {
+        // The row opens a screen even when the plugin has no catalog.
+        addRow(plugin.title.c_str(), subtitle, ">");
+        continue;
+      }
       switch (plugin.deviceKind) {
         case PluginLocations::DeviceKind::None:
           addRow(plugin.title.c_str(), tr(STR_PLUGIN_WEB_ONLY), plugin.readmePath.empty() ? nullptr : ">");

@@ -81,7 +81,9 @@ this worktree keeps no build logs.
   whole events first instead of the whole queue; a device that stays offline
   long enough still loses its oldest events. Shared attempt limits and
   subscription order can starve later plugins.
-- Native account statistics and achievements are planned, not implemented.
+- Local reading statistics ship as a native screen (see the section below).
+  Account statistics, server streak/goal/achievements and cloud import remain
+  unimplemented.
 - X4 Pro compiles, but still uses the upstream Home. YBX touch adaptation,
   USB branding and Pro release/OTA assets remain unfinished.
 - Inherited HTTPS certificate verification remains disabled. Transport/OTA
@@ -134,3 +136,101 @@ No hardware result is claimed here; these steps are the owner's.
 10. Late clock: read on a cold device whose clock is not set, let the time sync
     finish mid-session, then leave the reader. The delivered session should
     carry a plausible `start_time`/`end_time` instead of `0`/`0`.
+
+## Native reading statistics (fw-native-stats branch)
+
+This section covers the local statistics screen added on top of the session
+journal. Account/cloud statistics are not part of it.
+
+### Implemented
+
+- The firmware advertises `stats.native.v1` and `ui.dashboard.v1` in the plugin
+  capability string, so a catalog's statistics plugin is no longer filtered out
+  for lacking them.
+- A plugin manifest may declare `dashboard.source: "reading-stats.v1"`. The
+  YBX manifest declares four pages: «Ваше чтение», «Неделя», «Календарь»,
+  «Книги». The device renders `metric`, `week_bars`, `heatmap_28` and
+  `book_list` natively; widget labels come from the manifest. Unknown widget
+  types are skipped, unknown fields and `scope: current-book` render "—", and a
+  page with no supported widgets is dropped. No layout, colors or animation
+  from the manifest are interpreted beyond this fixed vocabulary.
+- Data is the device's own finished `reader.session` intervals — the same
+  sessions the YBX plugin receives, including the covered-screen exclusion —
+  recorded even without a YBX subscription: `/.crosspoint/reading-stats.bin`
+  (totals and a 64-day ring, 568 bytes) and `/.crosspoint/reading-books.bin`
+  (at most 32 books, 3,336 bytes). Both are written through a temp file and
+  `Storage.replaceFile`, with a leftover temp file recovered on load.
+- Sessions are deduplicated by the reader-session event id. A session spanning
+  local midnight is split across the two days while the session count stays on
+  the first. An unset clock keeps the seconds in the totals as "undated" and
+  the screen says the clock is not set; it never labels them as today.
+- A day the device recorded nothing for is drawn as "no data", not as zero.
+  The footnote shows when the newest session was recorded, or up to which day
+  the data is current when the clock was unset.
+- The screen is opened from the plugin list (directly on non-catalog devices,
+  via «Статистика»/«Каталог» on catalog devices). Back, left/right and touch on
+  the tab row switch pages; the book list pages through «Ещё» with Confirm.
+- The bundled YBX `plugin.js` now says that its profile is server statistics
+  and that the reader-local counters live in the statistics screen, and that
+  the vCodex export is not imported by this firmware.
+
+### Verified on the host
+
+- `~/.platformio/penv/bin/pio run -e default` succeeds; the figures are in the
+  build log under `.build-logs/`.
+- The `test/reading_stats` gtest suite runs in the CMake/CTest host-test build:
+  it covers numbering, midnight and DST splitting, ring eviction, dedupe by
+  session id, streaks, UTF-8 truncation, CPS1/CPB1 round-trips, corruption and
+  buffer-too-small handling.
+- Device rendering, touch, rotation and real storage timing are not covered by
+  these tests; see the checklist below.
+
+### Limits and honest gaps
+
+- The four pages are local data only. Server streak, year goal and achievements
+  need a later capability/data source; the manifest does not declare them.
+- A session ended by a crash or power cut never reaches local statistics (the
+  cloud upload still recovers it from the journal checkpoint). Only sessions
+  finished normally (exit, sleep, restart) are recorded locally.
+- The ring keeps 64 days and 32 books; older days still count in the totals and
+  the active-day count but are not shown in the calendar or book list.
+- The calendar is the fixed 28-day `heatmap_28` widget. Month navigation,
+  per-day detail and page-turn metrics (`qualified_turns`,
+  `seconds_per_turn`) are not implemented and render as "—" or are absent.
+- The vCodex export button remains for firmwares with an Import Statistics
+  page. The native statistics store never reads or writes
+  `/.crosspoint/reading_stats.json`, and nothing on this firmware imports server
+  history, so a cloud snapshot cannot overwrite local data or double-count
+  minutes. The export button still writes that file when the user asks for it.
+
+### Owner acceptance checklist: native statistics
+
+No hardware result is claimed here; these steps are the owner's.
+
+1. Empty state: with no recorded sessions, open the statistics screen. Expect
+   «Пока нет данных о чтении» and no invented numbers or calendars.
+2. Record a session: read a book for at least a minute across a few pages,
+   leave the reader, reopen the screen. Expect today and total time to include
+   that session, the book to appear in «Книги», and the footnote to show its
+   time.
+3. Midnight split: set the clock shortly before local midnight, read across it,
+   then check that the session is split between two calendar cells while the
+   session count increased by one.
+4. Unset clock: boot without a trusted time source, read, then open the screen.
+   Expect today to show "—", the footnote to say the clock is not set, and
+   total/undated time to still include the session.
+5. Single count: read for a minute, then send the device to sleep (the flush
+   runs on the pre-sleep path and again on teardown). Sessions and minutes must
+   grow by one session only. Reboot afterwards: the cloud retry of the same
+   session (same id) must not change the local numbers.
+6. Covered screen: open the reader menu and keep it open for ten minutes mid
+   session; the statistics must not gain those minutes.
+7. Sync upload: with the YBX plugin connected, let a session upload, then open
+   the screen. Local minutes must not change because of the upload, and a
+   normal sync must not create or modify `/.crosspoint/reading_stats.json`
+   (only the explicit export button may write it).
+8. Tabs and books: switch all four pages with the side buttons and by tapping
+   the tabs; with more than five books read, page the book list with Confirm on
+   «Ещё».
+9. Rotation and both devices: repeat 1-2 in portrait/landscape on X3 and X4;
+   the layout must stay inside the safe area with button hints visible.
