@@ -18,6 +18,7 @@
 #include <WolfsslCrypto.h>
 
 #include <iterator>
+#include <utility>
 
 #include "BookKey.h"
 #include "CrossPointSettings.h"
@@ -95,6 +96,9 @@ void OpdsBookBrowserActivity::onEnter() {
   opdsClient.resetAuthState();
   opdsClient.setAcceptLanguage(uiAcceptLanguage());
   opdsClient.onStatus(&OpdsBookBrowserActivity::onClientStatus, this);
+  // Every catalog request runs on this loop; let Back/Home reach the transport
+  // while it is blocked in a transfer.
+  opdsTransport.setInputPoll([this] { return pollCatalogInput(); });
 
   state = State::CHECK_WIFI;
   statusMessage = tr(STR_CHECKING_WIFI);
@@ -102,6 +106,9 @@ void OpdsBookBrowserActivity::onEnter() {
 }
 
 void OpdsBookBrowserActivity::onExit() {
+  opdsTransport.setInputPoll(nullptr);
+  opdsTransport.endFetch();
+  catalogGoHome = false;
   releaseEntries();
   navigationHistory.clear();
   pendingSelection = -1;
@@ -110,6 +117,29 @@ void OpdsBookBrowserActivity::onExit() {
     detailCoverPath.clear();
   }
   CatalogActivity::onExit();
+}
+
+OpdsBookBrowserActivity::FetchStop OpdsBookBrowserActivity::finishCatalogFetch() {
+  const auto stop = opdsTransport.stopReason();
+  opdsTransport.endFetch();
+  const bool goHome = std::exchange(catalogGoHome, false);
+  if (goHome || stop == freeink::network::CatalogFetchLimiter::Stop::Cancelled) {
+    onGoHome();
+    return FetchStop::Left;
+  }
+  return stop == freeink::network::CatalogFetchLimiter::Stop::TimedOut ? FetchStop::TimedOut : FetchStop::None;
+}
+
+bool OpdsBookBrowserActivity::pollCatalogInput() {
+  // Home is deferred so this pass can treat it as a cancel; Back arrives as a
+  // release (the header's touch target folds into the same button).
+  mappedInput.update(true);
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) return true;
+  if (mappedInput.wasHomeGesture()) {
+    catalogGoHome = true;
+    return true;
+  }
+  return false;
 }
 
 void OpdsBookBrowserActivity::activateIndex(const int index) {
@@ -322,10 +352,21 @@ void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {
 
   const std::string url = UrlUtils::buildUrl(server.url, path);
   OpdsFeedParser parser;
+  beginCatalogFetch();
   const auto status = opdsClient.fetchFeed(url, parser);
   // The token state may have changed (renewed, or cleared on failure); persist
   // only when an auth handshake actually ran.
   if (opdsClient.tokensDirty()) persistTokens();
+  // An aborted transfer surfaces as a plain failure; the window knows why.
+  switch (finishCatalogFetch()) {
+    case FetchStop::Left:
+      return;
+    case FetchStop::TimedOut:
+      fail(StrId::STR_CATALOG_TIMEOUT);
+      return;
+    case FetchStop::None:
+      break;
+  }
   if (status != freeink::opds::OpdsClient::FetchStatus::Ok) {
     switch (status) {
       case freeink::opds::OpdsClient::FetchStatus::CredentialsMissing:
@@ -545,7 +586,18 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
   if (book.indirect) {
     std::string resolved;
     bool resolvedEpub = false;
-    if (!opdsClient.resolveIndirect(downloadUrl, resolved, resolvedEpub)) {
+    beginCatalogFetch();
+    const bool resolvedOk = opdsClient.resolveIndirect(downloadUrl, resolved, resolvedEpub);
+    switch (finishCatalogFetch()) {
+      case FetchStop::Left:
+        return;
+      case FetchStop::TimedOut:
+        fail(StrId::STR_CATALOG_TIMEOUT);
+        return;
+      case FetchStop::None:
+        break;
+    }
+    if (!resolvedOk) {
       fail(StrId::STR_OPDS_NOT_A_BOOK);
       return;
     }
@@ -602,7 +654,11 @@ void OpdsBookBrowserActivity::downloadLcpBook(const OpdsEntry& book) {
     options.bearer = auth.bearer;
     options.headers = auth.headers;
     options.statusOut = &status;
+    options.shouldAbort = [this] { return opdsTransport.abortRequested(); };
     constexpr size_t MAX_LICENSE_BYTES = 256 * 1024;
+    beginCatalogFetch();
+    // Sampled after the window opens: the socket timeout is the window's.
+    options.timeoutMs = opdsTransport.fetchTimeoutMs(millis());
     const bool ok = HttpDownloader::fetchUrl(
         licenseUrl,
         [&licenseText](const uint8_t* data, size_t len) {
@@ -611,6 +667,15 @@ void OpdsBookBrowserActivity::downloadLcpBook(const OpdsEntry& book) {
           return true;
         },
         options);
+    switch (finishCatalogFetch()) {
+      case FetchStop::Left:
+        return;
+      case FetchStop::TimedOut:
+        fail(StrId::STR_CATALOG_TIMEOUT);
+        return;
+      case FetchStop::None:
+        break;
+    }
     if (!ok || licenseText.empty()) {
       LOG_ERR("OPDS", "LCP license fetch failed (status %d)", status);
       if (!failTlsIfAny()) fail(StrId::STR_FETCH_FEED_FAILED);
@@ -656,56 +721,83 @@ OpdsBookBrowserActivity::LcpUnlock OpdsBookBrowserActivity::requestLcpUnlock(con
   statusMessage = tr(STR_LOADING);
   requestUpdate(true);
 
+  // Enrollment and both unlock attempts are one catalog operation to the
+  // reader, so a single window bounds the whole exchange.
+  beginCatalogFetch();
+
+  LcpUnlock unlock = LcpUnlock::Failed;
+  StrId failureMsg = StrId::STR_DOWNLOAD_FAILED;
+  bool failed = true;
+
   std::string deviceId;
   bool notEnrollable = false;
-  if (!lcpdevice::ensureEnrolled(deviceId, notEnrollable)) {
-    if (notEnrollable) {
-      fail(StrId::STR_LCP_OFFICIAL_BUILD);
-    } else if (!failTlsIfAny()) {
-      fail(StrId::STR_DOWNLOAD_FAILED);
-    }
-    return LcpUnlock::Failed;
-  }
+  if (!lcpdevice::ensureEnrolled(deviceId, notEnrollable, opdsTransport.fetchTimeoutMs(millis()),
+                                 [this] { return opdsTransport.abortRequested(); })) {
+    failureMsg = notEnrollable ? StrId::STR_LCP_OFFICIAL_BUILD : StrId::STR_DOWNLOAD_FAILED;
+  } else {
+    // Up to two attempts: a 401 means the registry no longer knows this device
+    // (revoked or reset), so re-enroll fresh once and retry.
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      std::string request;
+      request.reserve(pendingLcpLicenseText.size() + 160);
+      request += "{\"device_id\":\"";
+      request += deviceId;
+      request += "\",\"user_key\":\"";
+      request += userKeyHex;
+      request += "\",\"license\":";
+      request += pendingLcpLicenseText;  // verbatim: it parsed as JSON at download time
+      request += '}';
 
-  // Up to two attempts: a 401 means the registry no longer knows this device
-  // (revoked or reset), so re-enroll fresh once and retry.
-  for (int attempt = 0; attempt < 2; ++attempt) {
-    std::string request;
-    request.reserve(pendingLcpLicenseText.size() + 160);
-    request += "{\"device_id\":\"";
-    request += deviceId;
-    request += "\",\"user_key\":\"";
-    request += userKeyHex;
-    request += "\",\"license\":";
-    request += pendingLcpLicenseText;  // verbatim: it parsed as JSON at download time
-    request += '}';
-
-    std::string response;
-    int status = 0;
-    const bool ok = HttpDownloader::postForm(freeink::content::LCP_UNLOCK_URL, request, response, &status);
-    if (status == 401 && attempt == 0) {
-      lcpdevice::forget();
-      if (!lcpdevice::ensureEnrolled(deviceId, notEnrollable)) break;
-      continue;
-    }
-    if (status == 403) return LcpUnlock::WrongPassphrase;
-    if (status == 422) {
-      fail(StrId::STR_LCP_UNSUPPORTED);
-      return LcpUnlock::Failed;
-    }
-    LcpWrappedKey wrapped;
-    int64_t expiresAt = 0;
-    uint8_t contentKey[32];
-    if (!ok || !parseUnlockResponse(response, &wrapped, &expiresAt) ||
-        !lcpdevice::unwrapContentKey(wrapped.epk, wrapped.iv, wrapped.ct, wrapped.tag, contentKey)) {
-      LOG_ERR("OPDS", "LCP unlock failed (status %d)", status);
+      std::string response;
+      int status = 0;
+      const bool ok = HttpDownloader::postForm(freeink::content::LCP_UNLOCK_URL, request, response, &status,
+                                               opdsTransport.fetchTimeoutMs(millis()),
+                                               [this] { return opdsTransport.abortRequested(); });
+      if (status == 401 && attempt == 0) {
+        lcpdevice::forget();
+        if (lcpdevice::ensureEnrolled(deviceId, notEnrollable, opdsTransport.fetchTimeoutMs(millis()),
+                                      [this] { return opdsTransport.abortRequested(); })) {
+          continue;
+        }
+        break;
+      }
+      if (status == 403) {
+        failed = false;
+        unlock = LcpUnlock::WrongPassphrase;
+        break;
+      }
+      if (status == 422) {
+        failureMsg = StrId::STR_LCP_UNSUPPORTED;
+        break;
+      }
+      LcpWrappedKey wrapped;
+      int64_t expiresAt = 0;
+      uint8_t contentKey[32];
+      if (!ok || !parseUnlockResponse(response, &wrapped, &expiresAt) ||
+          !lcpdevice::unwrapContentKey(wrapped.epk, wrapped.iv, wrapped.ct, wrapped.tag, contentKey)) {
+        LOG_ERR("OPDS", "LCP unlock failed (status %d)", status);
+        break;
+      }
+      if (!bookkey::write(pendingLcpPath, contentKey, sizeof(contentKey), expiresAt)) break;
+      failed = false;
+      unlock = LcpUnlock::Ok;
       break;
     }
-    if (!bookkey::write(pendingLcpPath, contentKey, sizeof(contentKey), expiresAt)) break;
-    return LcpUnlock::Ok;
   }
-  if (!failTlsIfAny()) fail(StrId::STR_DOWNLOAD_FAILED);
-  return LcpUnlock::Failed;
+
+  // An aborted request may have carried a plausible-looking reply; the window
+  // decides what actually happened.
+  switch (finishCatalogFetch()) {
+    case FetchStop::Left:
+      return LcpUnlock::Failed;
+    case FetchStop::TimedOut:
+      fail(StrId::STR_CATALOG_TIMEOUT);
+      return LcpUnlock::Failed;
+    case FetchStop::None:
+      break;
+  }
+  if (failed && !failTlsIfAny()) fail(failureMsg);
+  return unlock;
 }
 
 // Entry point after fulfillment: a hash saved for this provider skips the
@@ -844,8 +936,13 @@ void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
     if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
   }
 
+  FetchStop documentStop = FetchStop::None;
   if (haveSelf) {
+    beginCatalogFetch();
     opdsClient.fetchPublication(docUrl, publication);
+    documentStop = finishCatalogFetch();
+    if (documentStop == FetchStop::Left) return;
+    if (documentStop == FetchStop::TimedOut) publication = {};
   }
 
   if (!publication.valid) {
@@ -879,8 +976,11 @@ void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
 
   // Fetch the cover art (best-effort) while entries and font caches are still
   // released, so the TLS transfer has maximum heap. Resolved against the
-  // document the cover href came from.
-  loadDetailCover(haveSelf ? docUrl : feedUrl, publication.coverHref);
+  // document the cover href came from. Skipped after a document timeout: the
+  // server is known to be slow and the cover is optional chrome.
+  if (documentStop != FetchStop::TimedOut) {
+    if (loadDetailCover(haveSelf ? docUrl : feedUrl, publication.coverHref) == FetchStop::Left) return;
+  }
 
   DetailsSpec spec;
   spec.header = browserTitle();
@@ -923,13 +1023,14 @@ void OpdsBookBrowserActivity::openPublicationDetail(const OpdsEntry& entry) {
 
 // Downloads the publication's cover art to an SD temp file for the detail page.
 // A cover is optional chrome: any failure just leaves the placeholder, never
-// blocks the page.
-void OpdsBookBrowserActivity::loadDetailCover(const std::string& docUrl, const std::string& coverHref) {
+// blocks the page. Bounded by its own fetch window.
+OpdsBookBrowserActivity::FetchStop OpdsBookBrowserActivity::loadDetailCover(const std::string& docUrl,
+                                                                            const std::string& coverHref) {
   if (!detailCoverPath.empty()) {
     if (Storage.exists(detailCoverPath.c_str())) Storage.remove(detailCoverPath.c_str());
     detailCoverPath.clear();
   }
-  if (coverHref.empty()) return;
+  if (coverHref.empty()) return FetchStop::None;
 
   const std::string url = UrlUtils::buildUrl(docUrl, coverHref);
   // The decoder factory picks JPEG vs PNG by file extension; name the temp to
@@ -944,18 +1045,27 @@ void OpdsBookBrowserActivity::loadDetailCover(const std::string& docUrl, const s
 
   if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP) {
     LOG_INF("OPDS", "Skipping cover: low heap");
-    return;
+    return FetchStop::None;
   }
   const freeink::opds::HttpAuth auth = opdsClient.downloadAuth();
   std::vector<HttpDownloader::Header> headers = auth.headers;
   if (!auth.bearer.empty()) headers.push_back({"Authorization", "Bearer " + auth.bearer});
-  const auto result = HttpDownloader::downloadToFile(url, tmp, nullptr, nullptr, auth.username, auth.password, headers);
+  beginCatalogFetch();
+  const auto result = HttpDownloader::downloadToFile(url, tmp, nullptr, nullptr, auth.username, auth.password, headers,
+                                                     opdsTransport.fetchTimeoutMs(millis()),
+                                                     [this] { return opdsTransport.abortRequested(); });
+  const FetchStop stop = finishCatalogFetch();
+  if (stop != FetchStop::None) {
+    if (Storage.exists(tmp.c_str())) Storage.remove(tmp.c_str());
+    return stop;  // timeout: no cover; Left: the caller returns home
+  }
   if (result != HttpDownloader::OK) {
     LOG_ERR("OPDS", "Cover download failed: %d", static_cast<int>(result));
     if (Storage.exists(tmp.c_str())) Storage.remove(tmp.c_str());
-    return;
+    return FetchStop::None;
   }
   detailCoverPath = std::move(tmp);
+  return FetchStop::None;
 }
 
 // Formats the availability and metadata lines of the details page.
@@ -1048,7 +1158,18 @@ void OpdsBookBrowserActivity::performSearch(const std::string& query) {
 
   beginLoading();
 
-  if (!ensureSearchTemplate()) {
+  beginCatalogFetch();
+  const bool haveTemplate = ensureSearchTemplate();
+  switch (finishCatalogFetch()) {
+    case FetchStop::Left:
+      return;
+    case FetchStop::TimedOut:
+      fail(StrId::STR_CATALOG_TIMEOUT);
+      return;
+    case FetchStop::None:
+      break;
+  }
+  if (!haveTemplate) {
     if (!failTlsIfAny()) fail(StrId::STR_FETCH_FEED_FAILED);
     return;
   }

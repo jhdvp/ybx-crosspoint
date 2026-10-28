@@ -1,9 +1,9 @@
 diff --git a/libs/network/SecureNet/include/DeadlineDns.h b/libs/network/SecureNet/include/DeadlineDns.h
 new file mode 100644
-index 0000000..839ce90
+index 0000000..7d559c3
 --- /dev/null
 +++ b/libs/network/SecureNet/include/DeadlineDns.h
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,61 @@
 +#pragma once
 +
 +// FreeInk SDK — deadline-bounded DNS for a connecting client.
@@ -14,11 +14,17 @@ index 0000000..839ce90
 +// wall-clock bound. This lookup drives lwIP's asynchronous resolver and waits
 +// cooperatively, so both the caller's deadline and its abort callback apply.
 +//
++// Dual-stack: an IPv4 query that comes back empty is retried as IPv6 under the
++// same deadline when the stack has a global IPv6, so AAAA-only hosts keep
++// resolving the way the previous blocking path resolved them.
++//
 +// Lifetime: lwIP keeps retrying a DNS query for seconds after the waiter gives
 +// up, so its completion callback may arrive late. Results are published into a
 +// fixed set of static slots that the callback alone releases; no callback
 +// points at caller state, no task is created, and retrying a timed-out lookup
 +// cannot grow memory.
++
++#include <Arduino.h>
 +
 +#include <cstdint>
 +#include <functional>
@@ -38,17 +44,20 @@ index 0000000..839ce90
 +  enum class Status : uint8_t {
 +    Ok,
 +    Failed,       // no address (unknown host, resolver error, no DNS server)
-+    Timeout,      // the caller's deadline or all lookup slots were exhausted
++    Timeout,      // the caller's deadline expired while a lookup was outstanding
++    Busy,         // the deadline expired while every slot held an abandoned lookup
 +    Aborted,      // shouldAbort() asked to stop
 +    Unavailable,  // no resolver backend in this build (host tests)
 +  };
 +  using AbortFn = std::function<bool()>;
 +
-+  // Resolves host to IPv4 in the same network-order representation as
-+  // in_addr.s_addr, before deadlineMs, polling shouldAbort once per
-+  // millisecond. A dotted-quad needs no DNS. On Unavailable a caller may fall
-+  // back to a blocking hostname connect.
-+  static Status resolve(const char* host, uint32_t deadlineMs, uint32_t& ipv4, const AbortFn& shouldAbort);
++  // Resolves host to an IPv4 or, when only an IPv6 exists and the interface
++  // has one, an IPv6 IPAddress, before deadlineMs, polling shouldAbort once
++  // per millisecond. A literal address needs no DNS. While every slot is
++  // occupied the lookup waits (up to the deadline) for one to free, so a
++  // cached host still resolves during a burst of abandoned lookups. On
++  // Unavailable a caller may fall back to a blocking hostname connect.
++  static Status resolve(const char* host, uint32_t deadlineMs, IPAddress& address, const AbortFn& shouldAbort);
 +
 +  // Strict dotted-quad parser. Leading-zero octets are rejected so this never
 +  // disagrees with inet_aton's octal rules; such names go through DNS instead.
@@ -57,7 +66,7 @@ index 0000000..839ce90
 +
 +}  // namespace freeink
 diff --git a/libs/network/SecureNet/include/SecureClient.h b/libs/network/SecureNet/include/SecureClient.h
-index a9a895c..6a6ec5d 100644
+index a9a895c..e3514f9 100644
 --- a/libs/network/SecureNet/include/SecureClient.h
 +++ b/libs/network/SecureNet/include/SecureClient.h
 @@ -39,14 +39,13 @@ class SecureClient : public Client {
@@ -83,16 +92,25 @@ index a9a895c..6a6ec5d 100644
  
   private:
 -  int connectWithMethod(const char* host, uint16_t port, void* method, const char* label);
-+  int connectWithMethod(const char* host, uint32_t ipv4, uint16_t port, void* method, const char* label,
++  int connectWithMethod(const char* host, const IPAddress& address, uint16_t port, void* method, const char* label,
 +                        uint32_t deadlineMs);
  
    // Polls _shouldAbort and latches _aborted so callers can tell a cancel from
    // a failure after connect() returns 0.
 diff --git a/libs/network/SecureNet/include/SecureHttpClient.h b/libs/network/SecureNet/include/SecureHttpClient.h
-index 9e9687b..5df9154 100644
+index 9e9687b..12ea710 100644
 --- a/libs/network/SecureNet/include/SecureHttpClient.h
 +++ b/libs/network/SecureNet/include/SecureHttpClient.h
-@@ -45,6 +45,7 @@
+@@ -37,14 +37,15 @@
+ 
+ #include <algorithm>
+ #include <cctype>
+-#include <iterator>
+ #include <cstdint>
+ #include <cstdlib>
+ #include <functional>
++#include <iterator>
+ #include <string>
  #include <utility>
  #include <vector>
  
@@ -100,6 +118,30 @@ index 9e9687b..5df9154 100644
  #include "SecureClient.h"
  
  namespace freeink {
+@@ -266,8 +267,10 @@ class SecureHttpClient {
+         } else if (name == "connection") {
+           std::string v = value;
+           std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return static_cast<char>(tolower(c)); });
+-          if (v.find("close") != std::string::npos) keepAlive = false;
+-          else if (v.find("keep-alive") != std::string::npos) keepAlive = true;
++          if (v.find("close") != std::string::npos)
++            keepAlive = false;
++          else if (v.find("keep-alive") != std::string::npos)
++            keepAlive = true;
+         }
+       }
+       if (_aborted) {
+@@ -412,9 +415,7 @@ class SecureHttpClient {
+     return !host.empty() && (scheme == "http" || scheme == "https");
+   }
+ 
+-  std::string hostHeader() const {
+-    return hostHeaderFor(_scheme, _host, _port);
+-  }
++  std::string hostHeader() const { return hostHeaderFor(_scheme, _host, _port); }
+ 
+   static std::string hostHeaderFor(const std::string& scheme, const std::string& host, uint16_t port) {
+     const uint16_t defaultPort = scheme == "https" ? 443 : 80;
 @@ -432,11 +433,12 @@ class SecureHttpClient {
  
    // Reuse the kept-alive connection when it matches, else (re)connect.
@@ -124,8 +166,8 @@ index 9e9687b..5df9154 100644
      } else {
 -      _plain.setTimeout(_timeoutMs);
 +      const uint32_t deadlineMs = deadlineAfter(millis(), _timeoutMs);
-+      uint32_t ipv4 = 0;
-+      const DeadlineDns::Status dns = DeadlineDns::resolve(_host.c_str(), deadlineMs, ipv4, shouldAbort);
++      IPAddress address;
++      const DeadlineDns::Status dns = DeadlineDns::resolve(_host.c_str(), deadlineMs, address, shouldAbort);
 +      if (dns == DeadlineDns::Status::Unavailable) {
 +        // No resolver backend (host builds): keep the hostname connect.
 +        _plain.setConnectionTimeout(_timeoutMs);
@@ -136,7 +178,7 @@ index 9e9687b..5df9154 100644
 +        const uint32_t tcpBudget = remainingUntil(millis(), deadlineMs);
 +        if (tcpBudget == 0) return false;
 +        _plain.setConnectionTimeout(tcpBudget);
-+        if (!_plain.connect(IPAddress(ipv4), _port)) return false;
++        if (!_plain.connect(address, _port)) return false;
 +      }
 +      // NetworkClient keeps one timeout for connect, write and read; restore
 +      // the configured one after the shortened connect budget.
@@ -147,17 +189,19 @@ index 9e9687b..5df9154 100644
      }
 diff --git a/libs/network/SecureNet/src/DeadlineDns.cpp b/libs/network/SecureNet/src/DeadlineDns.cpp
 new file mode 100644
-index 0000000..2bf7113
+index 0000000..7a4879d
 --- /dev/null
 +++ b/libs/network/SecureNet/src/DeadlineDns.cpp
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,217 @@
 +#include "DeadlineDns.h"
 +
 +#include <Arduino.h>
 +
 +#if defined(ESP_PLATFORM)
 +#include <lwip/dns.h>
++#include <lwip/ip6_addr.h>
 +#include <lwip/ip_addr.h>
++#include <lwip/netif.h>
 +#include <lwip/tcpip.h>
 +#endif
 +
@@ -196,17 +240,19 @@ index 0000000..2bf7113
 +
 +namespace {
 +constexpr uint8_t SLOT_FREE = 0;
-+constexpr uint8_t SLOT_ASKING = 1;     // owned by lwIP until its callback
++constexpr uint8_t SLOT_ASKING = 1;  // owned by lwIP until its callback
 +constexpr uint8_t SLOT_DONE = 2;
 +constexpr uint8_t SLOT_FAILED = 3;
 +constexpr uint8_t SLOT_ABANDONED = 4;  // waiter left; recycled by the callback
 +
 +// One slot per outstanding query. Four bounds both concurrency and static
-+// memory at 4 * 8 bytes, independent of how often a lookup is retried.
++// memory at 4 * sizeof(slot), independent of how often a lookup is retried.
 +constexpr int SLOT_COUNT = 4;
 +struct Slot {
 +  std::atomic<uint8_t> state{SLOT_FREE};
-+  std::atomic<uint32_t> ipv4{0};
++  // Guarded by the state transitions: the callback writes it before moving
++  // the slot to DONE, the waiter reads it only after seeing DONE.
++  ip_addr_t addr;
 +};
 +Slot slots[SLOT_COUNT];
 +
@@ -219,17 +265,18 @@ index 0000000..2bf7113
 +}
 +
 +// Runs in the lwIP thread, under the core lock, possibly long after the
-+// waiter returned: it must only touch the slot.
-+void publish(int index, uint32_t ipv4) {
-+  slots[index].ipv4.store(ipv4);
++// waiter left: it must only touch the slot.
++void publish(int index, const ip_addr_t* addr) {
++  const bool ok = addr != nullptr;
++  if (ok) slots[index].addr = *addr;
 +  uint8_t expected = SLOT_ASKING;
-+  if (!slots[index].state.compare_exchange_strong(expected, ipv4 ? SLOT_DONE : SLOT_FAILED)) {
++  if (!slots[index].state.compare_exchange_strong(expected, ok ? SLOT_DONE : SLOT_FAILED)) {
 +    slots[index].state.store(SLOT_FREE);  // abandoned: nobody will consume this
 +  }
 +}
 +
-+DeadlineDns::Status take(int index, bool ok, uint32_t& ipv4) {
-+  if (ok) ipv4 = slots[index].ipv4.load();
++DeadlineDns::Status take(int index, bool ok, IPAddress& address) {
++  if (ok) address = IPAddress(&slots[index].addr);
 +  slots[index].state.store(SLOT_FREE);
 +  return ok ? DeadlineDns::Status::Ok : DeadlineDns::Status::Failed;
 +}
@@ -244,12 +291,12 @@ index 0000000..2bf7113
 +  }
 +}
 +
-+DeadlineDns::Status waitFor(int index, uint32_t deadlineMs, uint32_t& ipv4,
++DeadlineDns::Status waitFor(int index, uint32_t deadlineMs, IPAddress& address,
 +                            const DeadlineDns::AbortFn& shouldAbort) {
 +  for (;;) {
 +    const uint8_t state = slots[index].state.load();
-+    if (state == SLOT_DONE) return take(index, true, ipv4);
-+    if (state == SLOT_FAILED) return take(index, false, ipv4);
++    if (state == SLOT_DONE) return take(index, true, address);
++    if (state == SLOT_FAILED) return take(index, false, address);
 +    if (shouldAbort && shouldAbort()) {
 +      abandon(index);
 +      return DeadlineDns::Status::Aborted;
@@ -263,45 +310,100 @@ index 0000000..2bf7113
 +}
 +
 +void found(const char* /*host*/, const ip_addr_t* addr, void* arg) {
-+  uint32_t ipv4 = 0;
-+  if (addr && IP_IS_V4(addr)) ipv4 = ip4_addr_get_u32(ip_2_ip4(addr));
-+  publish(static_cast<int>(reinterpret_cast<intptr_t>(arg)), ipv4);
++  publish(static_cast<int>(reinterpret_cast<intptr_t>(arg)), addr);
 +}
 +
-+bool start(const char* host, int index) {
++bool start(const char* host, int index, uint8_t addrtype) {
 +  ip_addr_t addr;
 +  err_t err;
 +  // Raw lwIP API: app tasks must hold the core lock; the callback runs under
 +  // it, which is why publish() uses atomics instead of taking the lock.
 +  LOCK_TCPIP_CORE();
-+  err = dns_gethostbyname_addrtype(host, &addr, found, reinterpret_cast<void*>(static_cast<intptr_t>(index)),
-+                                   LWIP_DNS_ADDRTYPE_IPV4);
++  err = dns_gethostbyname_addrtype(host, &addr, found, reinterpret_cast<void*>(static_cast<intptr_t>(index)), addrtype);
 +  UNLOCK_TCPIP_CORE();
 +  if (err == ERR_OK) {  // already cached: complete the slot ourselves
-+    publish(index, IP_IS_V4(&addr) ? ip4_addr_get_u32(ip_2_ip4(&addr)) : 0);
++    publish(index, &addr);
 +    return true;
 +  }
 +  if (err == ERR_INPROGRESS) return true;
 +  slots[index].state.store(SLOT_FREE);
 +  return false;
 +}
++
++// One address family. An empty slot is claimed and released as before; when
++// every slot holds an abandoned query the lookup waits for one to free, so a
++// cached host still resolves and an abandoned slot recovers within the
++// deadline instead of failing every later lookup instantly.
++DeadlineDns::Status lookup(const char* host, uint32_t deadlineMs, uint8_t addrtype, IPAddress& address,
++                           const DeadlineDns::AbortFn& shouldAbort) {
++  if (remainingUntil(millis(), deadlineMs) == 0) return DeadlineDns::Status::Timeout;
++  for (;;) {
++    const int index = claimSlot();
++    if (index >= 0) {
++      if (!start(host, index, addrtype)) return DeadlineDns::Status::Failed;
++      return waitFor(index, deadlineMs, address, shouldAbort);
++    }
++    if (shouldAbort && shouldAbort()) return DeadlineDns::Status::Aborted;
++    if (remainingUntil(millis(), deadlineMs) == 0) return DeadlineDns::Status::Busy;
++    delay(1);
++  }
++}
++
++#if LWIP_IPV6
++// True when an up interface holds a valid global-scope IPv6, mirroring the
++// check NetworkManager::hostByName() makes before asking for AAAA: without one
++// the device could not send on the answer, so the query would be wasted.
++bool hasGlobalIPv6() {
++  bool global = false;
++  LOCK_TCPIP_CORE();
++  for (struct netif* iface = netif_list; iface != nullptr && !global; iface = iface->next) {
++    if (!netif_is_up(iface)) continue;
++    for (int i = 0; i < LWIP_IPV6_NUM_ADDRESSES; ++i) {
++      if (ip6_addr_isvalid(netif_ip6_addr_state(iface, i)) && ip6_addr_isglobal(netif_ip6_addr(iface, i))) {
++        global = true;
++        break;
++      }
++    }
++  }
++  UNLOCK_TCPIP_CORE();
++  return global;
++}
++#endif
 +}  // namespace
 +
-+DeadlineDns::Status DeadlineDns::resolve(const char* host, uint32_t deadlineMs, uint32_t& ipv4,
++DeadlineDns::Status DeadlineDns::resolve(const char* host, uint32_t deadlineMs, IPAddress& address,
 +                                         const AbortFn& shouldAbort) {
 +  if (!host || !host[0]) return Status::Failed;
-+  if (parseIpv4(host, ipv4)) return Status::Ok;
++  uint32_t ipv4 = 0;
++  if (parseIpv4(host, ipv4)) {
++    address = IPAddress(ipv4);
++    return Status::Ok;
++  }
++  if (strchr(host, ':') != nullptr) {  // literal IPv6 (no zone): needs no DNS
++    IPAddress literal;
++    if (literal.fromString(host)) {
++      address = literal;
++      return Status::Ok;
++    }
++  }
 +  if (remainingUntil(millis(), deadlineMs) == 0) return Status::Timeout;
 +  if (shouldAbort && shouldAbort()) return Status::Aborted;
-+  const int index = claimSlot();
-+  if (index < 0) return Status::Timeout;
-+  if (!start(host, index)) return Status::Failed;
-+  return waitFor(index, deadlineMs, ipv4, shouldAbort);
++  const Status first = lookup(host, deadlineMs, LWIP_DNS_ADDRTYPE_IPV4, address, shouldAbort);
++#if LWIP_IPV6
++  // Dual-stack: a host with only an AAAA record used to resolve through the
++  // blocking path. Retry that query as IPv6 under the same deadline; a second
++  // empty answer keeps the overall result Failed.
++  if (first == Status::Failed && remainingUntil(millis(), deadlineMs) > 0 && hasGlobalIPv6()) {
++    const Status second = lookup(host, deadlineMs, LWIP_DNS_ADDRTYPE_IPV6, address, shouldAbort);
++    if (second != Status::Failed) return second;
++  }
++#endif
++  return first;
 +}
 +
 +#else  // !ESP_PLATFORM
 +
-+DeadlineDns::Status DeadlineDns::resolve(const char*, uint32_t, uint32_t&, const AbortFn&) {
++DeadlineDns::Status DeadlineDns::resolve(const char*, uint32_t, IPAddress&, const AbortFn&) {
 +  return Status::Unavailable;
 +}
 +
@@ -309,7 +411,7 @@ index 0000000..2bf7113
 +
 +}  // namespace freeink
 diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNet/src/SecureClient.cpp
-index ab34587..c6fca27 100644
+index ab34587..15301dc 100644
 --- a/libs/network/SecureNet/src/SecureClient.cpp
 +++ b/libs/network/SecureNet/src/SecureClient.cpp
 @@ -1,5 +1,7 @@
@@ -325,8 +427,8 @@ index ab34587..c6fca27 100644
  }  // namespace
  
 -int SecureClient::connectWithMethod(const char* host, uint16_t port, void* method, const char* label) {
-+int SecureClient::connectWithMethod(const char* host, uint32_t ipv4, uint16_t port, void* method, const char* label,
-+                                    const uint32_t deadlineMs) {
++int SecureClient::connectWithMethod(const char* host, const IPAddress& address, uint16_t port, void* method,
++                                    const char* label, const uint32_t deadlineMs) {
  #if defined(FREEINK_WOLFSSL_DEBUG)
    // Routes wolfSSL's internal trace through wolfSSL_Arduino_Serial_Print (the
    // application provides that hook). Shows exactly where a handshake stalls.
@@ -340,15 +442,45 @@ index ab34587..c6fca27 100644
 -  if (!_transport.connect(host, port)) {
 +  const uint32_t tcpBudget = remainingUntil(millis(), deadlineMs);
 +  if (tcpBudget == 0) {
-+    if (Serial) Serial.printf("[SecureClient] TCP connect skipped (%s): DNS used the deadline\n", label);
++    if (Serial) Serial.printf("[SecureClient] TCP connect skipped (%s): deadline exhausted\n", label);
 +    return 0;
 +  }
 +  _transport.setConnectionTimeout(tcpBudget);
-+  if (!_transport.connect(IPAddress(ipv4), port)) {
++  if (!_transport.connect(address, port)) {
      if (Serial) Serial.printf("[SecureClient] TCP connect failed (%s): %s:%u\n", label, host, port);
      return 0;
    }
-@@ -179,7 +186,6 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -131,7 +138,8 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+ 
+   auto* ctx = wolfSSL_CTX_new(static_cast<WOLFSSL_METHOD*>(method));
+   if (!ctx) {
+-    if (Serial) Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
++    if (Serial)
++      Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
+     _transport.stop();
+     return 0;
+   }
+@@ -140,15 +148,16 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+   if (_insecure) {
+     wolfSSL_CTX_set_verify(ctx, WOLFSSL_VERIFY_NONE, nullptr);
+   } else if (_rootCA) {
+-    wolfSSL_CTX_load_verify_buffer(ctx, reinterpret_cast<const unsigned char*>(_rootCA),
+-                                   strlen(_rootCA), WOLFSSL_FILETYPE_PEM);
++    wolfSSL_CTX_load_verify_buffer(ctx, reinterpret_cast<const unsigned char*>(_rootCA), strlen(_rootCA),
++                                   WOLFSSL_FILETYPE_PEM);
+   }
+   wolfSSL_SetIORecv(ctx, wcRecv);
+   wolfSSL_SetIOSend(ctx, wcSend);
+ 
+   auto* ssl = wolfSSL_new(ctx);
+   if (!ssl) {
+-    if (Serial) Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
++    if (Serial)
++      Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
+     stop();
+     return 0;
+   }
+@@ -179,7 +188,6 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
    // The recv callback is non-blocking (returns WANT_READ when no bytes are
    // buffered), so wolfSSL_connect must be retried across handshake round-trips
    // rather than called once.
@@ -356,7 +488,7 @@ index ab34587..c6fca27 100644
    int ret;
    while ((ret = wolfSSL_connect(ssl)) != WOLFSSL_SUCCESS) {
      const int err = wolfSSL_get_error(ssl, ret);
-@@ -193,7 +199,7 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -193,7 +201,7 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
        stop();
        return 0;
      }
@@ -365,7 +497,7 @@ index ab34587..c6fca27 100644
        if (Serial) {
          Serial.printf("[SecureClient] handshake timeout (%s): last err %d, transport %s, free heap %u\n", label, err,
                        _transport.connected() ? "up" : "down", (unsigned)ESP.getFreeHeap());
-@@ -204,6 +210,9 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -204,6 +212,9 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
      delay(5);
    }
    _connected = true;
@@ -375,21 +507,26 @@ index ab34587..c6fca27 100644
    if (Serial) {
      Serial.printf("[SecureClient] handshake ok (%s): %s / %s in %lu ms\n", label, wolfSSL_get_version(ssl),
                    wolfSSL_get_cipher(ssl), (unsigned long)(millis() - started));
-@@ -237,18 +246,38 @@ bool SecureClient::abortRequested() {
+@@ -237,21 +248,50 @@ bool SecureClient::abortRequested() {
  
  int SecureClient::connect(const char* host, uint16_t port) {
    _aborted = false;
 +  // One budget for DNS, TCP and the whole handshake, including the TLS 1.2
 +  // retry below: no step starts a fresh clock after the previous one.
 +  const uint32_t deadlineMs = deadlineAfter(millis(), static_cast<uint32_t>(getTimeout()));
-+  uint32_t ipv4 = 0;
-+  const DeadlineDns::Status dns = DeadlineDns::resolve(host, deadlineMs, ipv4, [this] { return abortRequested(); });
++  IPAddress address;
++  const DeadlineDns::Status dns = DeadlineDns::resolve(host, deadlineMs, address, [this] { return abortRequested(); });
 +  if (dns != DeadlineDns::Status::Ok) {
 +    if (Serial) {
 +      const char* reason = "failed";
-+      if (dns == DeadlineDns::Status::Timeout) reason = "timeout";
-+      else if (dns == DeadlineDns::Status::Aborted) reason = "aborted";
-+      else if (dns == DeadlineDns::Status::Unavailable) reason = "unavailable";
++      if (dns == DeadlineDns::Status::Timeout)
++        reason = "timeout";
++      else if (dns == DeadlineDns::Status::Busy)
++        reason = "busy (all lookup slots abandoned)";
++      else if (dns == DeadlineDns::Status::Aborted)
++        reason = "aborted";
++      else if (dns == DeadlineDns::Status::Unavailable)
++        reason = "unavailable";
 +      Serial.printf("[SecureClient] DNS %s (%s), %lu ms left\n", reason, host,
 +                    (unsigned long)remainingUntil(millis(), deadlineMs));
 +    }
@@ -400,7 +537,7 @@ index ab34587..c6fca27 100644
    // client fails those handshakes outright. v23 still selects 1.3 when the peer
    // offers it (WOLFSSL_TLS13 is enabled) and falls back to 1.2 otherwise.
 -  if (connectWithMethod(host, port, wolfSSLv23_client_method(), "auto")) return 1;
-+  if (connectWithMethod(host, ipv4, port, wolfSSLv23_client_method(), "auto", deadlineMs)) return 1;
++  if (connectWithMethod(host, address, port, wolfSSLv23_client_method(), "auto", deadlineMs)) return 1;
    if (_aborted) return 0;
 +  if (remainingUntil(millis(), deadlineMs) == 0) {
 +    if (Serial) Serial.println("[SecureClient] TLS 1.2 retry skipped: deadline exhausted");
@@ -412,12 +549,80 @@ index ab34587..c6fca27 100644
    // TLS 1.2 ClientHello before giving up.
    if (Serial) Serial.println("[SecureClient] retrying with TLS 1.2-only handshake");
 -  return connectWithMethod(host, port, wolfTLSv1_2_client_method(), "tls1.2");
-+  return connectWithMethod(host, ipv4, port, wolfTLSv1_2_client_method(), "tls1.2", deadlineMs);
++  return connectWithMethod(host, address, port, wolfTLSv1_2_client_method(), "tls1.2", deadlineMs);
  }
  
  int SecureClient::connect(IPAddress ip, uint16_t port) {
++  if (ip.type() == IPv6) {
++    const String host = ip.toString();
++    return connect(host.c_str(), port);
++  }
+   char host[16];
+   snprintf(host, sizeof(host), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+   return connect(host, port);
+@@ -292,7 +332,10 @@ int SecureClient::available() {
+ }
+ 
+ void SecureClient::stop() {
+-  if (_ssl) { wolfSSL_free(static_cast<WOLFSSL*>(_ssl)); _ssl = nullptr; }
++  if (_ssl) {
++    wolfSSL_free(static_cast<WOLFSSL*>(_ssl));
++    _ssl = nullptr;
++  }
+   if (_recordBuf) {
+     // wolfSSL_free() returned the buffer if it was lent; freeing a lent one
+     // would leave wolfSSL with a dangling pointer, so leak it instead.
+@@ -305,7 +348,10 @@ void SecureClient::stop() {
+     }
+     _recordBuf = nullptr;
+   }
+-  if (_ctx) { wolfSSL_CTX_free(static_cast<WOLFSSL_CTX*>(_ctx)); _ctx = nullptr; }
++  if (_ctx) {
++    wolfSSL_CTX_free(static_cast<WOLFSSL_CTX*>(_ctx));
++    _ctx = nullptr;
++  }
+   _transport.stop();
+   _connected = false;
+ }
+@@ -315,15 +361,31 @@ uint8_t SecureClient::connected() { return _connected && _transport.connected();
+ #else  // !FREEINK_NET_WOLFSSL — inert stub so the SDK builds without wolfSSL.
+ 
+ int SecureClient::connect(const char* host, uint16_t port) {
+-  (void)host; (void)port;
++  (void)host;
++  (void)port;
+   if (Serial) Serial.println("[SecureClient] TLS 1.3 unavailable: build with -DFREEINK_NET_WOLFSSL=1");
+   return 0;
+ }
+-int SecureClient::connect(IPAddress ip, uint16_t port) { (void)ip; (void)port; return 0; }
+-size_t SecureClient::write(const uint8_t* buf, size_t size) { (void)buf; (void)size; return 0; }
+-int SecureClient::read(uint8_t* buf, size_t size) { (void)buf; (void)size; return -1; }
++int SecureClient::connect(IPAddress ip, uint16_t port) {
++  (void)ip;
++  (void)port;
++  return 0;
++}
++size_t SecureClient::write(const uint8_t* buf, size_t size) {
++  (void)buf;
++  (void)size;
++  return 0;
++}
++int SecureClient::read(uint8_t* buf, size_t size) {
++  (void)buf;
++  (void)size;
++  return -1;
++}
+ int SecureClient::available() { return 0; }
+-void SecureClient::stop() { _transport.stop(); _connected = false; }
++void SecureClient::stop() {
++  _transport.stop();
++  _connected = false;
++}
+ void SecureClient::reserveFullRecord() {}
+ uint8_t SecureClient::connected() { return 0; }
+ 
 diff --git a/libs/network/SecureNet/test/host/run.sh b/libs/network/SecureNet/test/host/run.sh
-index ba37c98..7f77dfa 100755
+index ba37c98..6d6f295 100755
 --- a/libs/network/SecureNet/test/host/run.sh
 +++ b/libs/network/SecureNet/test/host/run.sh
 @@ -1,9 +1,13 @@
@@ -433,40 +638,167 @@ index ba37c98..7f77dfa 100755
  mkdir -p "$BUILD_DIR"
  c++ -std=c++17 -Wall -Wextra -Werror -Istubs -I../../include test_resumable_fetch.cpp -o "$BUILD_DIR/test_resumable_fetch"
  "$BUILD_DIR/test_resumable_fetch"
-+c++ -std=c++17 -Wall -Wextra -Werror -DESP_PLATFORM -Istubs -I../../include \
++c++ -std=c++17 -Wall -Wextra -Werror -pthread -DESP_PLATFORM -Istubs -I../../include \
 +  test_deadline_dns.cpp ../../src/DeadlineDns.cpp -o "$BUILD_DIR/test_deadline_dns"
 +"$BUILD_DIR/test_deadline_dns"
 diff --git a/libs/network/SecureNet/test/host/stubs/Arduino.h b/libs/network/SecureNet/test/host/stubs/Arduino.h
-index bafcf7e..5e5f62b 100644
+index bafcf7e..2692886 100644
 --- a/libs/network/SecureNet/test/host/stubs/Arduino.h
 +++ b/libs/network/SecureNet/test/host/stubs/Arduino.h
-@@ -22,4 +22,12 @@ class String {
+@@ -1,11 +1,15 @@
+ #pragma once
+-// Host stub: a virtual clock (delay advances it instantly) and the small
+-// String/IPAddress surface SecureHttpClient touches.
++// Host stub: a virtual clock (delay advances it instantly), the small
++// String/IPAddress surface SecureHttpClient and DeadlineDns touch, and just
++// enough lwIP wiring (lwip/ip_addr.h) for the address conversions to compile.
++#include <cctype>
+ #include <cstddef>
+ #include <cstdint>
+ #include <cstring>
+ #include <string>
+ 
++#include "lwip/ip_addr.h"
++
+ inline unsigned long& fakeNow() {
+   static unsigned long now = 0;
+   return now;
+@@ -22,4 +26,117 @@ class String {
    std::string s_;
  };
  
 -class IPAddress {};
++enum IPType { IPv4 = 0, IPv6 = 1 };
++
 +class IPAddress {
 + public:
 +  IPAddress() = default;
-+  explicit IPAddress(uint32_t address) : value_(address) {}
-+  uint32_t value() const { return value_; }
++  explicit IPAddress(uint32_t address) : type_(IPv4) { memcpy(bytes_, &address, 4); }
++  explicit IPAddress(const ip_addr_t* addr) {
++    if (IP_IS_V6(addr)) {
++      type_ = IPv6;
++      memcpy(bytes_, ip_2_ip6(addr)->addr, 16);
++    } else {
++      type_ = IPv4;
++      memset(bytes_, 0, sizeof(bytes_));
++      memcpy(bytes_, &ip_2_ip4(addr)->addr, 4);
++    }
++  }
++  IPAddress(IPType ip_type, const uint8_t* address) : type_(ip_type) { memcpy(bytes_, address, 16); }
++  bool isV6() const { return type_ == IPv6; }
++  IPType type() const { return type_; }
++  uint8_t operator[](int digit) const { return bytes_[digit]; }
++  const uint8_t* bytes() const { return bytes_; }
++
++  // Mirrors the core: try IPv4, then IPv6 (one "::" run accepted, no zones).
++  bool fromString(const char* address) {
++    if (!address) return false;
++    uint32_t v4 = 0;
++    if (parseV4(address, v4)) {
++      *this = IPAddress(v4);
++      return true;
++    }
++    return parseV6(address);
++  }
 +
 + private:
-+  uint32_t value_ = 0;
++  static bool parseV4(const char* s, uint32_t& out) {
++    uint8_t bytes[4];
++    int filled = 0;
++    const char* p = s;
++    while (filled < 4) {
++      if (*p < '0' || *p > '9') return false;
++      unsigned value = 0;
++      int digits = 0;
++      while (*p >= '0' && *p <= '9') {
++        value = value * 10 + static_cast<unsigned>(*p - '0');
++        if (value > 255 || ++digits > 3) return false;
++        ++p;
++      }
++      bytes[filled++] = static_cast<uint8_t>(value);
++      if (*p == '\0') break;
++      if (*p != '.' || filled == 4) return false;
++      ++p;
++    }
++    if (*p != '\0' || filled != 4) return false;
++    memcpy(&out, bytes, sizeof(out));
++    return true;
++  }
++
++  bool parseV6(const char* s) {
++    uint16_t groups[8];
++    int count = 0;
++    int compressAt = -1;
++    const char* p = s;
++    if (p[0] == ':' && p[1] == ':') {
++      compressAt = 0;
++      p += 2;
++    } else if (p[0] == ':') {
++      return false;
++    }
++    while (*p != '\0') {
++      unsigned value = 0;
++      int digits = 0;
++      while (isxdigit(static_cast<unsigned char>(*p)) && digits < 4) {
++        const char c = static_cast<char>(tolower(static_cast<unsigned char>(*p)));
++        value = value * 16 + static_cast<unsigned>(c <= '9' ? c - '0' : c - 'a' + 10);
++        ++digits;
++        ++p;
++      }
++      if (digits == 0 || count >= 8) return false;
++      groups[count++] = static_cast<uint16_t>(value);
++      if (*p == '\0') break;
++      if (*p != ':') return false;
++      ++p;
++      if (*p == ':') {
++        if (compressAt >= 0) return false;
++        compressAt = count;
++        ++p;
++      } else if (*p == '\0') {
++        return false;  // trailing single colon
++      }
++    }
++    if (compressAt < 0) {
++      if (count != 8) return false;
++    } else if (count > 7) {
++      return false;
++    }
++    uint16_t full[8] = {0, 0, 0, 0, 0, 0, 0, 0};
++    if (compressAt < 0) {
++      memcpy(full, groups, sizeof(groups));
++    } else {
++      memcpy(full, groups, static_cast<size_t>(compressAt) * sizeof(uint16_t));
++      const int tail = count - compressAt;
++      memcpy(full + (8 - tail), groups + compressAt, static_cast<size_t>(tail) * sizeof(uint16_t));
++    }
++    for (int i = 0; i < 8; ++i) {
++      bytes_[2 * i] = static_cast<uint8_t>(full[i] >> 8);
++      bytes_[2 * i + 1] = static_cast<uint8_t>(full[i] & 0xff);
++    }
++    type_ = IPv6;
++    return true;
++  }
++
++  IPType type_ = IPv4;
++  uint8_t bytes_[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 +};
 diff --git a/libs/network/SecureNet/test/host/stubs/lwip/dns.h b/libs/network/SecureNet/test/host/stubs/lwip/dns.h
 new file mode 100644
-index 0000000..cedc248
+index 0000000..df7c355
 --- /dev/null
 +++ b/libs/network/SecureNet/test/host/stubs/lwip/dns.h
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,117 @@
 +#pragma once
-+// Host stub: a scripted asynchronous resolver. dns_gethostbyname_addrtype()
-+// records the completion callback and the test completes or fails it
-+// explicitly, which also models an answer arriving after the waiter left.
-+#include "lwip/ip_addr.h"
-+
++// Host stub: a scripted asynchronous resolver, per address family.
++// dns_gethostbyname_addrtype() records the completion callback and the test
++// completes or fails it explicitly, which also models an answer arriving
++// after the waiter left. The pending list is mutex-guarded so a second
++// thread can play the lwIP thread that answers late (test_deadline_dns).
 +#include <cstdint>
++#include <cstring>
++#include <mutex>
++
++#include "lwip/ip_addr.h"
 +
 +typedef int err_t;
 +#define ERR_OK 0
@@ -474,6 +806,7 @@ index 0000000..cedc248
 +#define ERR_INPROGRESS -5
 +
 +#define LWIP_DNS_ADDRTYPE_IPV4 0
++#define LWIP_DNS_ADDRTYPE_IPV6 1
 +
 +typedef void (*dns_found_callback)(const char* name, const ip_addr_t* ipaddr, void* callback_arg);
 +
@@ -481,6 +814,7 @@ index 0000000..cedc248
 +  const char* host = nullptr;
 +  dns_found_callback found = nullptr;
 +  void* arg = nullptr;
++  uint8_t addrtype = LWIP_DNS_ADDRTYPE_IPV4;
 +};
 +
 +struct FakeDns {
@@ -488,21 +822,31 @@ index 0000000..cedc248
 +  inline static FakeDnsPending pending[MAX_PENDING];
 +  inline static int pendingCount = 0;
 +  inline static int started = 0;
-+  inline static err_t immediate = ERR_INPROGRESS;
++  inline static std::mutex lock;
++  // Scripted outcome per family: ERR_OK answers synchronously from the
++  // cache (immediateIpv4 / immediateV6Bytes), ERR_INPROGRESS queues the
++  // query, any other error fails the start. failOnStart answers a queued
++  // query with no address (NXDOMAIN) before dns_gethostbyname returns.
++  inline static err_t immediate[2] = {ERR_INPROGRESS, ERR_INPROGRESS};
 +  inline static uint32_t immediateIpv4 = 0;
-+  inline static bool completeOnStart = false;
++  inline static uint8_t immediateV6Bytes[16] = {0};
++  inline static bool failOnStart[2] = {false, false};
 +
 +  static void reset() {
++    std::lock_guard<std::mutex> guard(lock);
 +    pendingCount = 0;
 +    started = 0;
-+    immediate = ERR_INPROGRESS;
++    immediate[LWIP_DNS_ADDRTYPE_IPV4] = ERR_INPROGRESS;
++    immediate[LWIP_DNS_ADDRTYPE_IPV6] = ERR_INPROGRESS;
 +    immediateIpv4 = 0;
-+    completeOnStart = false;
++    memset(immediateV6Bytes, 0, sizeof(immediateV6Bytes));
++    failOnStart[LWIP_DNS_ADDRTYPE_IPV4] = false;
++    failOnStart[LWIP_DNS_ADDRTYPE_IPV6] = false;
 +    for (auto& entry : pending) entry = FakeDnsPending{};
 +  }
 +};
 +
-+inline void fakeDnsComplete(int index, uint32_t ipv4) {
++inline void fakeDnsCompleteLocked(int index, uint32_t ipv4) {
 +  const FakeDnsPending entry = FakeDns::pending[index];
 +  FakeDns::pending[index] = FakeDnsPending{};
 +  if (!entry.found) return;
@@ -512,56 +856,153 @@ index 0000000..cedc248
 +  entry.found(entry.host, &addr, entry.arg);
 +}
 +
-+inline void fakeDnsFail(int index) {
++inline void fakeDnsCompleteV6Locked(int index, const uint8_t* bytes) {
++  const FakeDnsPending entry = FakeDns::pending[index];
++  FakeDns::pending[index] = FakeDnsPending{};
++  if (!entry.found) return;
++  ip_addr_t addr{};
++  addr.type = IPADDR_TYPE_V6;
++  memcpy(addr.u_addr.ip6.addr, bytes, 16);
++  entry.found(entry.host, &addr, entry.arg);
++}
++
++inline void fakeDnsFailLocked(int index) {
 +  const FakeDnsPending entry = FakeDns::pending[index];
 +  FakeDns::pending[index] = FakeDnsPending{};
 +  if (entry.found) entry.found(entry.host, nullptr, entry.arg);
 +}
 +
++inline void fakeDnsComplete(int index, uint32_t ipv4) {
++  std::lock_guard<std::mutex> guard(FakeDns::lock);
++  fakeDnsCompleteLocked(index, ipv4);
++}
++
++inline void fakeDnsFail(int index) {
++  std::lock_guard<std::mutex> guard(FakeDns::lock);
++  fakeDnsFailLocked(index);
++}
++
 +inline err_t dns_gethostbyname_addrtype(const char* hostname, ip_addr_t* addr, dns_found_callback found,
-+                                       void* callback_arg, uint8_t dns_addrtype) {
-+  (void)dns_addrtype;
++                                        void* callback_arg, uint8_t dns_addrtype) {
++  std::lock_guard<std::mutex> guard(FakeDns::lock);
 +  FakeDns::started++;
-+  if (FakeDns::immediate == ERR_OK) {
-+    addr->type = IPADDR_TYPE_V4;
-+    addr->u_addr.ip4.addr = FakeDns::immediateIpv4;
++  if (FakeDns::immediate[dns_addrtype] == ERR_OK) {
++    if (dns_addrtype == LWIP_DNS_ADDRTYPE_IPV6) {
++      addr->type = IPADDR_TYPE_V6;
++      memcpy(addr->u_addr.ip6.addr, FakeDns::immediateV6Bytes, 16);
++    } else {
++      addr->type = IPADDR_TYPE_V4;
++      addr->u_addr.ip4.addr = FakeDns::immediateIpv4;
++    }
 +    return ERR_OK;
 +  }
-+  if (FakeDns::immediate != ERR_INPROGRESS) return FakeDns::immediate;
++  if (FakeDns::immediate[dns_addrtype] != ERR_INPROGRESS) return FakeDns::immediate[dns_addrtype];
 +  if (FakeDns::pendingCount >= FakeDns::MAX_PENDING) return ERR_MEM;
-+  FakeDns::pending[FakeDns::pendingCount++] = {hostname, found, callback_arg};
-+  if (FakeDns::completeOnStart) {
-+    FakeDns::completeOnStart = false;
-+    fakeDnsFail(FakeDns::pendingCount - 1);
++  FakeDns::pending[FakeDns::pendingCount++] = {hostname, found, callback_arg, dns_addrtype};
++  if (FakeDns::failOnStart[dns_addrtype]) {
++    FakeDns::failOnStart[dns_addrtype] = false;
++    fakeDnsFailLocked(FakeDns::pendingCount - 1);
 +  }
 +  return ERR_INPROGRESS;
 +}
+diff --git a/libs/network/SecureNet/test/host/stubs/lwip/ip6_addr.h b/libs/network/SecureNet/test/host/stubs/lwip/ip6_addr.h
+new file mode 100644
+index 0000000..01361ac
+--- /dev/null
++++ b/libs/network/SecureNet/test/host/stubs/lwip/ip6_addr.h
+@@ -0,0 +1,11 @@
++#pragma once
++// Host stub: the IPv6 predicates hasGlobalIPv6() reads. Address words are
++// raw memory like lwIP's network-order storage, so the global-scope test
++// inspects the first wire byte.
++#include "lwip/ip_addr.h"
++
++#define LWIP_IPV6_NUM_ADDRESSES 4
++#define IP6_ADDR_VALID 0x01U
++
++#define ip6_addr_isvalid(addr_state) (((addr_state) & IP6_ADDR_VALID) != 0)
++#define ip6_addr_isglobal(ip6addr) ((reinterpret_cast<const uint8_t*>(&(ip6addr)->addr)[0] & 0xe0U) == 0x20U)
 diff --git a/libs/network/SecureNet/test/host/stubs/lwip/ip_addr.h b/libs/network/SecureNet/test/host/stubs/lwip/ip_addr.h
 new file mode 100644
-index 0000000..5e17856
+index 0000000..d9c2029
 --- /dev/null
 +++ b/libs/network/SecureNet/test/host/stubs/lwip/ip_addr.h
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,33 @@
 +#pragma once
-+// Host stub: the IPv4 subset of lwIP's address types that DeadlineDns.cpp
-+// touches.
++// Host stub: the dual-stack subset of lwIP's address types that DeadlineDns
++// and the scripted resolver touch, with the real ip_addr_t shape (address
++// union plus a type tag).
 +#include <cstdint>
++#include <cstring>
++
++#define LWIP_IPV6 1
 +
 +typedef struct ip4_addr {
 +  uint32_t addr;
 +} ip4_addr_t;
 +
++typedef struct ip6_addr {
++  uint32_t addr[4];
++} ip6_addr_t;
++
 +typedef struct ip_addr {
-+  uint8_t type;
 +  union {
++    ip6_addr_t ip6;
 +    ip4_addr_t ip4;
 +  } u_addr;
++  uint8_t type;
 +} ip_addr_t;
 +
-+#define IPADDR_TYPE_V4 0
++#define IPADDR_TYPE_V4 0U
++#define IPADDR_TYPE_V6 1U
++
 +#define IP_IS_V4(ipaddr) (((ipaddr) == nullptr) || ((ipaddr)->type == IPADDR_TYPE_V4))
++#define IP_IS_V6(ipaddr) (((ipaddr) != nullptr) && ((ipaddr)->type == IPADDR_TYPE_V6))
 +#define ip_2_ip4(ipaddr) (&((ipaddr)->u_addr.ip4))
++#define ip_2_ip6(ipaddr) (&((ipaddr)->u_addr.ip6))
 +#define ip4_addr_get_u32(ip4addr) ((ip4addr)->addr)
+diff --git a/libs/network/SecureNet/test/host/stubs/lwip/netif.h b/libs/network/SecureNet/test/host/stubs/lwip/netif.h
+new file mode 100644
+index 0000000..7e7a8f1
+--- /dev/null
++++ b/libs/network/SecureNet/test/host/stubs/lwip/netif.h
+@@ -0,0 +1,36 @@
++#pragma once
++// Host stub: one scripted interface. The tests toggle its link state and its
++// global IPv6 so hasGlobalIPv6() sees the same shape it inspects on the device.
++#include "lwip/ip6_addr.h"
++
++#define NETIF_FLAG_UP 0x01U
++
++struct netif {
++  netif* next;
++  uint8_t flags;
++  ip_addr_t ip6_addr[LWIP_IPV6_NUM_ADDRESSES];
++  uint8_t ip6_addr_state[LWIP_IPV6_NUM_ADDRESSES];
++};
++
++inline netif* fakeNetif() {
++  static netif instance{};
++  return &instance;
++}
++
++inline void fakeNetifReset() { *fakeNetif() = netif{}; }
++
++// Brings the interface up with a valid 2001:db8::1 global unicast address.
++inline void fakeNetifSetGlobalV6(bool enable) {
++  netif* n = fakeNetif();
++  n->flags = enable ? NETIF_FLAG_UP : 0;
++  n->ip6_addr_state[0] = enable ? IP6_ADDR_VALID : 0;
++  if (enable) {
++    n->ip6_addr[0].type = IPADDR_TYPE_V6;
++    reinterpret_cast<uint8_t*>(&n->ip6_addr[0].u_addr.ip6)[0] = 0x20;
++  }
++}
++
++#define netif_list (fakeNetif())
++#define netif_is_up(netif) (((netif)->flags & NETIF_FLAG_UP) != 0)
++#define netif_ip6_addr(netif, i) (&((netif)->ip6_addr[i].u_addr.ip6))
++#define netif_ip6_addr_state(netif, i) ((netif)->ip6_addr_state[i])
 diff --git a/libs/network/SecureNet/test/host/stubs/lwip/tcpip.h b/libs/network/SecureNet/test/host/stubs/lwip/tcpip.h
 new file mode 100644
 index 0000000..063c2e8
@@ -574,23 +1015,29 @@ index 0000000..063c2e8
 +#define UNLOCK_TCPIP_CORE() (void)0
 diff --git a/libs/network/SecureNet/test/host/test_deadline_dns.cpp b/libs/network/SecureNet/test/host/test_deadline_dns.cpp
 new file mode 100644
-index 0000000..1d90b60
+index 0000000..d99bcef
 --- /dev/null
 +++ b/libs/network/SecureNet/test/host/test_deadline_dns.cpp
-@@ -0,0 +1,151 @@
-+// Host test for DeadlineDns: deadline arithmetic, literal parsing, and the
-+// slot protocol that outlives a cancelled lookup (late lwIP completion).
+@@ -0,0 +1,259 @@
++// Host test for DeadlineDns: deadline arithmetic, literal parsing, dual-stack
++// fallback, and the slot protocol that outlives a cancelled lookup (late
++// lwIP completion, including completions arriving on another thread).
 +#include <Arduino.h>
 +#include <DeadlineDns.h>
 +
++#include <atomic>
 +#include <cassert>
++#include <chrono>
 +#include <cstdio>
 +#include <cstring>
++#include <mutex>
++#include <thread>
 +
 +#include "lwip/dns.h"
++#include "lwip/netif.h"
 +
-+using freeink::DeadlineDns;
 +using freeink::deadlineAfter;
++using freeink::DeadlineDns;
 +using freeink::remainingUntil;
 +
 +namespace {
@@ -601,15 +1048,25 @@ index 0000000..1d90b60
 +  return ip;
 +}
 +
-+void assertIp(uint32_t ip, uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
-+  uint8_t bytes[4];
-+  memcpy(bytes, &ip, sizeof(bytes));
-+  assert(bytes[0] == a && bytes[1] == b && bytes[2] == c && bytes[3] == d);
++const uint8_t kV6Answer[16] = {0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
++                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42};
++const uint8_t kV6Literal[16] = {0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
++                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
++
++void assertIp(const IPAddress& ip, uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
++  assert(!ip.isV6());
++  assert(ip[0] == a && ip[1] == b && ip[2] == c && ip[3] == d);
++}
++
++void assertV6(const IPAddress& ip, const uint8_t (&bytes)[16]) {
++  assert(ip.isV6());
++  assert(memcmp(ip.bytes(), bytes, sizeof(bytes)) == 0);
 +}
 +
 +void resetClock() {
 +  fakeNow() = 0;
 +  FakeDns::reset();
++  fakeNetifReset();
 +}
 +
 +uint32_t now32() { return static_cast<uint32_t>(fakeNow()); }
@@ -633,7 +1090,9 @@ index 0000000..1d90b60
 +    resetClock();
 +    uint32_t ip = 0;
 +    assert(DeadlineDns::parseIpv4("192.168.1.20", ip));
-+    assertIp(ip, 192, 168, 1, 20);
++    uint8_t bytes[4];
++    memcpy(bytes, &ip, sizeof(bytes));
++    assert(bytes[0] == 192 && bytes[1] == 168 && bytes[2] == 1 && bytes[3] == 20);
 +    assert(!DeadlineDns::parseIpv4("256.0.0.1", ip));
 +    assert(!DeadlineDns::parseIpv4("1.2.3", ip));
 +    assert(!DeadlineDns::parseIpv4("1.2.3.4.5", ip));
@@ -642,40 +1101,88 @@ index 0000000..1d90b60
 +    assert(!DeadlineDns::parseIpv4("01.2.3.4", ip));  // inet_aton would read octal
 +    assert(!DeadlineDns::parseIpv4("", ip));
 +    assert(!DeadlineDns::parseIpv4(nullptr, ip));
-+    assert(DeadlineDns::resolve("10.0.0.7", deadlineAfter(0, 100), ip, nullptr) == DeadlineDns::Status::Ok);
-+    assertIp(ip, 10, 0, 0, 7);
++
++    IPAddress address;
++    assert(DeadlineDns::resolve("10.0.0.7", deadlineAfter(0, 100), address, nullptr) == DeadlineDns::Status::Ok);
++    assertIp(address, 10, 0, 0, 7);
++    assert(DeadlineDns::resolve("2001:db8::1", deadlineAfter(0, 100), address, nullptr) == DeadlineDns::Status::Ok);
++    assertV6(address, kV6Literal);
 +    assert(FakeDns::started == 0);
-+    assert(DeadlineDns::resolve(nullptr, deadlineAfter(0, 100), ip, nullptr) == DeadlineDns::Status::Failed);
-+    assert(DeadlineDns::resolve("", deadlineAfter(0, 100), ip, nullptr) == DeadlineDns::Status::Failed);
++    assert(DeadlineDns::resolve(nullptr, deadlineAfter(0, 100), address, nullptr) == DeadlineDns::Status::Failed);
++    assert(DeadlineDns::resolve("", deadlineAfter(0, 100), address, nullptr) == DeadlineDns::Status::Failed);
 +  }
 +
 +  // A resolver cache hit completes immediately.
 +  {
 +    resetClock();
-+    FakeDns::immediate = ERR_OK;
++    FakeDns::immediate[LWIP_DNS_ADDRTYPE_IPV4] = ERR_OK;
 +    FakeDns::immediateIpv4 = makeIp(10, 0, 0, 7);
-+    uint32_t ip = 0;
-+    assert(DeadlineDns::resolve("cached.test", deadlineAfter(0, 100), ip, nullptr) == DeadlineDns::Status::Ok);
-+    assertIp(ip, 10, 0, 0, 7);
++    IPAddress address;
++    assert(DeadlineDns::resolve("cached.test", deadlineAfter(0, 100), address, nullptr) == DeadlineDns::Status::Ok);
++    assertIp(address, 10, 0, 0, 7);
 +    assert(FakeDns::started == 1);
 +  }
 +
-+  // NXDOMAIN surfaces as a fast failure, not as a timeout.
++  // NXDOMAIN surfaces as a fast failure, not as a timeout, and without a
++  // global IPv6 on any interface no AAAA query follows it.
 +  {
 +    resetClock();
-+    FakeDns::completeOnStart = true;
-+    uint32_t ip = 0;
-+    assert(DeadlineDns::resolve("nx.test", deadlineAfter(0, 100), ip, nullptr) == DeadlineDns::Status::Failed);
++    FakeDns::failOnStart[LWIP_DNS_ADDRTYPE_IPV4] = true;
++    IPAddress address;
++    assert(DeadlineDns::resolve("nx.test", deadlineAfter(0, 100), address, nullptr) == DeadlineDns::Status::Failed);
 +    assert(FakeDns::started == 1);
 +    assert(fakeNow() == 0);
++  }
++
++  // With a global IPv6 the failed A query is retried as AAAA under the same
++  // deadline: an IPv6-only host keeps resolving.
++  {
++    resetClock();
++    fakeNetifSetGlobalV6(true);
++    FakeDns::failOnStart[LWIP_DNS_ADDRTYPE_IPV4] = true;
++    FakeDns::immediate[LWIP_DNS_ADDRTYPE_IPV6] = ERR_OK;
++    memcpy(FakeDns::immediateV6Bytes, kV6Answer, sizeof(kV6Answer));
++    IPAddress address;
++    assert(DeadlineDns::resolve("v6only.test", deadlineAfter(0, 100), address, nullptr) == DeadlineDns::Status::Ok);
++    assertV6(address, kV6Answer);
++    assert(FakeDns::started == 2);  // one A query, then one AAAA query
++    assert(fakeNow() == 0);
++
++    // Both families empty stays a failure.
++    resetClock();
++    fakeNetifSetGlobalV6(true);
++    FakeDns::failOnStart[LWIP_DNS_ADDRTYPE_IPV4] = true;
++    FakeDns::failOnStart[LWIP_DNS_ADDRTYPE_IPV6] = true;
++    assert(DeadlineDns::resolve("nx6.test", deadlineAfter(0, 100), address, nullptr) == DeadlineDns::Status::Failed);
++    assert(FakeDns::started == 2);
++
++    // A succeeds: IPv4 wins and no AAAA query is issued.
++    resetClock();
++    fakeNetifSetGlobalV6(true);
++    FakeDns::immediate[LWIP_DNS_ADDRTYPE_IPV4] = ERR_OK;
++    FakeDns::immediateIpv4 = makeIp(192, 0, 2, 1);
++    assert(DeadlineDns::resolve("dual.test", deadlineAfter(0, 100), address, nullptr) == DeadlineDns::Status::Ok);
++    assertIp(address, 192, 0, 2, 1);
++    assert(FakeDns::started == 1);
++
++    // The retry is for an empty answer only: a timed-out A query is not
++    // re-asked as AAAA.
++    resetClock();
++    fakeNetifSetGlobalV6(true);
++    FakeDns::immediate[LWIP_DNS_ADDRTYPE_IPV6] = ERR_OK;
++    memcpy(FakeDns::immediateV6Bytes, kV6Answer, sizeof(kV6Answer));
++    assert(DeadlineDns::resolve("slow.test", deadlineAfter(0, 5), address, nullptr) == DeadlineDns::Status::Timeout);
++    assert(FakeDns::started == 1);
++    fakeDnsFail(0);
 +  }
 +
 +  // A blackholed resolver stops at the caller's deadline, and its late answer
 +  // is safe to deliver after the waiter has left.
 +  {
 +    resetClock();
-+    uint32_t ip = 0;
-+    assert(DeadlineDns::resolve("blackhole.test", deadlineAfter(0, 5), ip, nullptr) == DeadlineDns::Status::Timeout);
++    IPAddress address;
++    assert(DeadlineDns::resolve("blackhole.test", deadlineAfter(0, 5), address, nullptr) ==
++           DeadlineDns::Status::Timeout);
 +    assert(fakeNow() == 5);
 +    assert(FakeDns::pendingCount == 1);
 +    fakeDnsComplete(0, makeIp(192, 0, 2, 1));
@@ -685,33 +1192,36 @@ index 0000000..1d90b60
 +  // late answer is still delivered safely.
 +  {
 +    resetClock();
-+    uint32_t ip = 0;
++    IPAddress address;
 +    int checks = 0;
 +    const DeadlineDns::AbortFn abort = [&checks] { return ++checks > 2; };
-+    assert(DeadlineDns::resolve("abort.test", deadlineAfter(0, 1000), ip, abort) == DeadlineDns::Status::Aborted);
++    assert(DeadlineDns::resolve("abort.test", deadlineAfter(0, 1000), address, abort) == DeadlineDns::Status::Aborted);
 +    assert(fakeNow() < 1000);
 +    assert(FakeDns::pendingCount == 1);
 +    fakeDnsFail(0);
 +  }
 +
-+  // Timeouts consume the fixed slot pool; only the late completions recycle
-+  // them, and memory does not grow while they are outstanding.
++  // Timeouts consume the fixed slot pool; an exhausted pool waits for a slot
++  // to recycle (up to the deadline) instead of failing every later lookup
++  // instantly, and only the late completions recycle the abandoned slots.
 +  {
 +    resetClock();
-+    uint32_t ip = 0;
++    IPAddress address;
 +    for (int i = 0; i < 4; ++i) {
-+      assert(DeadlineDns::resolve("hole.test", deadlineAfter(now32(), 2), ip, nullptr) == DeadlineDns::Status::Timeout);
++      assert(DeadlineDns::resolve("hole.test", deadlineAfter(now32(), 2), address, nullptr) ==
++             DeadlineDns::Status::Timeout);
 +    }
 +    assert(FakeDns::started == 4);
 +    const unsigned long before = fakeNow();
-+    assert(DeadlineDns::resolve("fifth.test", deadlineAfter(now32(), 1000), ip, nullptr) ==
-+           DeadlineDns::Status::Timeout);
-+    assert(FakeDns::started == 4);  // no slot, so no query was issued
-+    assert(fakeNow() == before);    // and the failure is immediate
++    assert(DeadlineDns::resolve("fifth.test", deadlineAfter(now32(), 1000), address, nullptr) ==
++           DeadlineDns::Status::Busy);
++    assert(FakeDns::started == 4);       // no slot, so no query was issued
++    assert(fakeNow() == before + 1000);  // the wait used the whole deadline, not zero
 +    for (int i = 0; i < 4; ++i) fakeDnsComplete(i, makeIp(192, 0, 2, 3));
-+    FakeDns::immediate = ERR_OK;
++    FakeDns::immediate[LWIP_DNS_ADDRTYPE_IPV4] = ERR_OK;
 +    FakeDns::immediateIpv4 = makeIp(192, 0, 2, 4);
-+    assert(DeadlineDns::resolve("after.test", deadlineAfter(now32(), 100), ip, nullptr) == DeadlineDns::Status::Ok);
++    assert(DeadlineDns::resolve("after.test", deadlineAfter(now32(), 100), address, nullptr) ==
++           DeadlineDns::Status::Ok);
 +    assert(FakeDns::started == 5);
 +  }
 +
@@ -719,18 +1229,57 @@ index 0000000..1d90b60
 +  {
 +    resetClock();
 +    fakeNow() = 0xFFFFFFF0u;
-+    uint32_t ip = 0;
++    IPAddress address;
 +    const uint32_t deadline = deadlineAfter(now32(), 0x20);
-+    assert(DeadlineDns::resolve("wrap.test", deadline, ip, nullptr) == DeadlineDns::Status::Timeout);
++    assert(DeadlineDns::resolve("wrap.test", deadline, address, nullptr) == DeadlineDns::Status::Timeout);
 +    assert(now32() == 0x10);
 +    fakeDnsComplete(0, makeIp(1, 2, 3, 4));
++  }
++
++  // The cross-thread contract: a second thread plays the lwIP tcpip thread
++  // and answers queries while the waiter on the first thread abandons them.
++  // The publish/abandon CAS protocol must recycle every slot; afterwards a
++  // fresh lookup still works.
++  {
++    resetClock();
++    std::atomic<bool> stopDrain{false};
++    std::thread completer([&stopDrain] {
++      while (!stopDrain.load()) {
++        std::this_thread::sleep_for(std::chrono::microseconds(20));
++        std::lock_guard<std::mutex> guard(FakeDns::lock);
++        for (int i = 0; i < FakeDns::pendingCount; ++i) {
++          if (FakeDns::pending[i].found) fakeDnsCompleteLocked(i, makeIp(192, 0, 2, 7));
++        }
++      }
++    });
++    for (int i = 0; i < 300; ++i) {
++      IPAddress address;
++      int checks = 0;
++      const DeadlineDns::AbortFn abort = [&checks] { return ++checks > 2; };
++      const DeadlineDns::Status st = DeadlineDns::resolve("race.test", deadlineAfter(now32(), 1000000), address, abort);
++      assert(st == DeadlineDns::Status::Ok || st == DeadlineDns::Status::Failed || st == DeadlineDns::Status::Aborted);
++    }
++    stopDrain.store(true);
++    completer.join();
++    {
++      std::lock_guard<std::mutex> guard(FakeDns::lock);
++      for (int i = 0; i < FakeDns::pendingCount; ++i) {
++        if (FakeDns::pending[i].found) fakeDnsCompleteLocked(i, makeIp(192, 0, 2, 7));
++      }
++    }
++    FakeDns::immediate[LWIP_DNS_ADDRTYPE_IPV4] = ERR_OK;
++    FakeDns::immediateIpv4 = makeIp(192, 0, 2, 8);
++    IPAddress address;
++    assert(DeadlineDns::resolve("after.race.test", deadlineAfter(now32(), 10), address, nullptr) ==
++           DeadlineDns::Status::Ok);
++    assertIp(address, 192, 0, 2, 8);
 +  }
 +
 +  puts("test_deadline_dns: ok");
 +  return 0;
 +}
 diff --git a/libs/network/SecureNet/test/host/test_resumable_fetch.cpp b/libs/network/SecureNet/test/host/test_resumable_fetch.cpp
-index b7809fb..b0c9ab1 100644
+index b7809fb..3182edc 100644
 --- a/libs/network/SecureNet/test/host/test_resumable_fetch.cpp
 +++ b/libs/network/SecureNet/test/host/test_resumable_fetch.cpp
 @@ -20,8 +20,15 @@ int SecureClient::read(uint8_t*, size_t) { return -1; }
@@ -743,9 +1292,20 @@ index b7809fb..b0c9ab1 100644
 +
 +// No resolver backend in this binary: the plain-http path keeps connecting by
 +// hostname through the fake WiFiClient (test_deadline_dns covers the resolver).
-+DeadlineDns::Status DeadlineDns::resolve(const char*, uint32_t, uint32_t&, const AbortFn&) {
++DeadlineDns::Status DeadlineDns::resolve(const char*, uint32_t, IPAddress&, const AbortFn&) {
 +  return DeadlineDns::Status::Unavailable;
 +}
  }  // namespace freeink
  
  using freeink::FetchOptions;
+@@ -96,7 +103,9 @@ int main() {
+     assert(http.getUniqueHeader("content-disposition") == nullptr);
+   }
+   for (const char* second : {"attachment; filename=Other.epub", "attachment; filename=Book.epub", ""}) {
+-    const std::string response = std::string("HTTP/1.1 200 OK\r\nContent-Disposition: attachment; filename=Book.epub\r\ncOnTeNt-DiSpOsItIoN: ") + second + "\r\nContent-Length: 0\r\n\r\n";
++    const std::string response =
++        std::string("HTTP/1.1 200 OK\r\nContent-Disposition: attachment; filename=Book.epub\r\ncOnTeNt-DiSpOsItIoN: ") +
++        second + "\r\nContent-Length: 0\r\n\r\n";
+     reset({response.c_str()});
+     freeink::SecureHttpClient http;
+     assert(http.begin("http://a/f"));

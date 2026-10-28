@@ -240,8 +240,79 @@ Owner acceptance on the device (Wi-Fi configured):
 7. The YBX plugin's update-notice row shows "Not available" and its card has no
    fetch button; Confirm on that card starts no transfer and Back returns to the
    list. Other plugin catalogs (and any row with a file URL) keep their button.
+## OPDS catalog fetch bounds — acceptance
+
+Browsing a catalog no longer blocks the UI indefinitely. Each logical catalog
+operation (feed, search template, publication document, detail cover, LCP
+license and unlock exchange) runs in an absolute 20 s window
+(`src/network/CatalogFetchLimiter.h`) and each socket operation is capped at
+the smaller of the window's remainder and 10 s. Back or Home during a fetch
+cancels it and returns to Home. A timeout shows the usual error screen with
+Retry (Confirm/tap) and Back; the message is "Server did not respond in time"
+(`STR_CATALOG_TIMEOUT`) when the window expires, or the existing unreachable /
+server-error message when a socket fails first. Book downloads are intentionally
+not capped at 20 s (multi-MB transfers); their progress screen already cancels
+on Back/Home.
+
+Not covered by that bound:
+
+- Blocking DNS/TCP connect inside the SDK cannot be interrupted from the fork
+  (tracked separately as `wksfsg7xyt0zgbs586go86g7`).
+- The SDK's implicit HTML login is outside the fork transport (up to ~10 x 30 s).
+- While a synchronous fetch owns the loop, only the physical Back and Home keys
+  are polled; the on-screen header back arrow is not.
+
+Hardware acceptance (owner):
+
+1. Run `python3 scripts/opds_failure_server.py --port 8099` on a LAN host and
+   note the printed address.
+2. Add `http://<host>:8099/` as an OPDS server. The feed must load and list
+   three subsection entries and one book.
+3. `http://<host>:8099/stall` (server accepts, sends nothing): an error screen
+   must appear within ~10–20 s; Retry starts another bounded attempt; Back
+   returns Home.
+4. `http://<host>:8099/slow` (bytes trickle forever): the error screen must
+   appear at the 20 s deadline; before this change this case hung until reset.
+5. `http://<host>:8099/loop` (redirects to itself): an ordinary failure after
+   five redirects; Retry and Back work.
+6. During steps 3–5 press Back mid-fetch: immediate return to Home, no restart,
+   no crash. Re-enter the catalog several times to check for leaks.
+7. Real case: open `flibusta.is/opds`. It must end in the feed or a clear error
+   within the bound; reading position and saved state must be untouched.
+
+Host checks in this branch: `CatalogFetchLimiterTest` (8 cases) and the full
+CTest suite. Hardware behaviour and live flibusta.is reachability are not
+verified here.
 
 See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),
+## Upstream sync acceptance (maintainer, on device)
+
+Host build and suites do not prove any of this. After each upstream merge, before
+publishing a release, walk this list on an X3 or X4 with the current card backed up:
+
+1. Update channel: About shows `YBX <version>`; "Check for update" reports the fork
+   channel and never offers a `crosspoint-*` asset or another board's image.
+2. Branding: boot and default sleep show the YBX mark in all four orientations; the
+   device is reachable at `ybx.local`; the web header, favicon and footer links are YBX.
+3. Home: empty device starts at Library; then one recent book, three recent books, a
+   deleted recent file, a missing or corrupt cover, unknown progress, and a long
+   translated title. Back resumes the latest book; no radio turns on while on Home.
+4. Catalogs: `python3 scripts/install_ybx_plugin.py /path/to/card` keeps an existing
+   `token.json` and `config.json`; zero sources, Yandex only, WB only, LitRes only and
+   combinations; after unlinking one source, reopen YBX and confirm the folder is gone;
+   an expired reader token offers device-code sign-in while a broken provider session
+   stays a separate error.
+5. Sleep events: the plugin sleep image still appears after a normal sleep, including
+   when an earlier event failed, and the queue recovers after an interrupted write.
+6. Reader regression that upstream now owns: RTL focus reading, reader menu selection
+   and toolbar padding on one EPUB and one TXT/Markdown file, with progress cache reuse.
+7. Resources: internal heap above 50 KB free with the largest block recorded across
+   repeated Home, book, dictionary and Wi-Fi transitions.
+8. Record the result: append the sync log entry with the integrated upstream SHA and
+   leave any unresolved conflict or skipped check visible there.
+
+See [the fork notes](../YBX_FORK.md), [the fork inventory](ybx-fork-inventory.md),
+[the sync log](ybx-sync-log.md), [client parity](ybx-client-parity.md),
 [statistics plan](ybx-reading-stats-plan.md) and
 [event delivery contract](plugin-events.md) for scope and acceptance steps.
 

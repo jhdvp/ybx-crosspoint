@@ -1,6 +1,6 @@
 # YBX Reader — hardware acceptance matrix
 
-This checklist is for the candidate `integrate/ybx-settings-candidate-20261029` and must be updated with the exact tested SHA. **A successful host/firmware build is not an on-device pass.**
+Use this checklist with the exact tested SHA. The historical build measurements below apply to the earlier settings candidate at `3c36ae95`; the consolidated candidate is recorded in [the integration record](ybx-integration-20261029.md). **A successful host/firmware build is not an on-device pass.**
 
 ## Verified in the development environment (29 October 2026)
 

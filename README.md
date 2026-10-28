@@ -6,6 +6,7 @@
   <a href="https://ybx.app">Website</a> ·
   <a href="https://my.ybx.app">YBX account</a> ·
   <a href="YBX_FORK.md">Installation &amp; compatibility</a> ·
+  <a href="docs/ybx-screen-plans.md">Screen designs</a> ·
   <a href="https://github.com/jhdvp/ybx-crosspoint/releases">Releases</a> ·
   <a href="https://github.com/jhdvp/ybx-crosspoint/issues">Issues</a>
 </p>
@@ -21,6 +22,17 @@ and download available text books on the reader.
 > **Development preview.** The firmware builds and host checks pass. Device
 > testing and the release blockers below remain open. This repository does not
 > yet offer a hardware-verified YBX firmware release.
+
+## Planned interface
+
+A compact home, connected libraries, book details, reading history and achievements
+share one e-ink visual direction. The gallery shows all **10 agreed screen plans**
+and distinguishes implemented behavior from planned layouts.
+
+[![YBX Reader screen designs — mockups with demonstration data](docs/images/screens/board-core.png)](docs/ybx-screen-plans.md)
+
+**Design mockups, not device screenshots.** Fonts and layouts may change during
+implementation. [Explore every screen and its status →](docs/ybx-screen-plans.md)
 
 ## One account, your connected libraries
 
@@ -44,7 +56,7 @@ provider permissions; this project does not bypass DRM.
 | --- | --- |
 | YBX branding and dedicated update channel | Implemented; device acceptance pending |
 | Connected-service catalog and search | Implemented with authenticated list loading; device acceptance pending |
-| X3/X4 firmware build | Passing on upstream `a790b144` with its pinned FreeInk SDK |
+| X3/X4 firmware build | Passing with the pinned FreeInk SDK; see the integration record |
 | Wi-Fi settings loaded before sleep | Included from upstream; fresh-wake behavior still needs a device test |
 | Automatic sleep-card refresh | **Open blocker:** queued events can delay the image request; manual refresh is available |
 | Sleep-card design and statistics | Rendered by the YBX server; successful firmware build does not prove automatic delivery |
@@ -52,11 +64,14 @@ provider permissions; this project does not bypass DRM.
 | Extended YBX book actions | Planned |
 | HTTPS certificate verification | Implemented on this branch (built-in CA bundle, host name check, clock gate, no downgrade redirects); device acceptance pending |
 
-The build passed **918 CTest cases**, including the Python checks and the TLS
-policy suite. These results
+The combined integration passed **1,356 CTest cases**, including the Python
+checks and TLS policy suite. These results
 apply to this preview; they do not establish hardware rendering, battery use,
 runtime memory or OTA recovery. See [fork details](YBX_FORK.md) for the limits
 and the device acceptance checklist.
+
+See the [integration record](docs/ybx-integration-20261029.md) for the consolidated
+agent changes and remaining device gates.
 
 ## Try the preview
 
@@ -75,7 +90,7 @@ and the device acceptance checklist.
    prompt. Connect services in the YBX account; reopen the catalog after changing
    connections.
 
-The public stock-CrossPoint plugin and the bundled **1.7.0** plugin are separate
+The public stock-CrossPoint plugin and the bundled **1.9.0** plugin are separate
 channels. This bundled version requires firmware capability `catalog.lists.auth`.
 Do not copy it onto a stock firmware that lacks that capability.
 
@@ -98,8 +113,11 @@ firmware tooling and [fork notes](YBX_FORK.md) for YBX-specific behavior.
 ## Following CrossPoint updates
 
 This fork retains the full CrossPoint Git history and the FreeInk SDK submodule.
-We can fetch later `upstream/develop` changes and merge them into the YBX branch,
-resolve conflicts, and repeat the build and device checks before releasing.
+Later `upstream/develop` changes are fetched and merged into the YBX branch with a
+scripted procedure, then rebuilt and re-checked on the device before release.
+[Following upstream CrossPoint](YBX_FORK.md#syncing-upstream-crosspoint) is the
+runbook, [the fork inventory](docs/ybx-fork-inventory.md) lists every path we own
+and [the sync log](docs/ybx-sync-log.md) records the integrated upstream commit.
 YBX branding, service integration and the separate update channel remain our
 maintenance responsibility. Updates are reviewed and integrated, rather than
 automatically replacing YBX firmware with an upstream binary.

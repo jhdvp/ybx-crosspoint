@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 
 // A monotonic floor under the system clock, for loan-expiry enforcement.
 //
@@ -42,7 +43,7 @@ void startSync();
 
 // Blocking SNTP sync with a deadline, for callers that need the wall clock
 // right now (e.g. progress-sync timestamps). Returns true when synced.
-bool syncNow(uint32_t timeoutMs);
+bool syncNow(uint32_t timeoutMs, const std::function<bool()>& shouldAbort = {});
 
 // Epoch seconds when the clock is trustworthy (a plausible present-day
 // value, restored or synced), else 0. Never earlier than a time already seen

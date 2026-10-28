@@ -1,5 +1,7 @@
 #pragma once
+#include <cstdint>
 #include <functional>
+#include <string>
 #include <vector>
 
 #include "./FileBrowserActivity.h"
@@ -23,6 +25,14 @@ class HomeActivity final : public Activity {
   // on every home enter (each child-activity return re-runs onEnter).
   std::string ybxShelfDir;
   bool ybxShelfResolved = false;
+  // One "update available" prompt per new cached plugin version; the popup is
+  // drawn over whichever home layout is active.
+  std::unique_ptr<OptionPopup> updateToast;
+  int updateToastChoice = -1;
+  std::string updateToastName;
+  std::string updateToastMessage;
+  uint16_t pluginUpdateCount = 0;
+  std::string pluginsMenuLabel;
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
   bool recentsLoading = false;
@@ -83,6 +93,7 @@ class HomeActivity final : public Activity {
   void onPluginsOpen();
   void onMoreOpen();
   void onYbxShelfOpen();
+  void showUpdatePrompt();
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image

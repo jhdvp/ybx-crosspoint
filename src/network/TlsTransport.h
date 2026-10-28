@@ -2,6 +2,7 @@
 
 #include <SecureHttpClient.h>
 
+#include <functional>
 #include <string>
 
 #include "TlsPolicy.h"
@@ -19,7 +20,7 @@ bool ensureClock();
 // certificate dates), https URLs require a trustworthy clock, syncing SNTP
 // once if needed. False means the caller must stop: the request was not
 // attempted and Failure::Clock was recorded.
-bool ensureClockFor(const std::string& url);
+bool ensureClockFor(const std::string& url, uint32_t timeoutMs = 15000, const std::function<bool()>& shouldAbort = {});
 
 // Verified transport for https URLs: installs the firmware CA bundle, which
 // makes the SDK check the peer chain and the host name. Plain-http URLs are
@@ -34,7 +35,8 @@ void installTrust(freeink::SecureHttpClient& client);
 // Strict variant for credential-bearing requests: https only, trustworthy
 // clock required, verified trust installed. Returns false without connecting
 // when the URL is not https or the clock is unusable.
-bool prepareHttpsClient(freeink::SecureHttpClient& client, const std::string& url);
+bool prepareHttpsClient(freeink::SecureHttpClient& client, const std::string& url, uint32_t timeoutMs = 15000,
+                        const std::function<bool()>& shouldAbort = {});
 
 // Maps the transport's connect failure to the UI-facing classification.
 Failure failureFromConnect(freeink::SecureClient::ConnectFailure failure);

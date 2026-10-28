@@ -1,9 +1,8 @@
-#include "TlsTransport.h"
-
 #include <Logging.h>
 #include <TrustedTime.h>
 
 #include "TlsRoots.h"
+#include "TlsTransport.h"
 
 namespace {
 // Only paid when the clock is not set, once per operation: SNTP needs a few
@@ -19,9 +18,14 @@ bool tlspolicy::ensureClock() {
                      [] { return trustedtime::syncNow(kClockSyncTimeoutMs); });
 }
 
-bool tlspolicy::ensureClockFor(const std::string& url) {
+bool tlspolicy::ensureClockFor(const std::string& url, const uint32_t timeoutMs,
+                               const std::function<bool()>& shouldAbort) {
   if (!isHttpsUrl(url)) return true;
-  if (ensureClock()) return true;
+  if (shouldAbort && shouldAbort()) return false;
+  const uint32_t budget = timeoutMs && timeoutMs < kClockSyncTimeoutMs ? timeoutMs : kClockSyncTimeoutMs;
+  if (ensureClock([] { return trustedtime::trustedNow(); }, [&] { return trustedtime::syncNow(budget, shouldAbort); }))
+    return true;
+  if (shouldAbort && shouldAbort()) return false;
   LOG_ERR("TLS", "No trustworthy clock; refusing to verify a certificate against it");
   recordFailure(Failure::Clock);
   return false;
@@ -33,17 +37,14 @@ void tlspolicy::applyTrustFor(freeink::SecureHttpClient& client, const std::stri
 
 void tlspolicy::installTrust(freeink::SecureHttpClient& client) { client.setCACert(TLS_ROOTS_PEM); }
 
-bool tlspolicy::prepareHttpsClient(freeink::SecureHttpClient& client, const std::string& url) {
+bool tlspolicy::prepareHttpsClient(freeink::SecureHttpClient& client, const std::string& url, const uint32_t timeoutMs,
+                                   const std::function<bool()>& shouldAbort) {
   if (!isHttpsUrl(url)) {
     LOG_ERR("TLS", "Refusing a non-https request on a credential-bearing path");
     recordFailure(Failure::Configuration);
     return false;
   }
-  if (!ensureClock()) {
-    LOG_ERR("TLS", "No trustworthy clock; refusing to verify a certificate against it");
-    recordFailure(Failure::Clock);
-    return false;
-  }
+  if (!ensureClockFor(url, timeoutMs, shouldAbort)) return false;
   client.setCACert(TLS_ROOTS_PEM);
   return true;
 }

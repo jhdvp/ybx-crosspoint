@@ -109,7 +109,8 @@ void loadOnce() {
   }
 }
 
-bool ensureEnrolled(std::string& deviceId, bool& notEnrollable) {
+bool ensureEnrolled(std::string& deviceId, bool& notEnrollable, const uint32_t timeoutMs,
+                    const std::function<bool()>& shouldAbort) {
   loadOnce();
   notEnrollable = false;
   if (LCP_DEVICE.valid()) {
@@ -138,7 +139,7 @@ bool ensureEnrolled(std::string& deviceId, bool& notEnrollable) {
 
   std::string response;
   int status = 0;
-  if (!HttpDownloader::postForm(LCP_ENROLL_URL, request, response, &status) ||
+  if (!HttpDownloader::postForm(LCP_ENROLL_URL, request, response, &status, timeoutMs, shouldAbort) ||
       !parseEnrollResponse(response, &deviceId)) {
     LOG_ERR("LCPDEV", "Enroll failed (status %d)", status);
     return false;

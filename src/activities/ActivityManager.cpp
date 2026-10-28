@@ -323,8 +323,9 @@ void ActivityManager::goToBrowser() {
   }
 }
 
-void ActivityManager::goToPlugins(bool showOpds) {
-  replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, showOpds, /*rootMode=*/true));
+void ActivityManager::goToPlugins(bool showOpds, std::string updateTarget) {
+  replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, showOpds, /*rootMode=*/true,
+                                                          std::move(updateTarget)));
 }
 
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {

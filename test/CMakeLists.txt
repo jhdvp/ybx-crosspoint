@@ -47,6 +47,7 @@ add_subdirectory(utf8_compose)
 add_subdirectory(opds_filename)
 add_subdirectory(opds_feed_error)
 add_subdirectory(opds_library_tree)
+add_subdirectory(catalog_fetch_limiter)
 add_subdirectory(html_to_plain_text)
 add_subdirectory(library_text)
 add_subdirectory(library_format)
@@ -96,6 +97,7 @@ add_subdirectory(plugin_catalog_paging)
 add_subdirectory(plugin_manifest_classification)
 add_subdirectory(plugin_picker_layout)
 add_subdirectory(plugin_shelf)
+add_subdirectory(plugin_update_cache)
 add_subdirectory(protected_paths)
 add_subdirectory(tls_policy)
 
@@ -124,3 +126,6 @@ add_subdirectory(ybx_kosync)
 add_subdirectory(plugin_event_queue)
 
 add_subdirectory(ybx_reading)
+
+# Native YBX account source classification and auth state are platform-free.
+add_subdirectory(ybx_account)

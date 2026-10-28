@@ -31,7 +31,7 @@ freeink::SecureHttpClient* openClient(freeink::SecureHttpClient* session, freein
   // Plugin endpoints carry the reader's YBX token: https only, with the peer
   // chain and host name verified against the firmware CA bundle, and only
   // once the clock can validate certificate dates.
-  if (!tlspolicy::prepareHttpsClient(http, url)) return nullptr;
+  if (!tlspolicy::prepareHttpsClient(http, url, timeoutMs, shouldAbort)) return nullptr;
   // Handshake first: the client's copy of a large header (a session cookie can
   // be several KB) would otherwise take heap the handshake needs.
   if (!http.connect(shouldAbort)) {

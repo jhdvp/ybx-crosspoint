@@ -135,3 +135,19 @@ pristine SDK.
    script, and the pinned revision named in this document.
 4. Submit both changes upstream to the FreeInk SDK. When they are released,
    delete the patch assets and script and bump the pin instead of carrying them.
+
+## Combined dependency update — 29 October 2026
+
+The deadline stage includes `c49fd5c4`: native `IPAddress` answers, conditional
+AAAA fallback on an up global-IPv6 interface, and deadline-bounded waits when
+lookup slots are occupied. The TLS stage was rebased over those sources without
+removing chain or hostname verification. Exhausted busy slots map to a timeout;
+IPv6 Timeout/Aborted outcomes propagate without being replaced by IPv4 failure.
+Both stages have regenerated exact source digests. The SDK commit remains
+`44427f8`; the patch assets explain its local source modifications.
+
+The firmware clock gate now accepts a request budget and cancellation callback.
+OPDS and plugin requests forward it to the existing SNTP wait, checked every
+100 ms. This does not weaken the plausible-clock or certificate requirement.
+Host tests and reproducible application checks passed; IPv6, DNS-slot pressure,
+SNTP cancellation and wolfSSL behavior still need device acceptance.

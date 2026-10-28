@@ -614,3 +614,17 @@ floor can lag real time while the device sits powered off, but it can never
 be rolled back — staying offline delays a due date at most by the powered-off
 gap, it does not suspend it. A book with a due date and no trustworthy clock
 at all refuses to open and asks for one Wi-Fi connection.
+
+## Plugin update notices in the YBX fork
+
+After browsing Plugin Hub, Home shows the cached update count beside Catalogs
+(or Plugins in other layouts). A new catalog version can show one update prompt;
+choosing it opens Plugin Hub at that plugin's details, where the existing update
+action applies it. Cancel dismisses the prompt. Plugin picker rows also show an
+update badge. There is no background network polling; the daily scan reuses an
+already fetched Hub response. Only an installed Plugin Hub enables these notices.
+
+The SD cache retains at most 12 bounded entries. If an unretained plugin changes,
+the aggregate is invalidated and rebuilt on the next Hub visit. Retained entries
+are rechecked against installed manifests before prompting, including dismissed
+ones. Offline counts describe the last catalog snapshot, not a live server check.

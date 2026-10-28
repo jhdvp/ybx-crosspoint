@@ -39,9 +39,10 @@ std::vector<PluginRef> discoverPlugins();
 class PluginCatalogActivity final : public CatalogActivity {
  public:
   // showOpds adds the OPDS row; rootMode returns Home instead of popping to Settings.
+  // updateTarget opens Plugin Hub straight into that plugin's update screen.
   // Out-of-line construction/destruction needs the complete SecureHttpClient type.
   explicit PluginCatalogActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool showOpds = false,
-                                 bool rootMode = false);
+                                 bool rootMode = false, std::string updateTarget = {});
   ~PluginCatalogActivity() override;
 
   void onEnter() override;
@@ -158,6 +159,9 @@ class PluginCatalogActivity final : public CatalogActivity {
   std::string lastDownloadTitle;
   bool showOpds = false;
   bool rootMode = false;
+  // Plugin name to open in the hub catalog (Home update prompt), cleared once
+  // found or abandoned.
+  std::string updateTarget;
   std::string pickerReturnName;  // plugin identity to reselect after leaving a catalog
   std::vector<Item> items;
   // Row buffer over items/browseLists plus the synthetic pager rows; rebuilt
@@ -242,6 +246,13 @@ class PluginCatalogActivity final : public CatalogActivity {
   void fetchPage(int newPage);
   // Read installed versions once per page, outside the render path.
   void computeInstallStatus();
+  // Plugin Hub only: rebuild the update cache from the catalog response already
+  // streamed to BROWSE_TMP_PATH, at most once a day.
+  void refreshUpdateCache();
+  // Home "Update" prompt entry point: open the hub catalog for the requested
+  // plugin and walk pages until its row is found.
+  void openUpdateTarget();
+  void continueUpdateTarget();
   bool parseXmlList();
   bool parseBrowseResponse();
   void activateItem(int itemIndex);  // XML list: navigate into a folder, else show details/download

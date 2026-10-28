@@ -12,6 +12,7 @@
 #include <MD5Builder.h>
 #include <Memory.h>
 #include <SecureHttpClient.h>
+#include <TrustedTime.h>
 #include <WiFi.h>
 #include <XmlListParser.h>
 #include <strings.h>
@@ -44,6 +45,7 @@
 #include "util/PluginLocations.h"
 #include "util/PluginPickerLayout.h"
 #include "util/PluginShelf.h"
+#include "util/PluginUpdateCache.h"
 #include "util/QrUtils.h"
 #include "util/StringUtils.h"
 #include "util/YbxKosync.h"
@@ -70,6 +72,8 @@ constexpr size_t MAX_BROWSE_RESPONSE = 1024 * 1024;
 constexpr size_t MAX_BROWSE_LIST_INDEX_RESPONSE = 16 * 1024;
 constexpr size_t MAX_ITEM_DETAILS_RESPONSE = 24 * 1024;
 constexpr int MAX_PAGE_SIZE = 16;
+// Home's "Update" prompt walks at most this many catalog pages to find the row.
+constexpr int MAX_UPDATE_TARGET_PAGES = 8;
 constexpr unsigned long PLUGIN_UNINSTALL_HOLD_MS = 1000;
 
 // JsonListParser has six generic field slots. The compatibility and details
@@ -454,10 +458,11 @@ std::string PluginCatalogActivity::substituted(std::string tpl, const Item* item
 std::string PluginCatalogActivity::downloadDir() const { return pluginhttp::pickDownloadDir(config, manifest.destDir); }
 
 PluginCatalogActivity::PluginCatalogActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                             const bool showOpds, const bool rootMode)
+                                             const bool showOpds, const bool rootMode, std::string updateTarget)
     : CatalogActivity("PluginCatalog", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       showOpds(showOpds),
-      rootMode(rootMode) {}
+      rootMode(rootMode),
+      updateTarget(std::move(updateTarget)) {}
 
 PluginCatalogActivity::~PluginCatalogActivity() = default;
 
@@ -468,11 +473,15 @@ int PluginCatalogActivity::apiRequest(const pluginhttp::RequestSpec& req, String
 void PluginCatalogActivity::onEnter() {
   CatalogActivity::onEnter();
   enterPluginPicker();
+  openUpdateTarget();
 }
 
 void PluginCatalogActivity::enterPluginPicker() {
   Storage.remove(BROWSE_TMP_PATH);
   installedPlugins = discoverPlugins();
+  // Picker rows are built during render, so the update cache is read here on
+  // the UI task; cached() costs nothing again for the row badges afterwards.
+  pluginupdates::cached();
   pluginHubAvailable = PluginHubInstallActivity::isAvailable();
   showPluginHubInstallRow = !pluginHubAvailable && !SETTINGS.pluginHubPromptHidden;
   // Discovery just re-read the plugin folders; keep the event subscription
@@ -563,7 +572,16 @@ void PluginCatalogActivity::confirmUninstallPlugin(const int pickerIndex) {
     if (result.isCancelled) return;
     const bool removed = !Storage.exists(plugin.dir.c_str()) || Storage.removeDir(plugin.dir.c_str());
     if (!removed) LOG_ERR("PCAT", "Failed to recursively uninstall plugin: %s", plugin.dir.c_str());
-    if (removed) pickerReturnName = returnPluginName;
+    if (removed) {
+      pickerReturnName = returnPluginName;
+      pluginupdates::forget(plugin.name);
+      // The update cache is entirely hub-derived; without the hub it is both
+      // unverifiable and unactionable.
+      if (plugin.name == "pluginhub") {
+        Storage.remove(pluginupdates::CACHE_PATH);
+        pluginupdates::invalidate();
+      }
+    }
     enterPluginPicker();
   });
 }
@@ -587,7 +605,10 @@ void PluginCatalogActivity::enterCatalog() {
 // Leaving the open catalog (Back at its root, or Back out of an error /
 // sign-in screen): return to the plugin picker. Wi-Fi stays up so the next
 // pick connects instantly; onExit tears it down when the activity ends.
-void PluginCatalogActivity::exitCatalog() { enterPluginPicker(); }
+void PluginCatalogActivity::exitCatalog() {
+  updateTarget.clear();  // leaving abandons a Home update prompt
+  enterPluginPicker();
+}
 
 void PluginCatalogActivity::openPluginCatalog(const int pluginIndex) {
   if (pluginIndex < 0 || pluginIndex >= static_cast<int>(installedPlugins.size())) return;
@@ -859,6 +880,7 @@ void PluginCatalogActivity::fetchPage(const int newPage) {
   nav.reset();
   state = State::BROWSING;
   requestUpdate();
+  continueUpdateTarget();
 }
 
 bool PluginCatalogActivity::parseBrowseResponse() {
@@ -948,6 +970,7 @@ bool PluginCatalogActivity::parseBrowseResponse() {
   hasMore = manifest.filtersCompatibility() ? rawHasMore : visibleWindow.hasMore(paging);
   computeInstallStatus();
   computeOnReaderStatus();
+  refreshUpdateCache();
   return true;
 }
 
@@ -1128,6 +1151,96 @@ void PluginCatalogActivity::promptRemoveShelfBook(const int itemIndex) {
                          });
 }
 
+// The Hub response already holds the whole static catalog in BROWSE_TMP_PATH,
+// so the daily update scan costs no network traffic. Rescanning is bounded by
+// shouldCheck() over the cached stamp, which needs no second file read; the
+// cache file is written only on a scan.
+void PluginCatalogActivity::refreshUpdateCache() {
+  if (pluginNameFromManifestPath(manifestPath) != "pluginhub" || !manifest.tracksInstalls()) return;
+  const pluginupdates::Snapshot& previous = pluginupdates::cached();
+  const int64_t now = trustedtime::trustedNow();
+  if (previous.loaded && !pluginupdates::shouldCheck(previous.checkedAt, now)) return;
+
+  // One manifest read per installed plugin, whose directory picker discovery
+  // already located, instead of one probe per catalog row: the scan then costs
+  // what the card holds rather than what the catalog response lists.
+  pluginupdates::InstalledMap installed;
+  installed.reserve(installedPlugins.size());
+  for (const auto& plugin : installedPlugins) {
+    std::string version;
+    if (!pluginupdates::readManifestVersion(plugin.dir, version)) continue;
+    installed.emplace_back(plugin.name, std::move(version));
+  }
+
+  pluginupdates::UpdateSet fresh;
+  const std::string unused;
+  auto inspect = [&](JsonListParser::Row& row) {
+    const std::string& name = row.field[JsonListParser::F_ID];
+    if (!pluginupdates::isSafePluginName(name)) return;
+    if (!catalogEntryCompatible(row.field[JsonListParser::F_AUTHOR], row.field[JsonListParser::F_BASE],
+                                row.field[JsonListParser::F_URL])) {
+      return;
+    }
+    pluginupdates::addCatalogEntry(fresh, name, row.field[JsonListParser::F_TITLE],
+                                   row.field[JsonListParser::F_VERSION],
+                                   pluginupdates::installedVersionOf(installed, name));
+  };
+  const std::string* fields[JsonListParser::F_COUNT] = {};
+  fields[JsonListParser::F_TITLE] = &manifest.titlePath;
+  fields[JsonListParser::F_AUTHOR] = &manifest.compatFamilyPath;
+  fields[JsonListParser::F_ID] = &manifest.idPath;
+  fields[JsonListParser::F_URL] = &manifest.compatRequiresPath;
+  fields[JsonListParser::F_VERSION] = &manifest.versionPath;
+  fields[JsonListParser::F_BASE] = &manifest.compatApiMinPath;
+  auto parser = makeUniqueNoThrow<JsonListParser>(
+      manifest.itemsPath, fields, unused,
+      [](void* context, JsonListParser::Row& row) { (*static_cast<decltype(inspect)*>(context))(row); }, &inspect);
+  if (!parser || !streamBrowseFile(parser.get())) {
+    LOG_ERR("PCAT", "update cache: catalog scan failed");
+    return;
+  }
+  pluginupdates::carryNotified(fresh, previous.set);
+  pluginupdates::save(fresh, now);
+}
+
+// Home's update prompt lands on the hub picker; open its catalog immediately
+// and let startBrowse() resolve list credentials/notices as usual.
+void PluginCatalogActivity::openUpdateTarget() {
+  if (updateTarget.empty()) return;
+  for (const auto& plugin : installedPlugins) {
+    if (plugin.name != "pluginhub" || plugin.manifestPath.empty() ||
+        plugin.deviceKind != PluginLocations::DeviceKind::Catalog) {
+      continue;
+    }
+    pickerReturnName = plugin.name;
+    manifestPath = plugin.manifestPath;
+    catalogTitle = plugin.title;
+    enterCatalog();
+    return;
+  }
+  LOG_DBG("PCAT", "update prompt: Plugin Hub unavailable");
+  updateTarget.clear();
+}
+
+// Walk the catalog until the prompt's plugin row appears, then open its
+// details screen (the same one reached by tapping the row).
+void PluginCatalogActivity::continueUpdateTarget() {
+  if (updateTarget.empty() || state != State::BROWSING) return;
+  for (size_t i = 0; i < items.size(); i++) {
+    if (items[i].id != updateTarget) continue;
+    updateTarget.clear();
+    showItemDetails(static_cast<int>(i));
+    return;
+  }
+  if (hasMore && page < MAX_UPDATE_TARGET_PAGES) {
+    beginLoading();
+    fetchPage(page + 1);
+    return;
+  }
+  LOG_DBG("PCAT", "update prompt: %s not found in catalog", updateTarget.c_str());
+  updateTarget.clear();
+}
+
 void PluginCatalogActivity::beginAuth() {
   beginLoading();
 
@@ -1211,10 +1324,13 @@ bool PluginCatalogActivity::itemDownloadable(const Item& item) const {
 void PluginCatalogActivity::downloadItem(const int itemIndex) {
   lastDownloadPath.clear();
   // Own only the selected item's metadata while TLS needs the catalog's heap.
+  const bool hubCatalog = pluginNameFromManifestPath(manifestPath) == "pluginhub";
+  std::string updatedPlugin;
   Item item;
   {
     RenderLock lock;
     item = std::move(items[itemIndex]);
+    if (hubCatalog) updatedPlugin = item.id;
     beginDownload(item.title);
     releaseRows();
     std::vector<fui::ListItem>().swap(rowItems);
@@ -1224,6 +1340,9 @@ void PluginCatalogActivity::downloadItem(const int itemIndex) {
   const auto result = manifest.isBundle() && !item.files.empty() ? downloadBundle(item) : downloadBook(item);
   session.reset();
   item = {};
+  // The plugin changed on SD; drop its cached update before the response
+  // re-parse, which may also rebuild the whole cache from a due daily scan.
+  if (result == HttpDownloader::OK && !updatedPlugin.empty()) pluginupdates::forget(updatedPlugin);
   // Reuse the SD response without another network request or resetting navigation.
   if (!parseBrowseResponse()) return;
   session = makeUniqueNoThrow<freeink::SecureHttpClient>();
@@ -2041,21 +2160,26 @@ void PluginCatalogActivity::rebuildRowItems() {
       //   None       -> web-only hint; chevron only with a readme
       //   Catalog    -> browsable, own description, chevron
       //   Background -> events-only, own description, chevron only with a readme
+      // A cached catalog update replaces the trailing chevron with the badge.
+      // Without Plugin Hub nothing can be updated, so no row claims otherwise.
       const char* subtitle = plugin.description.empty() ? nullptr : plugin.description.c_str();
       if (plugin.hasDashboard) {
         // The row opens a screen even when the plugin has no catalog.
         addRow(plugin.title.c_str(), subtitle, ">");
         continue;
       }
+      const char* update =
+          pluginHubAvailable && pluginupdates::hasCachedUpdate(plugin.name) ? tr(STR_PLUGIN_UPDATE_AVAILABLE) : nullptr;
       switch (plugin.deviceKind) {
         case PluginLocations::DeviceKind::None:
-          addRow(plugin.title.c_str(), tr(STR_PLUGIN_WEB_ONLY), plugin.readmePath.empty() ? nullptr : ">");
+          addRow(plugin.title.c_str(), tr(STR_PLUGIN_WEB_ONLY),
+                 update ? update : (plugin.readmePath.empty() ? nullptr : ">"));
           break;
         case PluginLocations::DeviceKind::Catalog:
-          addRow(plugin.title.c_str(), subtitle, ">");
+          addRow(plugin.title.c_str(), subtitle, update ? update : ">");
           break;
         case PluginLocations::DeviceKind::Background:
-          addRow(plugin.title.c_str(), subtitle, plugin.readmePath.empty() ? nullptr : ">");
+          addRow(plugin.title.c_str(), subtitle, update ? update : (plugin.readmePath.empty() ? nullptr : ">"));
           break;
       }
     }
