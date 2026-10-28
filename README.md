@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://ybx.app"><img src="docs/images/ybx-reader-header.svg" alt="YBX Reader — Your Books, eXtended. Firmware for Xteink X3/X4, based on CrossPoint. Development preview." width="1280"></a>
+  <a href="https://ybx.app"><img src="docs/images/ybx-reader-header.svg" alt="YBX Reader — Your Books, eXtended. Firmware for Xteink X3/X4/X4 Pro and other eInk readers, based on CrossPoint. Development preview." width="1280"></a>
 </p>
 
 <p align="center">
