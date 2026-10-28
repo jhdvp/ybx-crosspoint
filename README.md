@@ -6,6 +6,7 @@
   <a href="https://ybx.app">Website</a> ·
   <a href="https://my.ybx.app">YBX account</a> ·
   <a href="YBX_FORK.md">Installation &amp; compatibility</a> ·
+  <a href="docs/ybx-screen-plans.md">Screen designs</a> ·
   <a href="https://github.com/jhdvp/ybx-crosspoint/releases">Releases</a> ·
   <a href="https://github.com/jhdvp/ybx-crosspoint/issues">Issues</a>
 </p>
@@ -21,6 +22,17 @@ and download available text books on the reader.
 > **Development preview.** The firmware builds and host checks pass. Device
 > testing and the release blockers below remain open. This repository does not
 > yet offer a hardware-verified YBX firmware release.
+
+## Planned interface
+
+A compact home, connected libraries, book details, reading history and achievements
+share one e-ink visual direction. The gallery shows all **10 agreed screen plans**
+and distinguishes implemented behavior from planned layouts.
+
+[![YBX Reader screen designs — mockups with demonstration data](docs/images/screens/board-core.png)](docs/ybx-screen-plans.md)
+
+**Design mockups, not device screenshots.** Fonts and layouts may change during
+implementation. [Explore every screen and its status →](docs/ybx-screen-plans.md)
 
 ## One account, your connected libraries
 
