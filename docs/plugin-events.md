@@ -48,7 +48,7 @@ against newer firmware degrades gracefully on older firmware.
 | ----------------- | ------------------------------------------------------ | ------------------------------------ |
 | `reader.open`     | A book is opened (EPUB/TXT/XTC)                        | `book` (SD path)                     |
 | `reader.exit`     | The reader is left (home, sleep, another activity)     | `book`, `percent` (0-100 whole-book) |
-| `reader.session`  | An active-reading summary is flushed before sleep/exit | fields documented below              |
+| `reader.session`  | A reading interval ends: exit, sleep, restart, or recovery at boot after a crash | fields documented below |
 | `book.downloaded` | An on-device catalog download completed                | `path`, `title`, `plugin`            |
 | `sleep.enter`     | The device begins entering deep sleep                  | `book`, `percent` when sleeping out of a reader, else none |
 
@@ -72,23 +72,46 @@ All values are strings in the event's `vars` object:
 | `end_progress_bp` | monotonic-clamped final progress, 0..10000 basis points |
 | `progress_scale` | literal `10000` |
 
-Only successful ordinary forward turns count. A displayed page contributes
-when it remains visible for at least 2 seconds; one dwell is capped at 1800
-seconds. Reverse turns, chapter skips, failed turns, and shorter displays are
-excluded and re-anchor the timer. At least 10 active seconds and a trustworthy
-positive start time are required. EPUB retains basis-point precision; TXT/XTC
-may report whole-percent steps. The document hash is calculated lazily only
-when an emit-worthy summary and a subscriber both exist.
+Only successful ordinary page turns close an interval, in either direction.
+A displayed page contributes when it remains visible for at least 2 seconds;
+one interval is capped at 1800 seconds. Chapter skips, failed turns, and
+shorter displays are excluded. The page still on screen when reading stops
+(exit, sleep, restart) contributes its trailing interval through the same
+2/1800-second bounds. A session shorter than 5 active seconds is not reported:
+it is an accidental open or a quick flip, not reading. A redraw of the same
+page (menu, forced refresh) does not reset the interval.
+
+`start_time` is `0` when the device clock was never set; the session is still
+reported, and the envelope `event.ts` carries the same uncertainty. Both
+`start_time` and `end_time` are `0` in that case. EPUB retains basis-point
+precision; TXT/XTC may report whole-percent steps. The document hash is
+calculated lazily only when an emit-worthy summary and a subscriber exist.
 
 `end_time` is deliberately not the wall-clock time of the last interaction.
 Idle gaps are removed, so it always equals `start_time + duration_seconds` and
-is greater than `start_time` for every emitted session. The envelope
-`event.ts` remains the actual emission time.
+is greater than `start_time` for every emitted session with a known clock. The
+envelope `event.ts` remains the actual emission time.
 
 The pre-sleep activity hook queues and resets this event immediately before
 `sleep.enter` and the sleep drain. Normal reader teardown calls the same
 idempotent flush as a fallback, so direct-from-reader sleep queues it exactly
-once and can deliver it on that same sleep.
+once and can deliver it on that same sleep. The explicit restart paths flush
+first as well.
+
+### Session identity and crash recovery
+
+The event id is allocated once, before the session's first checkpoint or
+flush, and is written to a small checkpoint
+(`/.crosspoint/reader-session.journal`) at most once a minute while reading. If the device crashes, loses power, or
+restarts without a flush, the next boot queues the checkpointed session with
+that same id and deletes the checkpoint. If the checkpoint could not be
+deleted, or the event was only queued for some subscribers, the same id is
+queued again: a server that keys its store by `(device, event id)` (as YBX does)
+ignores the duplicate instead of counting the reading time twice.
+
+The 5-second minimum applies when the session ends; a crash can therefore
+recover at most the last checkpointed minute of a session that would have been
+reported anyway.
 
 A generic consumer can expand one summary into two distinct points without
 firmware knowing the destination schema:
@@ -102,7 +125,8 @@ firmware knowing the destination schema:
 
 The distinct compact timestamps avoid a uniqueness collision even when the
 two progress values are equal. Preserve at-least-once delivery and deduplicate
-replayed points by the consumer's natural document/time key.
+replayed points by the consumer's natural document/time key, or by
+`{event.id}` when the clock was unknown (`start_time` is `0`).
 
 ## Declaring handlers in `device.json`
 
@@ -190,7 +214,7 @@ Templates in `url`, `headers`, `body`, `dest`, and `toast` substitute:
 | `{cfg.KEY}`    | The plugin's flat config file (`config` section)                 |
 | `{event.NAME}` | The event's variables (see the whitelist table)                  |
 | `{event.ts}`   | Unix time when the event fired; 0 if the clock was never set     |
-| `{event.id}`   | Unique event id, stable across delivery retries (dedupe key)     |
+| `{event.id}`   | Unique event id, stable across delivery retries (dedupe key); for `reader.session` also across a reboot that recovers the checkpoint |
 | `{meta.KEY}`   | The book's metadata sidecar, for events that carry a `book` (or `path`, for `book.downloaded`) |
 
 Values are inserted as they are. Before a request is sent, spaces, control
@@ -265,8 +289,11 @@ belongs on the service's server, keyed by the id in the sidecar.
   operations and interrupted transaction boundaries; physical FAT/SD corruption
   still requires device testing and cannot be excluded by host tests.
 - Before appending, the firmware checks the final line boundary and truncates
-  only a partial trailing event (at most 512 bytes). A read/truncate failure
+  only a partial trailing event (at most 1024 bytes). A read/truncate failure
   stops that append; the next event is never glued to a known incomplete line.
+- When the outbox is at its size limit, the oldest whole events are dropped
+  first, so a long offline period keeps the newest history instead of losing
+  everything. The line being appended is never split.
 - A streamed download is accepted only after a complete HTTP response, complete
   writes and successful file close. A close failure keeps the old sleep image
   and the queued event for retry.
@@ -277,8 +304,8 @@ belongs on the service's server, keyed by the id in the sidecar.
 
 | Limit                          | Value                          |
 | ------------------------------ | ------------------------------ |
-| Outbox size                    | 4KB per plugin, then dropped wholesale (newest events describe current state; stale ones are worthless by then) |
-| Event line                     | 512 bytes                      |
+| Outbox size                    | 4KB per plugin, then oldest whole events are dropped first |
+| Event line                     | 1024 bytes                     |
 | Request response               | 8KB (discarded)                |
 | Download                       | 1MB, streamed to SD            |
 | Subscribed plugins             | 8                              |

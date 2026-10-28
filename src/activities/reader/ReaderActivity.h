@@ -20,6 +20,11 @@ class ReaderActivity : public Activity {
   std::unique_ptr<EndOfBookOptions> endOfBookOptions;
   std::atomic<bool> endOfBookOptionsReady{false};
   ReaderSession readerSession;
+  // Allocated by the first checkpoint or flush (main task only) and kept in the
+  // crash checkpoint: every delivery of this session reuses it, so the server
+  // cannot double count.
+  char sessionId[24] = {};
+  uint32_t lastSessionCheckpointMs = 0;
   std::atomic<bool> pageRendered{false};
   bool bookRemembered = false;
   void markPageRendered() { pageRendered.store(true, std::memory_order_release); }
@@ -68,7 +73,9 @@ class ReaderActivity : public Activity {
   bool handleEndOfBookPageTurn(bool prevTriggered, bool nextTriggered);
   void clearEndOfBookOptionsIfNeeded();
   void disableFastInitialRefresh();
-  void notePageTurn(bool forward, bool succeeded);
+  void notePageTurn(bool succeeded);
+  void ensureSessionId();
+  void checkpointReaderSession(uint32_t monotonicMs);
   void flushReaderSession();
 
  public:

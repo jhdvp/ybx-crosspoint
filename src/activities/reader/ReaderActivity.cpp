@@ -3,12 +3,9 @@
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
-#include <KOReaderDocumentId.h>
 #include <Memory.h>
 #include <TrustedTime.h>
 
-#include <algorithm>
-#include <cctype>
 #include <cstdio>
 
 #include "CrossPointSettings.h"
@@ -19,6 +16,13 @@
 #include "SdCardFontSystem.h"
 #include "XtcReaderActivity.h"
 #include "util/PluginEvents.h"
+#include "util/ReaderSessionJournal.h"
+
+namespace {
+// Wall time between crash checkpoints while reading. A power cut can lose at
+// most this much of the current page; the rest of the session is on SD.
+constexpr uint32_t SESSION_CHECKPOINT_INTERVAL_MS = 60 * 1000;
+}  // namespace
 
 ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                                std::string bookPath, const bool allowFastInitialRefresh)
@@ -49,9 +53,13 @@ void ReaderActivity::applyInitialOrientation() { ReaderUtils::applyOrientation(r
 
 void ReaderActivity::disableFastInitialRefresh() { pagesUntilFullRefresh = 0; }
 
-void ReaderActivity::notePageTurn(const bool forward, const bool succeeded) {
+void ReaderActivity::notePageTurn(const bool succeeded) {
   RenderLock lock(*this);
-  readerSession.noteTurn(forward, succeeded);
+  readerSession.noteTurn(succeeded);
+}
+
+void ReaderActivity::ensureSessionId() {
+  if (sessionId[0] == '\0') pluginevents::allocateEventId(sessionId, sizeof(sessionId));
 }
 
 void ReaderActivity::onEnter() {
@@ -125,35 +133,58 @@ void ReaderActivity::onExit() {
 
 void ReaderActivity::prepareForSleep() { flushReaderSession(); }
 
-void ReaderActivity::flushReaderSession() {
-  if (!readerSession.isEmitWorthy() || !pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) {
-    readerSession.reset();
-    return;
-  }
+void ReaderActivity::checkpointReaderSession(const uint32_t monotonicMs) {
+  if (!pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) return;
+  if (lastSessionCheckpointMs != 0 && monotonicMs - lastSessionCheckpointMs < SESSION_CHECKPOINT_INTERVAL_MS) return;
 
-  const std::string document = KOReaderDocumentId::calculate(bookPath);
-  const bool validDocument =
-      document.size() == 32 && std::all_of(document.begin(), document.end(), [](const unsigned char c) {
-        return std::isdigit(c) || (c >= 'a' && c <= 'f');
-      });
-  if (validDocument) {
-    char startTime[24];
-    char endTime[24];
-    char duration[16];
-    char startProgress[8];
-    char endProgress[8];
-    snprintf(startTime, sizeof(startTime), "%lld", static_cast<long long>(readerSession.startTime()));
-    snprintf(endTime, sizeof(endTime), "%lld", static_cast<long long>(readerSession.endTime()));
-    snprintf(duration, sizeof(duration), "%lu", static_cast<unsigned long>(readerSession.durationSeconds()));
-    snprintf(startProgress, sizeof(startProgress), "%u", readerSession.startProgressBp());
-    snprintf(endProgress, sizeof(endProgress), "%u", readerSession.endProgressBp());
-    const pluginevents::Var vars[] = {{"book", bookPath.c_str()},       {"document", document.c_str()},
-                                      {"start_time", startTime},        {"end_time", endTime},
-                                      {"duration_seconds", duration},   {"start_progress_bp", startProgress},
-                                      {"end_progress_bp", endProgress}, {"progress_scale", "10000"}};
-    pluginevents::emit(pluginevents::Event::ReaderSession, vars, 8);
+  ReaderSessionSummary summary;
+  {
+    RenderLock lock(*this);
+    summary = readerSession.projected(monotonicMs, getProgressBasisPoints());
+  }
+  if (summary.durationSeconds < ReaderSession::MIN_SESSION_SECONDS) return;
+
+  ensureSessionId();
+  readersession::Record record;
+  snprintf(record.id, sizeof(record.id), "%s", sessionId);
+  record.startEpoch = summary.startEpoch;
+  record.durationSeconds = summary.durationSeconds;
+  record.startProgressBp = summary.startProgressBp;
+  record.endProgressBp = summary.endProgressBp;
+  record.book = bookPath;
+  if (readersession::save(record)) lastSessionCheckpointMs = monotonicMs;
+}
+
+// Emits one reader.session for the interval that just ended. The id was
+// allocated by an earlier checkpoint or the first flush, so a retry from the
+// crash checkpoint or a duplicate delivery carries the same id and the
+// server's (device, event id) key makes it idempotent.
+void ReaderActivity::flushReaderSession() {
+  readerSession.finish(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
+  if (readerSession.isEmitWorthy() && pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) {
+    ensureSessionId();
+    const ReaderSessionSummary summary = readerSession.summary();
+    readersession::Record record;
+    snprintf(record.id, sizeof(record.id), "%s", sessionId);
+    record.startEpoch = summary.startEpoch;
+    record.durationSeconds = summary.durationSeconds;
+    record.startProgressBp = summary.startProgressBp;
+    record.endProgressBp = summary.endProgressBp;
+    record.book = bookPath;
+    if (readersession::queueEvent(record)) {
+      readersession::discard();
+    } else {
+      // Keep the checkpoint current so the next boot retries this final
+      // summary (same id); a delivery that did go through is a duplicate.
+      readersession::save(record);
+      LOG_ERR("READER", "reader session kept for retry after reboot");
+    }
+  } else {
+    readersession::discard();
   }
   readerSession.reset();
+  sessionId[0] = '\0';
+  lastSessionCheckpointMs = 0;
 }
 
 bool ReaderActivity::handleBackNavigation() {
@@ -217,6 +248,7 @@ bool ReaderActivity::handleEndOfBookPageTurn(const bool prevTriggered, const boo
 
 void ReaderActivity::loop() {
   rememberBookOnceRendered();
+  checkpointReaderSession(millis());
   clearEndOfBookOptionsIfNeeded();
   if (handleEndOfBookMenu()) return;
   if (handleFormatInput()) return;
@@ -235,7 +267,7 @@ void ReaderActivity::loop() {
 
   const bool changed = skip ? skipPages(prevTriggered ? -10 : 10) : pageTurn(!prevTriggered);
   // A skip is navigation, not reading: it never counts toward session dwell.
-  notePageTurn(!skip && !prevTriggered, changed);
+  notePageTurn(!skip && changed);
   if (changed && (touch.prev || touch.next)) haptic_feedback::touchAction(skip);
   requestUpdate();
 }

@@ -811,7 +811,7 @@ void EpubReaderActivity::loop() {
 
     if ((millis() - lastPageTurnTime) >= pageTurnDuration) {
       const bool succeeded = pageTurn(true);
-      notePageTurn(true, succeeded);
+      notePageTurn(succeeded);
       requestUpdate();
       return;
     }
@@ -969,7 +969,7 @@ void EpubReaderActivity::loop() {
     const bool forward = pendingManualTurn > 0;
     pendingManualTurn = 0;
     const bool succeeded = pageTurn(forward);
-    notePageTurn(forward, succeeded);
+    notePageTurn(succeeded);
     if (succeeded && pendingManualTurnTouch) haptic_feedback::touchAction();
     pendingManualTurnTouch = false;
     requestUpdate();
@@ -998,7 +998,7 @@ void EpubReaderActivity::loop() {
   const bool longPress = !fromTilt && heldMs >= ReaderUtils::SKIP_HOLD_MS;
   if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
     const bool succeeded = skipPages(nextTriggered ? 1 : -1);
-    notePageTurn(false, succeeded);
+    notePageTurn(false);  // a chapter skip is navigation, not reading
     if (succeeded && (touch.prev || touch.next)) haptic_feedback::touchAction(true);
     requestUpdate();
     return;
@@ -1026,7 +1026,7 @@ void EpubReaderActivity::loop() {
   }
 
   const bool succeeded = pageTurn(!prevTriggered);
-  notePageTurn(!prevTriggered, succeeded);
+  notePageTurn(succeeded);
   if (succeeded && (touch.prev || touch.next)) haptic_feedback::touchAction();
   requestUpdate();
 }
@@ -1312,7 +1312,10 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 }
 
 bool EpubReaderActivity::launchKOReaderSync() {
-  flushReaderSession();
+  {
+    RenderLock lock(*this);
+    flushReaderSession();
+  }
 
   // Without a KOReader server the sync activity only brings the device online
   // and drains that outbox; a failed join exits back to the reader with the
@@ -1547,6 +1550,12 @@ void EpubReaderActivity::beginLoanTimeSync() {
     }
     APP_STATE.openEpubPath = bookPath;
     APP_STATE.saveToFile();
+    // The reboot below would drop the in-RAM session; queue its interval now,
+    // off the time-sync popup, before the chip resets.
+    {
+      RenderLock lock(*this);
+      flushReaderSession();
+    }
     // Reboot straight back into this book with a clean heap (no-op on touch
     // boards, which fall through to the in-place relaunch below).
     silentRestartToReader();

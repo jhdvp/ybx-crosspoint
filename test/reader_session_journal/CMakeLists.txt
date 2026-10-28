@@ -1,0 +1,4 @@
+add_executable(ReaderSessionJournalTest ReaderSessionJournalTest.cpp)
+target_include_directories(ReaderSessionJournalTest PRIVATE ${REPO_ROOT}/src)
+target_link_libraries(ReaderSessionJournalTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(ReaderSessionJournalTest)

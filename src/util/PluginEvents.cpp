@@ -43,12 +43,12 @@ struct QueueFiles {
   }
 };
 
-// Drop-oldest wholesale: a plugin that is never drained must not grow a file
-// forever, and by the time 4KB of events piled up the old ones describe stale
-// state anyway.
+// Drop-oldest at the cap: a plugin that is never drained must not grow a file
+// forever, but whole events are kept until their space is needed, so a long
+// offline period delivers the newest history instead of discarding all of it.
 constexpr size_t MAX_OUTBOX_BYTES = 4 * 1024;
 constexpr size_t MAX_MANIFEST_SIZE = 8 * 1024;
-constexpr size_t MAX_EVENT_LINE = 512;
+constexpr size_t MAX_EVENT_LINE = 1024;
 // Event handler responses are acknowledgements, not content.
 constexpr size_t MAX_EVENT_RESPONSE = 8 * 1024;
 
@@ -187,20 +187,27 @@ bool wantsConnectAny() {
   return false;
 }
 
-void emit(const Event e, const Var* vars, const size_t varCount) {
-  if (!anySubscriber(e)) return;
+void allocateEventId(char* out, const size_t size) {
+  // Unique across queued events and reboots: a per-boot nonce plus an
+  // in-session counter shared with emit(), no SD read-modify-write per event.
+  // ts alone repeats (1-second resolution, and 0 whenever the clock was never set).
+  static const uint32_t bootNonce = esp_random();
+  static uint32_t seq = 0;
+  snprintf(out, size, "%08lx-%lu", static_cast<unsigned long>(bootNonce), static_cast<unsigned long>(++seq));
+}
+
+bool emit(const Event e, const Var* vars, const size_t varCount, const char* explicitId) {
+  if (!anySubscriber(e)) return true;
 
   // One line: {"e":"reader.exit","id":"3fa9c21b-7","ts":1734212345,"vars":{"book":"...","percent":"74"}}
   JsonDocument doc;
   doc["e"] = EVENT_NAMES[static_cast<size_t>(e)];
-  // Unique id for server-side dedupe of at-least-once delivery: a per-boot
-  // nonce plus an in-session counter, unique across queued events and reboots
-  // without an SD read-modify-write per event. ts alone repeats (1-second
-  // resolution, and 0 whenever the clock was never set).
-  static const uint32_t bootNonce = esp_random();
-  static uint32_t seq = 0;
   char id[24];
-  snprintf(id, sizeof(id), "%08lx-%lu", static_cast<unsigned long>(bootNonce), static_cast<unsigned long>(++seq));
+  if (explicitId != nullptr && explicitId[0] != '\0') {
+    snprintf(id, sizeof(id), "%s", explicitId);
+  } else {
+    allocateEventId(id, sizeof(id));
+  }
   doc["id"] = id;
   // Best-effort unix time: 0 when the clock was never set (no RTC, no NTP yet).
   doc["ts"] = static_cast<long long>(time(nullptr));
@@ -214,10 +221,11 @@ void emit(const Event e, const Var* vars, const size_t varCount) {
   line += '\n';
   if (line.size() > MAX_EVENT_LINE) {
     LOG_ERR("PEVT", "event line too large (%u); dropped", static_cast<unsigned>(line.size()));
-    return;
+    return true;  // no retry can shrink it
   }
 
   // The book's sidecar, read once and shared by every filtered handler.
+  bool queued = true;
   pluginhttp::Headers meta;
   bool metaLoaded = false;
   for (const auto& sub : subscribers) {
@@ -244,24 +252,43 @@ void emit(const Event e, const Var* vars, const size_t varCount) {
     QueueFiles files;
     if (!recoverQueue(files, path)) {
       LOG_ERR("PEVT", "%s: outbox recovery failed; append deferred", sub.name);
+      queued = false;
       continue;
     }
     HalFile file = Storage.open(path.c_str(), O_RDWR | O_CREAT | O_APPEND);
     if (!file || !file.isOpen()) {
       LOG_ERR("PEVT", "%s: outbox open failed", sub.name);
+      queued = false;
       continue;
     }
     if (!repairQueueTail(file, MAX_EVENT_LINE)) {
       LOG_ERR("PEVT", "%s: outbox tail repair failed; append deferred", sub.name);
+      queued = false;
       continue;
     }
-    if (file.fileSize() > MAX_OUTBOX_BYTES) {
-      // Drop-oldest wholesale (see MAX_OUTBOX_BYTES).
-      file.close();  // explicit: remove follows on the same path
-      Storage.remove(path.c_str());
+    if (file.fileSize() + line.size() > MAX_OUTBOX_BYTES) {
+      // Make room by dropping the oldest complete events; the newest history
+      // survives an offline period.
+      file.close();
+      std::string raw;
+      if (!Storage.readFileToString("PEVT", path, MAX_OUTBOX_BYTES + MAX_EVENT_LINE, raw)) {
+        LOG_ERR("PEVT", "%s: outbox read failed; append deferred", sub.name);
+        queued = false;
+        continue;
+      }
+      trimQueueHead(raw, MAX_OUTBOX_BYTES - line.size());
+      if (!replaceQueue(files, path, raw)) {
+        LOG_ERR("PEVT", "%s: outbox trim failed; append deferred", sub.name);
+        queued = false;
+        continue;
+      }
       file = Storage.open(path.c_str(), O_RDWR | O_CREAT | O_APPEND);
-      if (!file || !file.isOpen()) continue;
-      LOG_DBG("PEVT", "%s: outbox over cap, dropped", sub.name);
+      if (!file || !file.isOpen()) {
+        LOG_ERR("PEVT", "%s: outbox reopen failed", sub.name);
+        queued = false;
+        continue;
+      }
+      LOG_DBG("PEVT", "%s: outbox trimmed to fit", sub.name);
     }
     const uint64_t before = file.fileSize64();
     if (file.write(reinterpret_cast<const uint8_t*>(line.data()), line.size()) != line.size()) {
@@ -269,9 +296,11 @@ void emit(const Event e, const Var* vars, const size_t varCount) {
       // both as corrupt: cut back to the last complete line, losing only this one.
       LOG_ERR("PEVT", "%s: short outbox append; event dropped", sub.name);
       file.truncate(before);
+      queued = false;
     }
     file.flush();
   }
+  return queued;
 }
 
 namespace {

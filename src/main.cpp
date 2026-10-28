@@ -48,6 +48,7 @@
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
+#include "util/ReaderSessionJournal.h"
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
 
@@ -691,6 +692,9 @@ void setup() {
   // Restore the monotonic clock floor before anything reads time() (event
   // timestamps, loan-expiry checks).
   trustedtime::init();
+  // A reading session interrupted by a crash or power loss was checkpointed on
+  // SD; queue it now with its original id, so one read is counted once.
+  readersession::recoverPending();
   bleturner::begin(pageturner::host, SETTINGS.ble);
 
   // Brightness and warmth are always restored. A normal wake starts with the
