@@ -1030,7 +1030,7 @@ void PluginCatalogActivity::promptRemoveShelfBook(const int itemIndex) {
     return;
   }
   auto confirmation = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_REMOVE_SHELF_CONFIRM),
-                                                             items[itemIndex].title);
+                                                              items[itemIndex].title);
   if (!confirmation) {
     LOG_ERR("PCAT", "OOM: shelf removal confirmation");
     return;
@@ -1413,8 +1413,8 @@ bool PluginCatalogActivity::handleCustomInput() {
   if (state == State::DONE) {
     int tx = 0;
     int ty = 0;
-    const bool selected = mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
-                          mappedInput.wasScreenTapped(tx, ty);
+    const bool selected =
+        mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(tx, ty);
     if (selected && !lastDownloadPath.empty()) {
       // The finished download is readable now: land on its first page.
       openDownloadedBook(lastDownloadPath);
@@ -1685,10 +1685,9 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
   if (item.onReader) addFact(tr(STR_ON_READER));
 
   const bool updateAvailable = item.status == tr(STR_UPDATE_AVAILABLE);
-  spec.actionLabel = item.onReader
-                         ? tr(STR_OPEN)
-                         : (updateAvailable ? tr(STR_UPDATE)
-                                            : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH)));
+  spec.actionLabel = item.onReader ? tr(STR_OPEN)
+                                   : (updateAvailable ? tr(STR_UPDATE)
+                                                      : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH)));
 
   auto detailsActivity = makeUniqueNoThrow<DetailsActivity>(renderer, mappedInput, std::move(spec));
   if (!detailsActivity) {
