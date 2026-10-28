@@ -41,6 +41,7 @@
 #include "util/PluginPickerLayout.h"
 #include "util/QrUtils.h"
 #include "util/StringUtils.h"
+#include "util/YbxKosync.h"
 
 namespace fui = freeink::ui;
 
@@ -381,7 +382,11 @@ PluginCatalogActivity::ListIndexResult PluginCatalogActivity::loadBrowseListInde
 }
 
 bool PluginCatalogActivity::saveToken(const std::string& value) {
-  return pluginhttp::saveTokenToFile(manifest.tokenFile, manifest.tokenPath, value);
+  if (!pluginhttp::saveTokenToFile(manifest.tokenFile, manifest.tokenPath, value)) return false;
+  // A fresh key on the card may complete a YBX pairing, so reconcile the built-in
+  // sync here instead of waiting for the reader to open a sync screen.
+  ybxkosync::refresh();
+  return true;
 }
 
 bool PluginCatalogActivity::loadToken() {

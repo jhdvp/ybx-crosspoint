@@ -18,7 +18,7 @@ claim that the gaps are implemented.
 | Book details / cover / author / series / actions | Existing EPUB/library cover path and generic details | Native thumbnails, real book actions, provider alternatives; no fake Fetch actions |
 | On Reader / downloads / delete | LibraryIndex, FileBrowser, bounded downloader | YBX folder workflow, states and safe deletion/progress-cache acceptance |
 | EPUB reading / TOC / bookmarks / dictionary | Existing reader engine and native UI | Verify the same downloaded files, image books and preserved metadata |
-| Reading position across clients | Existing KOSync, server position conversion | Native pairing-to-KOSync setup, state/errors and mismatch UX without browser JS |
+| Reading position across clients | Existing KOSync, server position conversion | Native pairing-to-KOSync setup, opt-out, outcome status and mismatch consent implemented; device acceptance pending |
 | Reading summary / month / day / year | ReaderSession events; FreeInkUI widgets | Bounded native account model/cache, views and one session ledger |
 | Book-level reading statistics | Existing book identity / metadata sidecars | Native per-book stats and reliable shared identity |
 | Goals / streaks | Server profile data | Display actual shared goals and server streak semantics, unknown != zero |

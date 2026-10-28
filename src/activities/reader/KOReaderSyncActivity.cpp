@@ -28,6 +28,7 @@
 #include "network/WifiPowerSaveGuard.h"
 #include "util/PluginEvents.h"
 #include "util/PluginHttp.h"
+#include "util/YbxKosync.h"
 
 namespace fui = freeink::ui;
 
@@ -48,6 +49,22 @@ DocumentMatchMethod alternateMatchMethod(const DocumentMatchMethod method) {
 
 const char* matchMethodName(const DocumentMatchMethod method) {
   return method == DocumentMatchMethod::FILENAME ? "filename" : "binary";
+}
+
+// What a failed request means for the YBX status row: a refused key is fixed by
+// pairing again, a declined account by the service, anything else by the network
+// or the server.
+ybxkosync::Outcome outcomeForFailure(const KOReaderSyncClient::Error result) {
+  switch (result) {
+    case KOReaderSyncClient::NETWORK_ERROR:
+      return ybxkosync::Outcome::Offline;
+    case KOReaderSyncClient::AUTH_FAILED:
+      return ybxkosync::Outcome::AuthRejected;
+    case KOReaderSyncClient::SERVER_ERROR:
+      return KOReaderSyncClient::lastHttpCode == 409 ? ybxkosync::Outcome::Refused : ybxkosync::Outcome::Failed;
+    default:
+      return ybxkosync::Outcome::Failed;
+  }
 }
 
 }  // namespace
@@ -98,6 +115,7 @@ void KOReaderSyncActivity::saveProgressAndReturn(int spineIndex, int page) {
     requestUpdate(true);
     return;
   }
+  ybxkosync::noteTransaction(ybxkosync::Outcome::Pulled);
   returnToReader();
 }
 
@@ -256,6 +274,7 @@ void KOReaderSyncActivity::performSync() {
   }
 
   if (result != KOReaderSyncClient::OK) {
+    ybxkosync::noteTransaction(outcomeForFailure(result));
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;
@@ -321,12 +340,22 @@ void KOReaderSyncActivity::performSync() {
             remoteProgress.progress.c_str(), remotePosition.spineIndex, remotePosition.pageNumber);
     switch (comparison) {
       case ProgressComparison::Synchronized:
+        ybxkosync::noteTransaction(ybxkosync::Outcome::Already);
         completeAlreadySynced();
         return;
       case ProgressComparison::LocalAhead:
         performUpload();
         return;
       case ProgressComparison::RemoteAhead:
+        // Like the other YBX clients, apply a server position silently only when it
+        // is within a percentage point of this reader's own; further ahead, the
+        // comparison screen asks before the reader leaves its place.
+        if (ybxkosync::isActive() &&
+            ybxkosync::remoteJumpNeedsConsent(localProgress.percentage, remoteProgress.percentage)) {
+          ybxkosync::setMismatchPending(true);
+          LOG_DBG("KOSync", "Remote position differs; opening manual selection");
+          break;
+        }
         saveProgressAndReturn(remotePosition.spineIndex, remotePosition.pageNumber);
         return;
       case ProgressComparison::Unknown:
@@ -427,6 +456,7 @@ void KOReaderSyncActivity::performUpload() {
   esp_wifi_stop();
 
   if (result != KOReaderSyncClient::OK) {
+    ybxkosync::noteTransaction(outcomeForFailure(result));
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;
@@ -436,6 +466,7 @@ void KOReaderSyncActivity::performUpload() {
     return;
   }
 
+  ybxkosync::noteTransaction(ybxkosync::Outcome::Pushed);
   {
     RenderLock lock(*this);
     state = UPLOAD_COMPLETE;

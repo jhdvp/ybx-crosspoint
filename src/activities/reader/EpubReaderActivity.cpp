@@ -60,6 +60,7 @@
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+#include "util/YbxKosync.h"
 
 namespace {
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -1313,6 +1314,10 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 
 bool EpubReaderActivity::launchKOReaderSync() {
   flushReaderSession();
+
+  // A pairing made since the last sync is applied here, so a reader that signed in
+  // to YBX syncs without ever typing a server URL or a password.
+  ybxkosync::refresh();
 
   // Without a KOReader server the sync activity only brings the device online
   // and drains that outbox; a failed join exits back to the reader with the

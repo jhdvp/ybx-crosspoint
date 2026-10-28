@@ -111,6 +111,38 @@ or corrupt cover, unknown progress, long translated titles, all four rotations,
 remapped front/side buttons, returning from each action, and repeated Home/book
 transitions. Record heap/latency and confirm no radio activation on Home.
 
+## YBX sync setup after pairing
+
+A reader that signed in to YBX (QR device code in the plugin catalog) configures
+its built-in KOReader Sync by itself: `src/util/YbxKosync.cpp` writes the sync
+server `https://my.ybx.app/api/v1/crosspoint/kosync`, username `ybx` and the
+reader token from the plugin's `token.json` as the password, plus content-hash
+document matching, smart behaviour and metadata, through the existing
+`KOReaderCredentialStore`. Nobody types a URL or a password, and the browser
+plugin page is no longer part of the flow. Provider OAuth stays on the server.
+
+The module owns no protocol, timer, queue or connection: hashing, requests,
+retries and the pull/upload screens stay in `lib/KOReaderSync`. It reconciles at
+three moments only — after a plugin token is written, when the sync settings
+open, and before the reader starts a sync — each of which reads two small plugin
+files and writes storage only when something changed. It never rewrites a sync
+server the reader typed by hand: that case offers a "use YBX" row instead, and
+editing the settings after provisioning hands the server back to the reader.
+The switch in Settings → CrossPoint Sync is the opt-out; turning it off clears
+only what this module (or the browser page it replaced) wrote.
+
+Settings shows the switch, the verdict of the last transaction with its age, and
+the pending-mismatch state. Like the other YBX clients, the reader applies a
+server position silently only within one percentage point and asks above it;
+the local position remains the record, so an offline attempt or a declined jump
+never rolls anything back, and the next sync reconciles again.
+
+Hardware acceptance: pair on a device and confirm the sync rows and that a
+position reached in another YBX client (phone/desktop) opens the right page in
+the reader, and the reverse; check Yandex, WB and LitRes copies plus a locally
+normalized EPUB; then verify offline retry, opt-out, re-pair after an expired
+token, and that a hand-configured server is never overwritten.
+
 The broader native-client scope is tracked in [the parity matrix](docs/ybx-client-parity.md)
 and [the statistics adaptation plan](docs/ybx-reading-stats-plan.md). These are
 implementation plans; the preview does not yet implement native account statistics
