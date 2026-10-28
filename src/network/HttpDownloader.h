@@ -86,6 +86,12 @@ class HttpDownloader {
     std::vector<Header> headers;
     int* statusOut = nullptr;
     bool captureErrorBody = false;
+    // Per-socket timeout in ms; 0 keeps the default. A bounded catalog
+    // operation passes its remaining budget instead of the global default.
+    uint32_t timeoutMs = 0;
+    // Polled by the HTTP layer while connecting and reading; true aborts the
+    // request. Lets a user cancel or an absolute deadline end a fetch.
+    std::function<bool()> shouldAbort;
   };
 
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const FetchOptions& options);
@@ -96,7 +102,8 @@ class HttpDownloader {
    * capped at a few KB. Returns true when the response status is 2xx.
    */
   static bool postForm(const std::string& url, const std::string& formBody, std::string& outResponse,
-                       int* statusOut = nullptr);
+                       int* statusOut = nullptr, uint32_t timeoutMs = 0,
+                       const std::function<bool()>& shouldAbort = {});
 
   /**
    * Download a file to the SD card with optional credentials. `headers` are
@@ -110,7 +117,8 @@ class HttpDownloader {
   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
                                       ProgressCallback progress = nullptr, const bool* cancelFlag = nullptr,
                                       const std::string& username = "", const std::string& password = "",
-                                      const std::vector<Header>& headers = {}, bool downgradeRedirectsToHttp = false);
+                                      const std::vector<Header>& headers = {}, bool downgradeRedirectsToHttp = false,
+                                      uint32_t timeoutMs = 0, const std::function<bool()>& shouldAbort = {});
 
   /**
    * POST a body (e.g. an LCP license to the fulfillment service) and stream

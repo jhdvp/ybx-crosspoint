@@ -24,8 +24,8 @@ constexpr int MAX_REDIRECTS = 5;
 // must not balloon the heap.
 constexpr size_t MAX_RESPONSE_BYTES = 4096;
 
-void applyCommonClientSetup(freeink::SecureHttpClient& http) {
-  http.setTimeout(HTTP_TIMEOUT_MS);
+void applyCommonClientSetup(freeink::SecureHttpClient& http, uint32_t timeoutMs = 0) {
+  http.setTimeout(timeoutMs ? timeoutMs : HTTP_TIMEOUT_MS);
   http.setInsecure();
   // setUserAgent replaces SecureHttpClient's built-in UA; addHeader would
   // append a second User-Agent header, which strict servers reject (aiohttp
@@ -46,7 +46,9 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
                                            const std::string& password,
                                            const std::vector<HttpDownloader::Header>& headers,
                                            const freeink::FetchSink& sink, const bool* cancelFlag = nullptr,
-                                           size_t* bytesOut = nullptr, const bool downgradeRedirectsToHttp = false) {
+                                           size_t* bytesOut = nullptr, const bool downgradeRedirectsToHttp = false,
+                                           uint32_t timeoutMs = 0,
+                                           const std::function<bool()>& shouldAbort = {}) {
   WifiPowerSaveGuard psGuard;
   freeink::FetchOptions options;
   options.redirectToHttp = downgradeRedirectsToHttp;
@@ -55,7 +57,7 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
       url, options,
       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
         answeredBySameOrigin = sameOrigin;
-        applyCommonClientSetup(http);
+        applyCommonClientSetup(http, timeoutMs);
         // Credentials and caller headers stay with the starting origin; a
         // redirect elsewhere (or to plain http) gets neither.
         if (sameOrigin) {
@@ -65,7 +67,9 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
         LOG_DBG("HTTP", "wolfSSL GET: %s (heap %u, max block %u)", url.c_str(), (unsigned)ESP.getFreeHeap(),
                 (unsigned)ESP.getMaxAllocHeap());
       },
-      sink, [cancelFlag] { return cancelFlag && *cancelFlag; });
+      sink, [cancelFlag, shouldAbort] {
+        return (cancelFlag && *cancelFlag) || (shouldAbort && shouldAbort());
+      });
   if (bytesOut) *bytesOut = result.bytes;
   // FetchResult::status is -1 when no response arrived (bad URL, DNS, connect, TLS).
   g_lastStatus = result.status < 0 ? 0 : result.status;
@@ -120,13 +124,19 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
   int status = 0;
   bool sinkStopped = false;
   for (int hop = 0; hop <= MAX_REDIRECTS; ++hop) {
+    // The caller's absolute deadline covers the whole redirect chain, so check
+    // it before spending another hop on a server that keeps redirecting.
+    if (options.shouldAbort && options.shouldAbort()) {
+      status = 0;
+      break;
+    }
     freeink::SecureHttpClient http;
     if (!http.begin(current)) {
       LOG_ERR("HTTP", "bad URL: %s", current.c_str());
       status = 0;
       break;
     }
-    applyCommonClientSetup(http);
+    applyCommonClientSetup(http, options.timeoutMs);
     // Credentials belong to the starting origin only: a redirect to another
     // origin (a CDN) must not receive them.
     if (freeink::fetchOrigin(current) == startOrigin) {
@@ -141,16 +151,18 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
     if (!options.acceptLanguage.empty()) http.addHeader("Accept-Language", options.acceptLanguage);
 
     LOG_DBG("HTTP", "wolfSSL GET: %s", current.c_str());
-    status = http.GET([&](const uint8_t* data, size_t len) {
-      const int st = http.getStatus();
-      const bool wanted = (st >= 200 && st < 300) || (options.captureErrorBody && st == 401);
-      if (!wanted) return true;  // redirect or error body: drain
-      if (!onData(data, len)) {
-        sinkStopped = true;
-        return false;
-      }
-      return true;
-    });
+    status = http.GET(
+        [&](const uint8_t* data, size_t len) {
+          const int st = http.getStatus();
+          const bool wanted = (st >= 200 && st < 300) || (options.captureErrorBody && st == 401);
+          if (!wanted) return true;  // redirect or error body: drain
+          if (!onData(data, len)) {
+            sinkStopped = true;
+            return false;
+          }
+          return true;
+        },
+        options.shouldAbort);
     if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
       const std::string location = http.getHeader("location");
       if (location.empty() || !freeink::SecureHttpClient::resolveUrl(current, location, current)) break;
@@ -165,7 +177,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
 }
 
 bool HttpDownloader::postForm(const std::string& url, const std::string& formBody, std::string& outResponse,
-                              int* statusOut) {
+                              int* statusOut, uint32_t timeoutMs, const std::function<bool()>& shouldAbort) {
   WifiPowerSaveGuard psGuard;
   outResponse.clear();
   freeink::SecureHttpClient http;
@@ -174,7 +186,7 @@ bool HttpDownloader::postForm(const std::string& url, const std::string& formBod
     if (statusOut) *statusOut = 0;
     return false;
   }
-  applyCommonClientSetup(http);
+  applyCommonClientSetup(http, timeoutMs);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
   LOG_DBG("HTTP", "wolfSSL POST: %s", url.c_str());
   const int status = http.sendRequest("POST", reinterpret_cast<const uint8_t*>(formBody.data()), formBody.size(),
@@ -183,7 +195,8 @@ bool HttpDownloader::postForm(const std::string& url, const std::string& formBod
                                             MAX_RESPONSE_BYTES - std::min(outResponse.size(), MAX_RESPONSE_BYTES);
                                         outResponse.append(reinterpret_cast<const char*>(data), std::min(len, room));
                                         return true;
-                                      });
+                                      },
+                                      shouldAbort);
   if (statusOut) *statusOut = status > 0 ? status : 0;
   return status >= 200 && status < 300;
 }
@@ -262,7 +275,8 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
                                                              ProgressCallback progress, const bool* cancelFlag,
                                                              const std::string& username, const std::string& password,
                                                              const std::vector<Header>& headers,
-                                                             bool downgradeRedirectsToHttp) {
+                                                             bool downgradeRedirectsToHttp, uint32_t timeoutMs,
+                                                             const std::function<bool()>& shouldAbort) {
   LOG_DBG("HTTP", "Downloading: %s -> %s", url.c_str(), destPath.c_str());
 
   // Stage in <dest>.part: a failed or cancelled download never replaces an
@@ -285,8 +299,8 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   sink.progress = progress;
 
   size_t downloaded = 0;
-  const DownloadError result =
-      runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded, downgradeRedirectsToHttp);
+  const DownloadError result = runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded,
+                                            downgradeRedirectsToHttp, timeoutMs, shouldAbort);
   // Close before any remove() on the same path; DESTRUCTOR_CLOSES_FILE would
   // otherwise close only after the remove. A failed rewind leaves no open handle.
   if (file.isOpen()) file.close();

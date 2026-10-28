@@ -85,6 +85,18 @@ class OpdsBookBrowserActivity final : public CatalogActivity {
   OpdsHttpTransport opdsTransport;
   freeink::opds::OpdsClient opdsClient{opdsTransport};
 
+  // One bounded window per logical catalog operation (feed load, publication
+  // document, cover, license exchange): an absolute deadline plus Back/Home
+  // cancellation. Left means the user left the catalog and the home screen was
+  // already requested; the operation must only return.
+  enum class FetchStop { None, Left, TimedOut };
+  void beginCatalogFetch() { opdsTransport.beginFetch(millis()); }
+  FetchStop finishCatalogFetch();
+  // Back/Home polling from the transport's abort callback, while a fetch owns
+  // the loop. Sets catalogGoHome for the Home gesture.
+  bool pollCatalogInput();
+  bool catalogGoHome = false;
+
   // --- CatalogActivity / UiListActivity contract -----------------------------
   int listCount() const override { return state == State::BROWSING ? static_cast<int>(entries.size()) : 0; }
   bool hasSearch() const override { return !searchTemplate.empty() || !searchDescriptionUrl.empty(); }
@@ -137,7 +149,8 @@ class OpdsBookBrowserActivity final : public CatalogActivity {
   void openPublicationDetail(const OpdsEntry& entry);
   static void fillDetailInfo(const OpdsPublication& publication, DetailsSpec& spec);
   // Download the publication's cover art to an SD temp for the details page.
-  void loadDetailCover(const std::string& docUrl, const std::string& coverHref);
+  // Runs in its own bounded window; Left means the reader left the catalog.
+  FetchStop loadDetailCover(const std::string& docUrl, const std::string& coverHref);
   // Label for the details-page acquire button: Buy for a purchase, Place Hold
   // for a borrowable title with no copies available, otherwise Borrow (library
   // loan) or Download (direct file).

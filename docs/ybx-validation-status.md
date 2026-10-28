@@ -53,6 +53,50 @@ parent YBX workspace; generated binaries and logs are not committed here.
   trust hardening is a separate release blocker.
 - No device flashing, hardware validation, release or PR is part of these checks.
 
+## OPDS catalog fetch bounds — acceptance
+
+Browsing a catalog no longer blocks the UI indefinitely. Each logical catalog
+operation (feed, search template, publication document, detail cover, LCP
+license and unlock exchange) runs in an absolute 20 s window
+(`src/network/CatalogFetchLimiter.h`) and each socket operation is capped at
+the smaller of the window's remainder and 10 s. Back or Home during a fetch
+cancels it and returns to Home. A timeout shows the usual error screen with
+Retry (Confirm/tap) and Back; the message is "Server did not respond in time"
+(`STR_CATALOG_TIMEOUT`) when the window expires, or the existing unreachable /
+server-error message when a socket fails first. Book downloads are intentionally
+not capped at 20 s (multi-MB transfers); their progress screen already cancels
+on Back/Home.
+
+Not covered by that bound:
+
+- Blocking DNS/TCP connect inside the SDK cannot be interrupted from the fork
+  (tracked separately as `wksfsg7xyt0zgbs586go86g7`).
+- The SDK's implicit HTML login is outside the fork transport (up to ~10 x 30 s).
+- While a synchronous fetch owns the loop, only the physical Back and Home keys
+  are polled; the on-screen header back arrow is not.
+
+Hardware acceptance (owner):
+
+1. Run `python3 scripts/opds_failure_server.py --port 8099` on a LAN host and
+   note the printed address.
+2. Add `http://<host>:8099/` as an OPDS server. The feed must load and list
+   three subsection entries and one book.
+3. `http://<host>:8099/stall` (server accepts, sends nothing): an error screen
+   must appear within ~10–20 s; Retry starts another bounded attempt; Back
+   returns Home.
+4. `http://<host>:8099/slow` (bytes trickle forever): the error screen must
+   appear at the 20 s deadline; before this change this case hung until reset.
+5. `http://<host>:8099/loop` (redirects to itself): an ordinary failure after
+   five redirects; Retry and Back work.
+6. During steps 3–5 press Back mid-fetch: immediate return to Home, no restart,
+   no crash. Re-enter the catalog several times to check for leaks.
+7. Real case: open `flibusta.is/opds`. It must end in the feed or a clear error
+   within the bound; reading position and saved state must be untouched.
+
+Host checks in this branch: `CatalogFetchLimiterTest` (8 cases) and the full
+CTest suite. Hardware behaviour and live flibusta.is reachability are not
+verified here.
+
 See [the fork notes](../YBX_FORK.md), [client parity](ybx-client-parity.md),
 [statistics plan](ybx-reading-stats-plan.md) and
 [event delivery contract](plugin-events.md) for scope and acceptance steps.
