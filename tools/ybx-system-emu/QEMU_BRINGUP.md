@@ -422,3 +422,127 @@ symbolization with the **exact matching** `092c2be5` ELF.
 The host suite now has **44/44 passing unit tests**; this confirms
 ROM source reconstruction and runner isolation, **not** firmware
 readiness, SDMMC, display, touch or Wi-Fi/TLS support.
+
+### 29 October: exact firmware ELF verified; DROM interface + ADC handshake
+
+**Exact symbols and binary match.** Created a detached, separate worktree
+`fw-092c2be5-symbols-20261029` at firmware commit `092c2be5`,
+with FreeInk SDK pinned at `44427f8`. The X4 Pro PlatformIO build
+`pio run -e x4pro -j 2` succeeded and generated a 100 MB debug
+`firmware.elf`, under that worktree's `.pio/build/x4pro`.
+The IROM segment at `0x42000020`, length **2,792,968 bytes**, of
+this build and the preserved factory image are **identical**:
+SHA-256 `b2116bc0fd2985d67d83ce8dbb346c41c0464a576b8aa829912a77ab4cf4e7c4`.
+The factory and rebuilt IRAM segment `0x40374000` also matches
+**106,644 / 106,644 bytes**. A 43-byte difference is confined
+to non-executable DROM build data. The exact ELF instruction map is
+therefore reliable for these IROM and IRAM crash PCs. Be aware
+`xtensa-esp32s3-elf-addr2line` displays a misleading inlined
+ArduinoJson template for `0x421c615e`; actual
+`xtensa-esp32s3-elf-nm` plus **disassembly** demonstrates that PC
+belongs to **`soc_get_available_memory_regions()`**
+(beginning at `0x421c60f8`). The faulting instruction reads
+`ets_rom_layout_p` from `0x3ff1fffc` then loads an additional word
+via its pointer at an offset of 4. The original QEMU ROM extraction
+left that DROM pointer as `0xffffffff` and the guest faulted
+on address `0x00000003`.
+
+**Shared ROM DROM fix, C3 and S3.** Both locally installed Espressif
+ROM ELFs contain `.rodata.interface` sections that are **SHF_WRITE,
+not ELF PT_LOAD**. QEMU aliases DROM `0x3ff00000..0x3ff20000`
+to its instruction-ROM tail `0x40040000..0x40060000`.
+The new `extract_rom_interface.py` validates and copies the section
+to the correct ROM alias window. Both chip-specific ROM generators
+invoke it *after* their reset-copy initializer reconstruction.
+
+- C3 layout pointer `0x3ff1fffc = 0x3ff1be3c`, complete ROM
+  SHA-256 `3f798154d9eccc3652ce8d38627e8716ba16b45de1b892eab55486af39ebc8fa`.
+- S3 layout pointer `0x3ff1fffc = 0x3ff1ae90`, complete ROM
+  SHA-256 `5b950be93a30610322a3b46049e4095cdda04f33f09fa13a9a9a6167b5994bd9`.
+- The new generator outputs were **byte-for-byte verified** against
+  the successful manual DROM experiments. Both corrected ROMs
+  are 393,216 bytes. ROM files are local test artifacts only.
+
+**C3 guest observation** using the *unchanged* factory image and
+complete ROM: the old ROM fault `0x4004cc4e` and later
+application `0x421e01e8` Load fault are gone. Guest prints
+`Preferences.cpp: nvs_open failed: NOT_FOUND` (new disposable flash),
+then repeated `i2c_master_transmit_receive failed:
+ESP_ERR_INVALID_STATE` (259), and guest
+`Guru Meditation Error: Interrupt wdt timeout on CPU0`, MEPC
+`0x4226f5aa`. Guest application is **not stable**. Evidence:
+`qa-20261029/c3-with-drom-uart.log`.
+
+**S3 guest observation** with complete ROM, Octal PSRAM enabled
+(`-m 8M -global ssi_psram.is_octal=on`):
+the old fault `0x421c615e` disappears, and an exact-ELF traced
+10-second run makes the next blocker obvious.
+The CPU loops inside **`read_cal_channel()`** at
+`0x42229581..0x4222958c`, awaiting the bit
+`SENS_MEAS1_DONE_SAR` (bit 16 of `0x6000880c`).
+The associated ESP-IDF HAL source is
+`components/hal/adc_hal_common.c`; its S3 low-level source is
+`components/hal/esp32s3/include/hal/adc_ll.h`.
+The QEMU machine's generic I/O callback returns zero for that register.
+
+The **unaccepted experiment only**
+`experiments/0006-s3-adc-oneshot-handshake.patch`
+adds a tiny stateful SENS ADC1/ADC2 register model; when
+`meas*_start_sar` is set, it reports completion and returns
+a dummy measurement of zero. It resets state during peripheral reset
+and does **not** represent accurate ADC voltage conversion.
+It was built successfully in the **isolated** QEMU checkout and
+advanced the real S3 firmware to guest Arduino Wire/I2C diagnostics:
+`i2c_master_transmit_receive failed: ESP_ERR_INVALID_STATE` (259).
+See `qa-20261029/s3-adc-uart.log` and
+`qa-20261029/s3-adc-trace.log`. The experiment remains outside
+`apply_qemu_patches.sh` until a supported ADC model is designed.
+
+**Current blocker on both chips**: the emulator does not yet provide
+ESP-IDF 5 / PioArduino-supported I2C bus and realistic board-specific
+I2C slave devices. C3 also triggers a guest interrupt watchdog.
+Do not bypass these errors by editing YBX firmware or claiming
+that e-paper, touch, SDMMC or Wi-Fi/TLS works.
+
+Reproduce with the existing isolated QEMU build and local factory image:
+
+```sh
+qa="$HOME/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qa-20261029"
+q="$HOME/.local/state/ybx-emulator-upstream/qemu-rominit-20261029"
+roms="$HOME/.platformio/tools/tool-esp-rom-elfs"
+python3 tools/ybx-system-emu/extract_c3_rom_with_sections.py \
+  --elf "$roms/esp32c3_rev3_rom.elf" --out "$qa/c3-full.rom"
+python3 tools/ybx-system-emu/extract_rom_with_sections.py \
+  --elf "$roms/esp32s3_rev0_rom.elf" --out "$qa/s3-full.rom"
+# Runner copies ROMs to disposable -L BIOS directories; never edits QEMU BIOS.
+python3 tools/ybx-system-emu/run_open_qemu.py \
+  --chip c3 --duration 15 --usb-serial --qemu-root "$q" \
+  --c3-image "$HOME/Projects/YBX/artifacts/ybx-reader-ui-20261029/settings/YBX-SETTINGS-UNRELEASED-default-092c2be5-factory.bin" \
+  --c3-rom-image "$qa/c3-full.rom" --out "$qa/c3-final-report"
+# S3 QEMU requires experimental 0006 applied to reach past ADC calibration.
+python3 tools/ybx-system-emu/run_open_qemu.py \
+  --chip s3 --duration 20 --usb-serial --s3-octal-psram-mb 8 \
+  --qemu-root "$q" \
+  --s3-image "$HOME/Projects/YBX/artifacts/ybx-reader-ui-20261029/settings/YBX-SETTINGS-UNRELEASED-x4pro-092c2be5-factory.bin" \
+  --s3-rom-image "$qa/s3-full.rom" --sd-image "$qa/ybx-test-sd-fat16.img" \
+  --out "$qa/s3-final-report"
+```
+
+The runner's nonzero return code denotes **not accepted**; a guest's
+UART/ROM/application boot messages alone are not sufficient to pass.
+Current Python host suite: 52/52 passing tests, no actual hardware flashed.
+
+### Confirmed missing I2C master mapping (remaining blocker)
+
+Inspection of the local `espressif/qemu` source confirms that
+`hw/xtensa/esp32s3.c` does not instantiate or map an
+ESP32-S3 I2C master at `DR_REG_I2C_EXT_BASE=0x60013000` or
+`DR_REG_I2C1_EXT_BASE=0x60027000`. Its generic catch-all
+`esp32s3_io_read` returns zero for unimplemented registers.
+Similarly, `hw/riscv/esp32c3.c` handles only a small RTC I2C
+special case, not a compatible ESP-IDF 5 I2C master.
+`hw/i2c/esp32_i2c.c` does exist for the classic
+`hw/xtensa/esp32.c` machine, but is **not wired to C3/S3** and its
+register semantics must be checked before adapting it. This explains
+the direction of the next investigation but does not yet prove every
+driver failure's exact cause. Track under Kaneo #33.

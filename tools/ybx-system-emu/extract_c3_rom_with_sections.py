@@ -10,6 +10,7 @@ import struct
 
 from extract_rom_elf import extract as extract_irom, ROM_BASE, ROM_SIZE
 from extract_rom_data import extract_range
+from extract_rom_interface import overlay_drom_interface
 
 DRAM_BASE = 0x3FCCAE00
 DRAM_SIZE = 0x15200
@@ -47,6 +48,7 @@ def extract(elf: Path) -> tuple[bytes, int]:
     rom = bytearray(extract_irom(elf))
     initializers = extract_range(elf, DRAM_BASE, DRAM_SIZE, LEGACY_POINTER)
     count = patch_sources(rom, initializers)
+    overlay_drom_interface(rom, elf)
     return bytes(rom), count
 
 

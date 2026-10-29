@@ -161,6 +161,34 @@ class CustomRomRunnerTests(unittest.TestCase):
                                             "-serial", "null",
                                             "-serial", "stdio"])
 
+    def test_s3_octal_psram_command_is_explicit_and_auditable(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from run_open_qemu import run_one
+        with TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            image = base / "factory.bin"
+            flash = bytearray(bytes((255,)) * 0x10100)
+            flash[0] = 0xe9
+            flash[0x8000:0x8002] = bytes((0xaa, 0x50))
+            flash[0x10000] = 0xe9
+            image.write_bytes(flash)
+            qemu = base / "qemu"
+            (qemu / "build-ybx").mkdir(parents=True)
+            (qemu / "build-ybx/esp32s3_rev0_rom.bin").write_bytes(
+                bytes(0x60000))
+            with patch("run_open_qemu.subprocess.run",
+                       return_value=SimpleNamespace(stdout="", stderr="",
+                                                     returncode=124)) as mock:
+                result = run_one("s3", image, qemu, base / "logs", 2,
+                                 None, "builder", None, True, None, 8)
+            command = mock.call_args.args[0]
+            self.assertEqual(command[command.index("-m") + 1], "8M")
+            self.assertEqual(command[command.index("-global") + 1],
+                             "ssi_psram.is_octal=on")
+            self.assertEqual(result["virtual_octal_psram_mb"], 8)
+            self.assertTrue(result["usb_serial_routed"])
+
     def test_wrong_s3_rom_size_rejected(self):
         from run_open_qemu import run_one
         with TemporaryDirectory() as temp:

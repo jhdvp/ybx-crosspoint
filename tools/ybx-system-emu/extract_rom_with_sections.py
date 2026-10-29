@@ -13,6 +13,7 @@ import struct
 
 from extract_rom_elf import extract as extract_irom, ROM_BASE, ROM_SIZE
 from extract_rom_data import extract as extract_dram, BASE, SIZE
+from extract_rom_interface import overlay_drom_interface
 
 COPY_TABLE_START_ADDR = ROM_BASE + 0x428
 COPY_TABLE_END_ADDR = ROM_BASE + 0x42c
@@ -50,6 +51,7 @@ def patch_reset_copy_sources(rom: bytearray, initialized_ram: bytes) -> int:
 def extract(path: Path) -> tuple[bytes, int]:
     instruction_rom = bytearray(extract_irom(path))
     count = patch_reset_copy_sources(instruction_rom, extract_dram(path))
+    overlay_drom_interface(instruction_rom, path)
     return bytes(instruction_rom), count
 
 

@@ -32,3 +32,25 @@ Espressif ELF; the original (unchanged) accepted-patch QEMU then proceeds
 beyond the previous fatal ROM handler. Evidence and remaining acceptance
 gates are in `../QEMU_BRINGUP.md`. No hardware or production firmware
 was changed.
+
+## 0006 — minimal S3 ADC one-shot handshake (experimental, not accepted)
+
+`0006-s3-adc-oneshot-handshake.patch` applies on top of accepted patches
+0001, 0003 and 0005 against isolated Espressif QEMU. Its C code implements
+only the SENS ADC1/ADC2 `MEAS_CTRL2` start/done-bit handshake, with dummy
+zero result and reset-state handling. It is **not a valid electrical ADC**,
+and must not be used for accuracy or hardware validation.
+
+With the exact factory X4 Pro ROM correctly reconstructed (including
+`.rodata.interface`), normal QEMU stalls inside ESP-IDF
+`read_cal_channel()`, waiting for `SENS_MEAS1_DONE_SAR` bit 16 at
+`0x6000880c`. This experiment lets the guest progress to repeated
+ESP-IDF 5 I2C `ESP_ERR_INVALID_STATE` errors. The experimental patch
+compiles, and 18s guest tracing demonstrates progress from ADC calibration
+to I2C. It remains **outside** `apply_qemu_patches.sh` pending a full
+faithful ADC model. The live isolated local QEMU build currently includes it
+for diagnostic experiments; the accepted upstream checkout does not.
+
+See `../QEMU_BRINGUP.md` for evidence, local ROM hashes, flags and
+remaining acceptance blockers. Never change production YBX firmware to
+work around virtual hardware behavior.

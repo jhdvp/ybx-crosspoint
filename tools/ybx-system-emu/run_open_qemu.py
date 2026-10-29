@@ -78,7 +78,8 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
             seconds: int, sd_image: Path | None, docker_image: str,
             s3_rom_image: Path | None = None,
             usb_serial: bool = False,
-            c3_rom_image: Path | None = None) -> dict:
+            c3_rom_image: Path | None = None,
+            s3_octal_psram_mb: int | None = None) -> dict:
     sha256=validate_image(image)
     rom_name = "esp32c3-rom.bin" if chip=="c3" else "esp32s3_rev0_rom.bin"
     rom=qemu/"build-ybx"/rom_name
@@ -119,6 +120,11 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
         ]
         if chip=="s3" and sd_image:
             cmd+=["-drive","file=/work/sd.img,if=sd,format=raw"]
+        if chip == "s3" and s3_octal_psram_mb is not None:
+            if s3_octal_psram_mb not in (8, 16):
+                raise ValueError("unsupported virtual Octal PSRAM size")
+            cmd += ["-m", f"{s3_octal_psram_mb}M",
+                    "-global", "ssi_psram.is_octal=on"]
         if usb_serial:
             for _ in range(2 if chip == "c3" else 3):
                 cmd += ["-serial", "null"]
@@ -143,6 +149,7 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
         "rom_sha256":rom_digest,"rom_source":str(rom_source),
         "runtime_exit_code":exit_code,"duration_limit_s":seconds,
         "usb_serial_routed":usb_serial,
+        "virtual_octal_psram_mb": (s3_octal_psram_mb if chip == "s3" else None),
         "sdmmc_error":"sdmmc_host_reset returned 0x107" in log,
         "rom_present":True,
         "sdcard_attached":bool(chip=="s3" and sd_image),
@@ -166,6 +173,8 @@ def main()->int:
                    help="locally extracted C3 ROM with reset-copy data sources")
     p.add_argument("--usb-serial",action="store_true",
                    help="route USB Serial/JTAG to host using QEMU patch 0005")
+    p.add_argument("--s3-octal-psram-mb",type=int,choices=(8,16),
+                   help="attach Octal PSRAM, 8 or 16 MiB, to S3 QEMU")
     p.add_argument("--qemu-root",type=Path,
                    default=Path.home()/".local/state/ybx-emulator-upstream/qemu")
     p.add_argument("--docker-image",default="ybx-qemu-builder:20261029")
@@ -197,7 +206,8 @@ def main()->int:
         c3_rom = (args.c3_rom_image.expanduser().resolve(strict=True)
                   if chip == "c3" and args.c3_rom_image else None)
         result=run_one(chip,image,root,output,args.duration,sd,
-                       args.docker_image,s3_rom,args.usb_serial,c3_rom)
+                       args.docker_image,s3_rom,args.usb_serial,c3_rom,
+                       args.s3_octal_psram_mb)
         print(f"{chip}: exit={result['runtime_exit_code']}, "
               f"ROM={result['rom_seen']}, flash={result['spi_flash_boot_seen']}, "
               f"SDMMC error={result['sdmmc_error']}, "
