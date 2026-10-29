@@ -546,3 +546,78 @@ special case, not a compatible ESP-IDF 5 I2C master.
 register semantics must be checked before adapting it. This explains
 the direction of the next investigation but does not yet prove every
 driver failure's exact cause. Track under Kaneo #33.
+
+### 29 October: C3/S3 real I²C master wiring, modern opcodes and QTest
+
+The **classic ESP32** I²C master in
+`hw/i2c/esp32_i2c.c` was present but not connected to the C3/S3 machines.
+The hardware registers overlap with ESP-IDF 5 C3/S3, but the command
+encoding changed:
+
+| Operation | Classic ESP32 QEMU | ESP32-C3/S3 ESP-IDF 5 |
+| --- | ---: | ---: |
+| RESTART | 0 | **6** |
+| WRITE | 1 | 1 |
+| READ | 2 | **3** |
+| STOP | 3 | **2** |
+| END | 4 | 4 |
+
+A **variant property**, `modern-cmd-encoding`, keeps the classic device's
+existing behavior unchanged. Experiment
+`experiments/0007-c3-s3-i2c-master.patch` adds the C3/S3 opcode
+translation, `I2C_FIFO_ST` at offset `0x14`, IRQ routing through
+the chips' interrupt matrix, I2C0 at `0x60013000` on C3, and I2C0/I2C1
+at `0x60013000/0x60027000` on S3. It also fixes the off-by-one last
+I2C command register decode. No emulated I2C slaves are attached. The
+experiment applies **after** the existing ROM patches and experiment
+`0006` (ADC) to isolated QEMU; it is not in the standard
+`apply_qemu_patches.sh`.
+
+Both compiled QEMU targets passed the **real QTest MMIO contract** using
+`probe_i2c_qtest.py`, independent of firmware boot: absent GT911
+address `0x5d` NACKs with `raw=0x400` and active IRQ=0x400,
+the first command has DONE bit 31, clearing the interrupt works,
+RESTART opcode 6 and STOP opcode 2 both set DONE, and the STOP interrupt
+sets bit 7 (`0x80`). A 7-second bounded host `timeout` terminates
+QTest stdio because QTest has no `quit` command; this is **not** a
+guest firmware timeout or an application-boot pass. JSON evidence:
+`qa-20261029/c3-i2c-qtest.json` and `qa-20261029/s3-i2c-qtest.json`.
+Binary hashes are captured in each report. All 55 Python host
+regression tests pass.
+
+Real firmware tests without hardware fake responses:
+
+- **S3 X4 Pro:** transient `qemu_log_mask(LOG_GUEST_ERROR)` instrumentation
+  proved the unchanged factory image actually writes I2C0 control
+  0x60013004, command registers 0x58=0x3000 (RESTART=6),
+  0x5c=0x901 (WRITE one byte with ACK check), 0x60=0x1000 (STOP=2),
+  and FIFO_DATA=0xBA (**GT911 address 0x5d in write mode**).
+  Its ISR reads status at 0x2c and clears NACK with 0x24=0x400.
+  The ESP-IDF 5 driver reports error 259 `ESP_ERR_INVALID_STATE` when
+  it receives NACK (its own `esp_driver_i2c/test_apps/i2c_test_apps`
+  deliberately checks this return code without an answering slave).
+  This is now an **expected missing virtual peripheral**, not proof
+  of a broken I2C master. The device itself is not emulated.
+  UART `qa-20261029/s3-i2c-mmio-uart.log` and MMIO
+  `qa-20261029/s3-i2c-mmio.trace`.
+- **C3:** the real factory image again triggered a guest interrupt WDT
+  (MEPC `0x4226f5ac`), and the 10-second MMIO trace recorded
+  **zero** I2C MMIO accesses before the panic.
+  That crash therefore cannot be fixed by simply attaching an I2C
+  slave. UART `qa-20261029/c3-i2c-mmio-uart.log`,
+  MMIO trace `qa-20261029/c3-i2c-mmio.trace`. Symbolization using
+  an **exact matching C3 debug ELF** remains the next gate.
+
+The temporary trace statements were intentionally **reverted**
+from the isolated QEMU source and both targets rebuilt afterwards;
+they are **not** included in experiment 0007.
+
+**Next real I2C slave requirements** (from the pinned FreeInk SDK
+`docs/xteink-x4pro-support.md`): I2C shared bus SDA GPIO39 /
+SCL GPIO38; BM8563 RTC (PCF8563 register-compatible) **0x51**,
+CW2017 fuel gauge **0x63** with 80-byte BATINFO model and valid
+SOC/VCELL semantics, and GT911 **0x5D** (alternate **0x14**)
+behind GPIO2 **active-LOW power gating**, GPIO4 RST, GPIO10 INT.
+Do not substitute the QEMU DS1338 RTC for BM8563 without a register
+protocol adapter. No unsupported sensor may falsely ACK.
+Keep e-paper, SDMMC, input, and Wi-Fi acceptance separate.

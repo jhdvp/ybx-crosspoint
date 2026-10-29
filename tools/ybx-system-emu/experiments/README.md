@@ -54,3 +54,29 @@ for diagnostic experiments; the accepted upstream checkout does not.
 See `../QEMU_BRINGUP.md` for evidence, local ROM hashes, flags and
 remaining acceptance blockers. Never change production YBX firmware to
 work around virtual hardware behavior.
+
+## 0007 — ESP32-C3/S3 I2C master integration (experimental)
+
+`0007-c3-s3-i2c-master.patch` reuses QEMU's existing classic ESP32
+I2C model, with an explicit C3/S3 command encoding mode:
+RESTART 6, WRITE 1, READ 3, STOP 2, END 4 (ESP-IDF 5). The classic
+ESP32 command encoding remains the default and is unaffected.
+It adds register `I2C_FIFO_ST` at 0x14, routes C3 I2C0 and
+S3 I2C0/I2C1 through their real MMIO/IRQ addresses, and checks
+the final command register index boundary.
+
+The patch is a **diagnostic experiment**, not yet an accepted QEMU
+hardware model. It is based on the isolated QEMU tree **with**
+`0006-s3-adc-oneshot-handshake.patch` already applied. Apply 0006
+before 0007. Both targets compiled successfully with Meson/Ninja.
+`probe_i2c_qtest.py` passed on both real compiled QEMU binaries,
+testing no-slave NACK, IRQ, clearing IRQ, command DONE,
+and RESTART/STOP opcodes. Real S3 YBX firmware MMIO trace verifies
+the firmware sends GT911 address 0x5D, receives NACK, and handles IRQ;
+it does NOT establish actual GT911 behavior. C3 aborts via an
+interrupt watchdog before accessing I2C. Logs and JSON reports
+are documented in `../QEMU_BRINGUP.md`.
+
+Keep absent I2C slaves absent. The X4 Pro requires separate
+BM8563 RTC at 0x51, CW2017 at 0x63 and power-gated GT911 at 0x5D
+models, each with faithful protocol/interrupt/power semantics.
