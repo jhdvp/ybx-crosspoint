@@ -191,3 +191,16 @@ GPIO1 and after dropping it, plus normal touch/QMP injection.
 It does not emulate full board PMIC behavior. See the
 timestamped 22-read QTest and 247-command injection reports
 in `QEMU_BRINGUP.md`.
+
+## SDMMC: no extra patch needed for verified command and sector DMA
+
+The existing Espressif QEMU S3 DesignWare controller at 0x60028000
+already implements CMD0/8/55/41/2/3/7/16/17/24, authentic
+card responses and IDMAC read/write. See
+`probe_x4pro_sdmmc_qtest.py` and
+`probe_x4pro_sdmmc_sector_qtest.py`; the latter is an
+offline in-Docker test on a copied FAT image. Source-sector
+SHA and written/read-back sector SHA match exactly. There is
+no new hardware model or patch. Still need verified firmware
+FAT mount, GPIO5 active-LOW SD power gating, and e-paper SPI.
+Do **not** describe these low-level tests as a full app boot.

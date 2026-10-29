@@ -908,3 +908,49 @@ Evidence: `qa-20261029/s3-x4pro-master-rail-gt911-qtest.json`
 `qa-20261029/s3-x4pro-master-rail-touch-qtest.json`
 (247 MMIO commands). **Still no guest UI acceptance, SD mount,
 EPD pixel output or full interrupt-matrix proof**.
+
+### 29 October: native X4 Pro SDMMC initialized and DMA sectors verified
+
+The Espressif QEMU fork **already implements DesignWare SDMMC**
+at S3 MMIO base 0x60028000 and can attach a virtual card using
+`-drive file=<DISPOSABLE-IMAGE>,if=sd,format=raw`. This is
+native SDMMC (X4 Pro CLK=GPIO41, CMD=GPIO42, DAT0=GPIO40,
+1-bit bus), **not SPI-mode SD**, so a fictitious SD-SPI device
+is unnecessary for the board.
+
+New offline live compiled-QEMU probes:
+- `probe_x4pro_sdmmc_qtest.py`: explicitly initialize block
+  size 512, reset controller, validate GO_IDLE (CMD0) interrupt,
+  SEND_IF_COND (CMD8), R7 response **0x1AA** and CMD status
+  (report `qa-20261029/s3-x4pro-sdmmc-command-qtest.json`).
+  QTest before explicit block-size configuration returned zero
+  at SDMMC_BLKSIZ; this is no acceptance criterion.
+- `probe_x4pro_sdmmc_sector_qtest.py`: run **in the offline
+  Docker QEMU builder**, initialize actual attached SD card via
+  CMD0 / CMD8 / CMD55 / ACMD41 / CMD2 / CMD3 / CMD7 / CMD16.
+  Use a real IDMAC descriptor in guest DRAM 0x3FC80000 and
+  DMA buffer at 0x3FC81000. **CMD17 read of all 512 bytes
+  at LBA 0 exactly matched test FAT boot sector**, including
+  55AA and full SHA-256
+  `8ea3551c74e15e7aacab719a6814d4148acafae2061cb84c8f756228f165e087`.
+  Next, **CMD24 wrote sector 1** with a deterministic
+  512-byte pattern and **CMD17 read back the identical pattern**,
+  with SHA-256
+  `5c6f3a1bdd63dbbe4bf50ab41391a97354b853b9fc72cf5ea73122e08a05eeec`.
+  Write test runs on a fresh temporary **copy** of the disposable
+  test image; never on the original card/media.
+  Check the SD card OCR CCS bit to choose block-vs-byte
+  addresses. Real QEMU IDMAC recorded read bit 0x2 and
+  post-write bit 0x3.
+  Report `qa-20261029/s3-x4pro-sdmmc-dma-qtest.json`
+  stores QEMU MMIO operation count and command responses.
+
+**Proved:** controller, virtual card command initialization,
+read and write DMA sector transfer and exact image data round-trip.
+**NOT proved:** the YBX firmware's FAT mount and file system
+operations, GPIO5 active-low SD slot power gate, display pixels,
+guest production firmware readiness or real hardware electronics.
+QEMU's existing SDMMC engine is not a stub at the command/block
+level; remaining effort should target firmware integration and
+real board GPIO5/card-power behavior instead of replacing this
+working host-controller model.
