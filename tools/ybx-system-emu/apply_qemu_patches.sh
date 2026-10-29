@@ -5,17 +5,21 @@ set -eu
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 QEMU_ROOT="$HOME/.local/state/ybx-emulator-upstream/qemu"
 if [ "$#" -gt 0 ]; then QEMU_ROOT="$1"; fi
-PATCH="$HERE/patches/0001-esp32c3-gdma-interrupt-layout.patch"
 test -d "$QEMU_ROOT/.git" || { echo "Not a QEMU Git checkout: $QEMU_ROOT" >&2; exit 2; }
-test -s "$PATCH" || { echo "Missing patch" >&2; exit 2; }
 
-if git -C "$QEMU_ROOT" apply --reverse --check "$PATCH" 2>/dev/null; then
-  echo "GDMA patch already applied"
-elif git -C "$QEMU_ROOT" apply --check "$PATCH"; then
-  git -C "$QEMU_ROOT" apply "$PATCH"
-  echo "Applied ESP32-C3 GDMA patch"
-else
-  echo "Cannot apply GDMA patch: upstream checkout differs; no changes made" >&2
-  exit 3
-fi
-echo "Rebuild qemu-system-riscv32 with Docker from patched checkout."
+# Apply only accepted, verified CPU-peripheral corrections.
+# In particular, experiments/0002-s3-rom-dram-experiment.patch is rejected.
+for name in 0001-esp32c3-gdma-interrupt-layout.patch 0003-usb-serial-jtag-tx-ready.patch; do
+  PATCH="$HERE/patches/$name"
+  test -s "$PATCH" || { echo "Missing patch: $PATCH" >&2; exit 2; }
+  if git -C "$QEMU_ROOT" apply --reverse --check "$PATCH" 2>/dev/null; then
+    echo "Already applied: $name"
+  elif git -C "$QEMU_ROOT" apply --check "$PATCH"; then
+    git -C "$QEMU_ROOT" apply "$PATCH"
+    echo "Applied: $name"
+  else
+    echo "Cannot apply $name: upstream differs; refusing to overwrite edits" >&2
+    exit 3
+  fi
+done
+echo "Rebuild both qemu-system-riscv32 and qemu-system-xtensa after patches."
