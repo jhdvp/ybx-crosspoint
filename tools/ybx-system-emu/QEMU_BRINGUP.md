@@ -621,3 +621,50 @@ behind GPIO2 **active-LOW power gating**, GPIO4 RST, GPIO10 INT.
 Do not substitute the QEMU DS1338 RTC for BM8563 without a register
 protocol adapter. No unsupported sensor may falsely ACK.
 Keep e-paper, SDMMC, input, and Wi-Fi acceptance separate.
+
+### 29 October (cont.): C3 ADC watchdog hypothesis, strictly experimental
+
+The default ESP32-C3 factory binary `092c2be5` still triggers a
+guest `Interrupt wdt timeout on CPU0` at `MEPC=0x4226f5ac` without
+I2C MMIO activity when running without `-icount`. The register dump
+has S0=`0x60040000`, the C3 APB SARADC MMIO base. A host build of
+commit `092c2be5` and pinned FreeInkSDK `44427f8` succeeded
+(`pio run -e default -j 2`, incrementally after a time-bounded
+first invocation). However, its factory-app IROM segment at
+`0x42000020`, length 3,025,832 bytes, matched only
+**1,727,687 bytes** of the original image. Do **not** claim
+byte-identical ELF symbolization on C3. The guest's nearby machine
+instruction bytes are strongly similar, with a two-byte displacement
+around the watchdog loop. The rebuilt ELF resolves its analogous
+loop to ESP-IDF 5 `adc_oneshot_hal_convert()` /
+`adc_oneshot_ll_get_event()`, specifically a read from
+`APB_SARADC_INT_RAW_REG` (`0x60040044`) awaiting bit 31 for ADC1.
+The guest WDT cause remains an evidence-backed hypothesis rather
+than a fully exact-ELF matched identity.
+
+**Experimental QEMU patch 0008**, not part of accepted build
+`apply_qemu_patches.sh`, provides a minimal ESP32-C3
+ADC oneshot MMIO handshake: select ADC1, assert START in register
+`0x60040020` bit 29, report DONE bit 31 at `0x60040044`,
+clear DONE via `0x6004004c`. It returns an explicitly dummy zero
+raw sample, not real ADC voltage. Isolated QEMU riscv32 rebuilt
+successfully. `probe_c3_adc_qtest.py` passed live compiled-QEMU
+checks for no premature DONE, proper start/done, dummy zero and
+acknowledge clearing. Evidence is
+`qa-20261029/c3-adc-qtest.json`.
+
+**Guest result**: a bounded 10s run with 0008 no longer printed
+the previous watchdog panic but still did not print normal
+application UART output after ROM bootloader entry. A 7s instruction
+trace (with `-icount 3`) showed further ROM/IRAM execution, no guest
+panic, **not** a successful boot. Evidence:
+`qa-20261029/c3-with-adc-uart.log`,
+`qa-20261029/c3-adc-patch-trace.log`,
+`qa-20261029/c3-adc-patch-trace-uart.log`.
+The subsequent stable driver path, timer model, storage and device
+readiness need independent verification; an absence of panic in a
+bounded run is not acceptance. The C3 ADC sample remains deliberately
+inaccurate. Do not ship this prototype as a virtual instrument.
+
+All **58/58 host regression tests pass**. Tests cover simulation
+harness and **register contracts**, not complete YBX app startup.

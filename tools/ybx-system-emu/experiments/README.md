@@ -80,3 +80,22 @@ are documented in `../QEMU_BRINGUP.md`.
 Keep absent I2C slaves absent. The X4 Pro requires separate
 BM8563 RTC at 0x51, CW2017 at 0x63 and power-gated GT911 at 0x5D
 models, each with faithful protocol/interrupt/power semantics.
+
+## 0008 — C3 ADC one-shot bit handshake (experimental)
+
+`0008-c3-adc-oneshot-handshake.patch` is an **unaccepted**
+RISC-V/C3-only prototype on top of experiment 0007 in isolated
+Espressif QEMU. It maps C3 `APB_SARADC_ONETIME_SAMPLE` 0x60040020,
+`INT_RAW` 0x60040044 and `INT_CLR` 0x6004004c and reports ADC1
+DONE only after START. It always returns a dummy zero sample.
+It neither models analogue input nor proves ADC calibration or
+guest application readiness.
+
+Real compiled-QEMU MMIO QTest passed via
+`probe_c3_adc_qtest.py`; full 58/58 host tests pass. Guest UART
+showed no previous watchdog within a 10-second bounded run, but also
+did not reach normal YBX app UART in that window. Exact source
+revision was rebuilt, but C3 factory IROM did **not** binary-match;
+do not overinterpret C3 ELF line mappings. See
+`../QEMU_BRINGUP.md` for logs, hashes, register semantics, and
+strict boot acceptance requirements.
