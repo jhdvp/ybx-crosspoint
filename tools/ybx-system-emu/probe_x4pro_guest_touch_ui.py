@@ -153,6 +153,10 @@ def run(a):
              "-L",str(bios),
              "-drive",f"file={t/'factory-flash.bin'},if=mtd,format=raw",
              "-drive",f"file={t/'sd.img'},if=sd,format=raw"]
+        if a.gdb_port:
+            if not 1024 <= a.gdb_port <= 65535:
+                raise ValueError("GDB port must be 1024..65535")
+            cmd+=["-gdb",f"tcp:0.0.0.0:{a.gdb_port}"]
         with (t/"out.log").open("w") as stdout,(t/"err.log").open("w") as stderr:
             process=subprocess.Popen(cmd,stdin=subprocess.DEVNULL,stdout=stdout,
                                      stderr=stderr)
@@ -163,6 +167,9 @@ def run(a):
                 before=sample(qmp,"before",a.out)
                 before_touch=touch_metrics(qmp)
                 cpu_before=cpu_sample(qmp)
+                if a.debug_hold_seconds:
+                    print("GDB_READY_FOR_ATTACH",flush=True)
+                    time.sleep(a.debug_hold_seconds)
                 # A splash-to-home transition after injection is NOT an input
                 # response. Require finished home (>=2 SSD1677 frames).
                 baseline_home_ready=(before["frames"]>=2
@@ -240,6 +247,10 @@ def main():
     p.add_argument("--boot-seconds",type=float,default=37)
     p.add_argument("--press-seconds",type=float,default=0.8)
     p.add_argument("--after-seconds",type=float,default=14)
+    p.add_argument("--gdb-port",type=int,default=0,
+                   help="opt-in test-only QEMU GDB stub port; Docker must explicitly publish it")
+    p.add_argument("--debug-hold-seconds",type=float,default=0,
+                   help="extra seconds after boot before injecting GT911 events for debugger attach")
     p.add_argument("--raw-x",type=int,default=130)
     p.add_argument("--raw-y",type=int,default=760)
     a=p.parse_args()
