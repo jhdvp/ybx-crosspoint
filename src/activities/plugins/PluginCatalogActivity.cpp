@@ -390,7 +390,7 @@ PluginCatalogActivity::ListIndexResult PluginCatalogActivity::loadBrowseListInde
 }
 
 bool PluginCatalogActivity::saveToken(const std::string& value) {
-  if (!pluginhttp::saveTokenToFile(manifest.tokenFile, manifest.tokenPath, value)) return false;
+  if (!pluginhttp::saveTokenToFileAtomic(manifest.tokenFile, manifest.tokenPath, value)) return false;
   // A fresh key on the card may complete a YBX pairing, so reconcile the built-in
   // sync here instead of waiting for the reader to open a sync screen.
   ybxkosync::refresh();

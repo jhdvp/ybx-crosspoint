@@ -1,4 +1,5 @@
 #include "PluginHttp.h"
+#include "PluginTokenAtomic.h"
 
 #include <HalStorage.h>
 #include <Logging.h>
@@ -9,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 
 #include "network/ProtectedPaths.h"
 #include "network/TlsTransport.h"
@@ -161,10 +163,28 @@ static bool allowedFile(const std::string& file) {
   return false;
 }
 
+// The backup/pending promotion spans multiple SD operations. Serialize
+// readers and writers within the firmware so a concurrent event-drain cannot
+// remove an in-flight pending token during its normal recovery check.
+static std::mutex tokenFileMutex;
+
+struct TokenFiles {
+  bool exists(const std::string& path) { return Storage.exists(path.c_str()); }
+  bool remove(const std::string& path) { return Storage.remove(path.c_str()); }
+  bool rename(const std::string& from, const std::string& to) {
+    return Storage.rename(from.c_str(), to.c_str());
+  }
+};
+
 bool loadTokenFromFile(const std::string& file, const std::string& path, std::string& out) {
   out.clear();
   if (file.empty()) return true;  // token-less plugin
   if (!allowedFile(file)) return false;
+  std::lock_guard<std::mutex> guard(tokenFileMutex);
+  TokenFiles files;
+  // A power loss between moving the old token aside and promoting the new
+  // one must not strand the reader without a valid token after reboot.
+  if (!plugintoken::recover(files, file)) return false;
   std::string raw;
   if (!Storage.readFileToString("PHTP", file, MAX_TOKEN_FILE_SIZE, raw)) return false;
   JsonDocument doc;
@@ -199,6 +219,15 @@ bool saveTokenToFile(const std::string& file, const std::string& path, const std
     return false;
   }
   return true;
+}
+
+bool saveTokenToFileAtomic(const std::string& file, const std::string& path, const std::string& value) {
+  if (file.empty() || !allowedFile(file)) return false;
+  std::lock_guard<std::mutex> guard(tokenFileMutex);
+  TokenFiles files;
+  return plugintoken::replace(files, file, [&](const std::string& pending) {
+    return saveTokenToFile(pending, path, value);
+  });
 }
 
 void loadConfigFile(const std::string& file, Headers& out) {

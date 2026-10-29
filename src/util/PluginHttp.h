@@ -73,6 +73,9 @@ bool loadTokenFromFile(const std::string& file, const std::string& path, std::st
 // expects (numeric segments unsupported). Removes the file on a short write so
 // a truncated token is never persisted.
 bool saveTokenToFile(const std::string& file, const std::string& path, const std::string& value);
+// Write through a staged file, keep a recoverable backup until commit, and
+// never replace the old token when the staged write fails.
+bool saveTokenToFileAtomic(const std::string& file, const std::string& path, const std::string& value);
 
 // Loads a flat JSON config file into {cfg.KEY} pairs. Missing file = empty.
 void loadConfigFile(const std::string& file, Headers& out);

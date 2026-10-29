@@ -124,3 +124,6 @@ add_subdirectory(ybx_kosync)
 add_subdirectory(plugin_event_queue)
 
 add_subdirectory(ybx_reading)
+
+# Native YBX account source classification and auth state are platform-free.
+add_subdirectory(ybx_account)

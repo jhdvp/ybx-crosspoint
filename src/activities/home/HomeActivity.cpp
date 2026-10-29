@@ -24,6 +24,7 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
+#include "activities/ybx/YbxAccountActivity.h"
 #include "activities/ybx/YbxStatisticsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -379,6 +380,17 @@ void HomeActivity::loop() {
       onYbxShelfOpen();
       return;
     }
+    // The account menu is native and read-only. Pairing remains in the
+    // existing catalog flow, which owns the device token.
+    const int accountChoice = ybxShelfDir.empty() ? 3 : 4;
+    if (choice == accountChoice) {
+      auto account = makeUniqueNoThrow<YbxAccountActivity>(renderer, mappedInput);
+      if (account)
+        activityManager.replaceActivity(std::move(account));
+      else
+        GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
+      return;
+    }
     if (!ybxShelfDir.empty()) choice -= 1;  // menu shifted by the shelf entry
     const int destination = ybxhome::moreChoiceAction(recentBooks.size(), hasLibrarySlot(), choice);
     if (destination >= 0) {
@@ -696,11 +708,12 @@ void HomeActivity::onMoreOpen() {
     // "On Reader" leads to the YBX download folder: books are reachable
     // (open/delete/rename) with no network, matching the clients' shelf.
     static constexpr StrId OPTIONS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
-                                        StrId::STR_SETTINGS_TITLE};
-    ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 4, 0, [this](int choice) { ybxMoreChoice = choice; });
+                                        StrId::STR_SETTINGS_TITLE, StrId::STR_OPDS_MY_ACCOUNT};
+    ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 5, 0, [this](int choice) { ybxMoreChoice = choice; });
   } else {
-    static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE};
-    ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 3, 0, [this](int choice) { ybxMoreChoice = choice; });
+    static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
+                                        StrId::STR_SETTINGS_TITLE, StrId::STR_OPDS_MY_ACCOUNT};
+    ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 4, 0, [this](int choice) { ybxMoreChoice = choice; });
   }
   requestUpdate();
 }
