@@ -60,6 +60,11 @@ not an HTML mockup. Tap directly on the reader screen to send a
 <div class="status" id="status">Connecting to QEMU…</div>
 <p id="info">The original firmware initializes the panel before the home screen appears.</p>
 <button id="refresh">Refresh display</button>
+<button id="reboot">Restart virtual reader</button>
+<p><strong>Wi-Fi radio is not emulated.</strong> Join a Network,
+Calibre Wireless and Create Hotspot cannot connect from this factory guest.
+Attempting network setup may stop its interface responding; use
+<strong>Restart virtual reader</strong> to reboot the virtual device.</p>
 <small>Local developer preview. Some features (Wi-Fi, hardware timing,
 real E-Ink waveform and other panel variants) remain unimplemented.
 One virtual device per server. No physical reader is attached.</small>
@@ -67,7 +72,7 @@ One virtual device per server. No physical reader is attached.</small>
 <script>
 (function(){
 const img=document.getElementById('screen'),status=document.getElementById('status');
-const info=document.getElementById('info'),refresh=document.getElementById('refresh');
+const info=document.getElementById('info'),refresh=document.getElementById('refresh'),reboot=document.getElementById('reboot');
 let ready=false,lastFrame=-1,busy=false;
 async function poll(){
  try{
@@ -98,6 +103,17 @@ img.addEventListener('click',async function(ev){
  finally{busy=false;poll()}
 });
 refresh.addEventListener('click',poll);
+reboot.addEventListener('click',async function(){
+ if(busy || !confirm('Restart the virtual X4 Pro? Unsaved guest state may be lost.'))return;
+ busy=true;reboot.disabled=true;status.textContent='Restarting virtual device…';
+ try{
+   const response=await fetch('/api/reboot',{method:'POST'});
+   const result=await response.json();
+   if(!response.ok)throw new Error(result.error||'QEMU reset failed');
+   lastFrame=-1;ready=false;img.removeAttribute('src');
+ }catch(e){status.textContent='Restart failed: '+e.message}
+ finally{busy=false;reboot.disabled=false;poll()}
+});
 poll();setInterval(poll,1000);
 })();
 </script></body></html>"""
@@ -218,6 +234,19 @@ class FactoryX4Pro:
             finally:
                 self.tap_lock.release()
 
+    def reboot(self):
+        """Request a real QEMU system reset; no fabricated UI or firmware edits."""
+        if not self.tap_lock.acquire(blocking=False):
+            raise RuntimeError("Previous touch still in progress")
+        try:
+            with self.lock:
+                result = self.qmp("system_reset")
+                if "return" not in result:
+                    raise RuntimeError(str(result.get("error", result)))
+                self.frame = -1
+        finally:
+            self.tap_lock.release()
+
     def close(self):
         self.client.close()
         self.process.terminate()
@@ -259,6 +288,13 @@ def make_handler(emu):
                 self.response_json(503,{"error":str(exc)})
 
         def do_POST(self):
+            if self.path=="/api/reboot":
+                try:
+                    emu.reboot()
+                    self.response_json(200,{"accepted":True,"action":"QEMU system_reset"})
+                except RuntimeError as exc:
+                    self.response_json(503,{"error":str(exc)})
+                return
             if self.path!="/api/tap":
                 self.response_json(404,{"error":"Not found"})
                 return

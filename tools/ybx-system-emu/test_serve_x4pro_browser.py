@@ -1,7 +1,9 @@
 """Host-only guardrails for the X4 Pro QEMU browser click bridge."""
 import unittest
+import threading
+from unittest.mock import Mock
 
-from serve_x4pro_browser import check_touch, guest_ready_for_touch, W, H, PAGE
+from serve_x4pro_browser import FactoryX4Pro, check_touch, guest_ready_for_touch, W, H, PAGE
 
 
 class BrowserTouchTests(unittest.TestCase):
@@ -35,6 +37,34 @@ class BrowserTouchTests(unittest.TestCase):
             with self.subTest(data=data):
                 with self.assertRaises(ValueError):
                     check_touch(data)
+
+    def test_reboot_sends_real_qmp_reset_and_invalidates_cached_frame(self):
+        guest = FactoryX4Pro.__new__(FactoryX4Pro)
+        guest.lock = threading.RLock()
+        guest.tap_lock = threading.Lock()
+        guest.qmp = Mock(return_value={"return": {}})
+        guest.frame = 42
+        guest.reboot()
+        guest.qmp.assert_called_once_with("system_reset")
+        self.assertEqual(guest.frame, -1)
+        self.assertFalse(guest.tap_lock.locked())
+
+    def test_reboot_qmp_error_preserves_guest_frame(self):
+        guest = FactoryX4Pro.__new__(FactoryX4Pro)
+        guest.lock = threading.RLock()
+        guest.tap_lock = threading.Lock()
+        guest.qmp = Mock(return_value={"error": {"desc": "reset unavailable"}})
+        guest.frame = 42
+        with self.assertRaises(RuntimeError):
+            guest.reboot()
+        self.assertEqual(guest.frame, 42)
+        self.assertFalse(guest.tap_lock.locked())
+
+    def test_browser_explains_unsupported_wifi_and_offers_reboot(self):
+        self.assertIn("Wi-Fi radio is not emulated", PAGE)
+        self.assertIn('/api/reboot', PAGE)
+        self.assertIn('Restart virtual reader', PAGE)
+        self.assertIn("confirm(", PAGE)
 
     def test_html_refuses_fake_navigation(self):
         self.assertIn("/api/tap",PAGE)
