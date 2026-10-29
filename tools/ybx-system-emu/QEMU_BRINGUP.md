@@ -1322,3 +1322,84 @@ YbxHomeUi::selectedAction → HomeActivity::loop, or independent
 GPIO button-to-GUI acceptance. The unmodified production app
 has not demonstrated input-to-screen navigation. Do not close
 #38 or claim fully interactive emulation.
+
+### 30 October: resolved X4 Pro UI stall — GPIO6 BUSY ISR PCPU_INT alias (0042)
+
+**Actual user-visible milestone (original, unmodified factory firmware):**
+QEMU on the host captures the genuine 480x800 home page through GP-SPI2
+and SSD1677. Injecting a 150ms GT911 press/release at raw portrait
+(350,760) is handled by the actual FreeInk UI:
+`InputManager → MappedInputManager → UiAppHost → YbxHomeUi.onAction
+(pending=4) → HomeActivity.activateSelection → onMoreOpen`.
+The factory app completes plugin lookup, shows OptionPopup, calls
+Activity::requestUpdate, and FreeRTOS xTaskGenericNotify returns pdPASS
+for ActivityManagerRender on CPU1.
+
+**Why earlier 8–15-second snapshots did not show the More menu:**
+The render task already held RenderLock/renderingMutex and was sleeping
+on a DIFFERENT binary semaphore, not task notifications. Matched-ELF
+GDB inspected its TCB at `0x3fcec420`; it is pinned CPU1, priority1,
+the notification value increments 0→1 and state becomes eNotified=2,
+but its state list remains xDelayedTaskList1. Its event list is the
+waiting-to-receive list at `0x3fcec2b8` belonging to FreeRTOS
+binary semaphore queue `0x3fcec294` (queue type3, length1, count0).
+The renderer itself owns renderingMutex `0x3fcbc460`: there is NO
+two-mutex deadlock. The render task is awaiting the panel BUSY
+completion ISR semaphore.
+
+This queue was conclusively identified, WITHOUT GDB, as
+`freeink::s_epdRefreshDone`: matched factory ELF global pointer
+`0x3fca1da8` contains `0x3fcec294`. FreeInk
+`EpdBus::waitRefreshComplete()` arms `attachInterrupt(GPIO6, CHANGE)`
+and sleeps on this semaphore, which `epdBusyIsr()` must give on the
+BUSY completion edge. The original safe QEMU exposes the BUSY level
+but not GPIO IRQ registers; it never runs the ISR. After the
+30,000ms FreeRTOS semaphore timeout, the renderer continues.
+
+**Control run, unchanged isolated QEMU, no GDB:** 36s boot +
+150ms More tap + 42s wait generated a genuine More OptionPopup
+frame (Browse Files, File Transfer, Settings, My Account).
+Panel frame2 SHA `e79c2ad5f2b60b16fe3f20625742d5f1343f5785552d1b32c11f33c42a874672`
+→ frame3 SHA `8b81cec46b2dd5690cc2748d80d01a7ee86ca7ffbb2d57c7a92bcb68354222cf`,
+4,743→7,274 nonwhite bytes. Strict touch-to-UI test
+`true_guest_touch_to_ui_verified=true`. Evidence
+`s3-x4pro-more-after-42s-noirq-0040.json` and its portrait PNG.
+This establishes the original application logic was always correct.
+
+**Root cause of earlier *quarantined* IRQ patch 0020/22:** It exposed
+only `GPIO_STATUS_REG` (0x60004044) but ESP-IDF's ESP32-S3
+`gpio_ll_get_intr_status()` explicitly reads
+`GPIO_PCPU_INT_REG` (0x6000405c) on BOTH CPU cores. The virtual
+ISR was triggered but read 0 status and never cleared GPIO6
+status; CPU1 was flooded by the stuck level IRQ. Attempting
+to repair CPU/Tensilica register-window ABI was based on comparing
+different objects (HomeActivity 0x3fcec858 vs real YbxHomeUi
+0x3fcec944), and that hypothesis is WITHDRAWN. No production code
+or Xtensa TCG modification was made.
+
+**New isolated opt-in QEMU experiment 0042:**
+`experiments/0042-s3-epd-busy-gpio-pcpu-irq.patch` adds
+GPIO_PINn INT_ENA/INT_TYPE registers, latched GPIO_STATUS0/1,
+W1TC ACK, `GPIO_PCPU_INT_REG` and `PCPU_INT1_REG` as the
+actual ESP-IDF ISR readouts, both-edge and level handling, plus
+GPIO IRQ source to the intmatrix **only when experimental
+ybx-x4pro-epd=on**. Default S3 and hardware firmware unaffected.
+Built offline in Docker, passed compiled-QEMU GT911/SSD1677 QTests;
+QTest explicitly reads PCPU_INT for GPIO6 rising/falling edges and
+verifies W1TC deasserts each edge. Later actual guest
+33s boot + 150ms More tap + **2s** post-release already yielded
+the SAME real More popup SHA `8b81cec4…`, nonwhite 7,274,
+with 1 actual guest touch coordinate read/2 ACKs. The original
+~30s delay is gone. Evidence
+`s3-x4pro-gpio6-pcpu-irq-0042-2s.json`,
+`s3-x4pro-gpio6-pcpu-irq-0042-6s.json`,
+`s3-x4pro-epd-0042-pcpu-edge-qtest.json`.
+No virtual image injected.
+
+**Acceptance and remaining limits:** Full GUI interaction on device
+hardware is NOT certified. This is a QEMU guest application with
+working More touch/transition; still needs mouse/browser touch UI
+bridge, repeated menu selection acceptance, other X4 variants,
+DMA/GDMA, physical E-Ink waveform accuracy, network and lifecycle
+verification. Keep Kaneo #38 IN PROGRESS; mark only GUI touch →
+More screen milestone complete.

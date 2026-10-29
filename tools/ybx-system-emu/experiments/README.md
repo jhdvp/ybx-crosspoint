@@ -340,3 +340,41 @@ QA: s3-x4pro-systimer-guest-0024.json and
 s3-x4pro-gt911-correct-more-0024.json.
 GPIO IRQ patches 0020–22 remain quarantined; safe 0023
 remains applied independently of them.
+
+## 0025 correction and 0042 — actual GPIO6 IRQ fix
+
+The previous 0025 hypothesis of YbxHomeUi/UiAppHost +236-byte
+pointer corruption was INCORRECT: GDB compared HomeActivity
+and YbxHomeUi, two different C++ objects across Xtensa `entry`
+window rotation. Matched ELF tracing showed original factory
+More `onAction=4`, selectedAction=4, HomeActivity accepted4,
+onMoreOpen ran and xTaskGenericNotify returned pdPASS.
+Do NOT patch Xtensa register-window instructions based on 0025.
+
+Renderer held RenderLock and blocked on FreeInk's
+`s_epdRefreshDone` binary semaphore `0x3fcec294` awaiting
+the GPIO6 EPD BUSY completion ISR. Without a GPIO ISR, waiting
+30 seconds timed out and *then* rendered the genuine More
+popup. 42s-after-tap control run proved this (frame SHA
+`8b81cec46b2dd5690cc2748d80d01a7ee86ca7ffbb2d57c7a92bcb68354222cf`).
+
+`0042-s3-epd-busy-gpio-pcpu-irq.patch` is a replacement, NOT
+an extension to incompatible 0020/0022. It implements:
+- GPIO PINn interrupt type/enabled, input edge/level, STATUS W1TC;
+- **PCPU_INT 0x5C** and PCPU_INT1 0x68 — actual ESP32-S3
+  `gpio_ll_get_intr_status` read path in ESP-IDF, missing in 0020;
+- QEMU intmatrix GPIO level IRQ connection only for experimental
+  X4Pro SSD1677 EPD opt-in; default SoC unaffected.
+
+Built in offline QEMU. Compiled QTest covers both GPIO6
+BUSY edges at PCPU_INT and W1TC acknowledgement and SSD1677
+frame/protocol. Original unmodified factory app under true S3
+guest CPU now renders the More menu in **≤2 seconds after
+150ms touch/release**, without GDB or artificially giving a
+guest semaphore. Actual 1 GT911 coordinate read, 2 status ACKs
+and SSD1677 displayed frame SHA change verified. QA:
+`s3-x4pro-gpio6-pcpu-irq-0042-2s.json`,
+`s3-x4pro-epd-0042-pcpu-edge-qtest.json`.
+Host tests and patch reverse-apply acceptance required for promotion.
+No physical e-paper timing guarantee. Kaneo #38 remains open for
+full panel/UI and adjacent platform support.

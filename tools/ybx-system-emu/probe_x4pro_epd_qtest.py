@@ -131,6 +131,28 @@ def run(qemu,rom,outbmp,irq_probe=False):
                 if irq_probe:
                     assert qt.rd(GPIO+0x44)&(1<<6)==0
                     assert gpio_irq()==0
+                    # Real ESP-IDF gpio_ll_get_intr_status() on ESP32-S3
+                    # READS GPIO_PCPU_INT_REG (0x5c), not GPIO_STATUS (0x44).
+                    # Verify both BUSY transitions with CHANGE edge IRQ,
+                    # acknowledgment using GPIO_STATUS_W1TC_REG (0x4c).
+                    qt.wr(GPIO+0x8c,(1<<13)|(3<<7))
+                    qt.wr(GPIO+0x4c,1<<6)
+                    send(qt,[0x22],dc=False)
+                    send(qt,[0xc0],dc=True)  # power-on only, NOT refresh
+                    send(qt,[0x20],dc=False)
+                    assert get(qmp,"busy")==1
+                    assert qt.rd(GPIO+0x5c)&(1<<6), "PCPU_INT missed rising BUSY edge"
+                    assert gpio_irq()==1
+                    qt.wr(GPIO+0x4c,1<<6)
+                    assert qt.rd(GPIO+0x5c)&(1<<6)==0
+                    assert gpio_irq()==0
+                    qt.tick(351_000_000)
+                    assert get(qmp,"busy")==0
+                    assert qt.rd(GPIO+0x5c)&(1<<6), "PCPU_INT missed falling BUSY edge"
+                    assert gpio_irq()==1
+                    qt.wr(GPIO+0x4c,1<<6)
+                    assert qt.rd(GPIO+0x5c)&(1<<6)==0
+                    assert gpio_irq()==0
                 # SSD1677 addresses X in PIXELS: x=792 is physical byte99;
                 # next MOSI byte wraps X and advances Y to the next row.
                 for command,params in (
@@ -163,6 +185,7 @@ def run(qemu,rom,outbmp,irq_probe=False):
                         "ram_writes_before_reset":8,
                         "frames":get(qmp,"frames"),
                         "busy_pulse_verified":True,
+                        "s3_pcpu_int_alias_and_edge_w1tc_verified":bool(irq_probe),
                         "gpio6_level_irq_follows_epd_busy":bool(irq_probe),
                         "non_display_poweron_excluded":True,
                         "ssd1677_x_10bit_pixel_addressing":True,

@@ -88,6 +88,43 @@ def x4pro_raw_to_portrait(raw_x:int,raw_y:int)->tuple[int,int]:
     return 479-native_y,native_x
 
 
+# Matching X4 Pro factory flash; addresses below are not generic.
+FACTORY_0025_FLASH_SHA256 = (
+    "206ed9661bd71477d1a54397c5a2cfe490179a3f59ab094f1e7421745c609523"
+)
+
+
+def read_guest_epd_semaphore(qmp):
+    """Read-only runtime EpdBus ISR semaphore and GPIO6 regs (exact ELF)."""
+    import re
+    def read32(address):
+        r=qmp("human-monitor-command",
+              {"command-line":f"xp /1wx 0x{address:08x}"})
+        value=r.get("return",r)
+        if not isinstance(value,str):
+            return None
+        match=re.search(r":\s*0x([0-9a-fA-F]+)",value)
+        return int(match.group(1),16) if match else None
+    result={
+        "sem_handle_ptr":read32(0x3fca1da8),
+        "gpio6_pin_cfg":read32(0x6000408c),
+        "gpio6_input":read32(0x6000403c),
+        "gpio_status":read32(0x60004044),
+        "sem_pointer_symbol":"freeink::s_epdRefreshDone",
+    }
+    for prop in ("ybx-gpio6-edges","ybx-gpio-irq-acks","ybx-gpio-irq-level"):
+        r=qmp("qom-get",{"path":"/machine/soc/gpio","property":prop})
+        result[prop]=r.get("return")
+    # Only claim the GPIO6 route if actual guest panel and both
+    # IRQ edge/status ACK counters have advanced.
+    result["isr_delivery_verified"]=bool(
+        isinstance(result["ybx-gpio6-edges"],int)
+        and isinstance(result["ybx-gpio-irq-acks"],int)
+        and result["ybx-gpio6-edges"]>=2
+        and result["ybx-gpio-irq-acks"]>=2)
+    return result
+
+
 def touch_metrics(qmp):
     metrics={}
     for prop in ("status-reads","point-reads","status-clears","injected-frames"):
@@ -154,9 +191,12 @@ def run(a):
              "-drive",f"file={t/'factory-flash.bin'},if=mtd,format=raw",
              "-drive",f"file={t/'sd.img'},if=sd,format=raw"]
         if a.gdb_port:
-            if not 1024 <= a.gdb_port <= 65535:
+            if not 1024<=a.gdb_port<=65535:
                 raise ValueError("GDB port must be 1024..65535")
             cmd+=["-gdb",f"tcp:0.0.0.0:{a.gdb_port}"]
+        if a.gdb_start_paused:
+            if not a.gdb_port:raise ValueError("--gdb-start-paused requires --gdb-port")
+            cmd+=["-S"]
         with (t/"out.log").open("w") as stdout,(t/"err.log").open("w") as stderr:
             process=subprocess.Popen(cmd,stdin=subprocess.DEVNULL,stdout=stdout,
                                      stderr=stderr)
@@ -166,6 +206,8 @@ def run(a):
                 time.sleep(a.boot_seconds)
                 before=sample(qmp,"before",a.out)
                 before_touch=touch_metrics(qmp)
+                epd_irq_before=(read_guest_epd_semaphore(qmp)
+                                if a.epd_sem_diagnostics else {})
                 cpu_before=cpu_sample(qmp)
                 if a.debug_hold_seconds:
                     print("GDB_READY_FOR_ATTACH",flush=True)
@@ -175,9 +217,8 @@ def run(a):
                 baseline_home_ready=(before["frames"]>=2
                                      and before["nonwhite"]>=4000)
                 injections={}
-                # x,y here are RAW digitizer coordinates. X4 Pro swaps x/y
-                # and flips panel Y. (rawX 130,rawY 760) targets portrait
-                # bottom-right More button, not native landscape pixels.
+                # X4 Pro touch swap/flip plus renderer portrait cancel:
+                # raw (350,760) targets More, (130,760) targets Library.
                 injections["set-x"]=sensor(qmp,"x",a.raw_x)
                 injections["set-y"]=sensor(qmp,"y",a.raw_y)
                 injections["press"]=sensor(qmp,"state",1)
@@ -189,6 +230,8 @@ def run(a):
                 time.sleep(a.after_seconds)
                 after=sample(qmp,"after",a.out)
                 after_touch=touch_metrics(qmp)
+                epd_irq_after=(read_guest_epd_semaphore(qmp)
+                               if a.epd_sem_diagnostics else {})
                 cpu_after=cpu_sample(qmp)
                 # A point can be injected while firmware unavailable; compare
                 # the actual SSD1677 image and refresh counts, NOT QMP success.
@@ -216,6 +259,11 @@ def run(a):
         "during":during,"after":after,
         "home_ready_before_injection":baseline_home_ready,
         "cpu_before":cpu_before,"cpu_during":cpu_during,"cpu_after":cpu_after,
+        "epd_irq_before":epd_irq_before,
+        "epd_irq_after":epd_irq_after,
+        "factory_epd_semaphore_matches_blocked_queue":bool(
+            a.epd_sem_diagnostics and
+            epd_irq_after.get("sem_handle_ptr")==0x3fcec294),
         "touch_metrics_before":before_touch,
         "touch_metrics_during":during_touch,
         "touch_metrics_after":after_touch,
@@ -248,12 +296,20 @@ def main():
     p.add_argument("--press-seconds",type=float,default=0.8)
     p.add_argument("--after-seconds",type=float,default=14)
     p.add_argument("--gdb-port",type=int,default=0,
-                   help="opt-in test-only QEMU GDB stub port; Docker must explicitly publish it")
+                   help="test-only GDB stub port; publish localhost via Docker -p")
+    p.add_argument("--gdb-start-paused",action="store_true",
+                   help="start guest halted, debugger must resume CPU (test only)")
     p.add_argument("--debug-hold-seconds",type=float,default=0,
-                   help="extra seconds after boot before injecting GT911 events for debugger attach")
+                   help="guest continued before injection for external debugger attach")
+    p.add_argument("--epd-sem-diagnostics",action="store_true",
+                   help="read-only EpdBus ISR semaphore & GPIO6, factory 092c2be5")
     p.add_argument("--raw-x",type=int,default=130)
     p.add_argument("--raw-y",type=int,default=760)
     a=p.parse_args()
+    if a.epd_sem_diagnostics:
+        sha=hashlib.sha256(a.flash.read_bytes()).hexdigest()
+        if sha!=FACTORY_0025_FLASH_SHA256:
+            p.error("--epd-sem-diagnostics requires matching original factory flash")
     run(a)
 
 
