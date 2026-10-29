@@ -34,6 +34,7 @@
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/ybx/YbxAccountActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -81,7 +82,7 @@ SettingsSection sectionFor(const SettingInfo& setting) {
 }
 
 // Device-only action rows added per section, beyond the shared list.
-constexpr size_t EXTRA_ROWS_PER_SECTION = 6;
+constexpr size_t EXTRA_ROWS_PER_SECTION = 7;
 }  // namespace
 
 void SettingsActivity::rebuildSettings() {
@@ -107,6 +108,9 @@ void SettingsActivity::rebuildSettings() {
   };
 
   // Language leads so a user stuck in an unfamiliar language finds it first.
+  // The approved YBX Reader settings mockup exposes the account directly.
+  // Keep the existing sectioned settings architecture and add a native entry.
+  addAction(SettingsSection::General, StrId::STR_OPDS_MY_ACCOUNT, SettingAction::YbxAccount);
   addAction(SettingsSection::General, StrId::STR_LANGUAGE, SettingAction::Language);
   addAction(SettingsSection::General, StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts);
   addAction(SettingsSection::Reader, StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings);
@@ -305,6 +309,12 @@ void SettingsActivity::toggleSelectedSetting() {
         } else {
           LOG_ERR("SETTINGS", "OOM: ClockSettingsActivity");
         }
+        break;
+      case SettingAction::YbxAccount:
+        if (auto account = makeUniqueNoThrow<YbxAccountActivity>(renderer, mappedInput))
+          startActivityForResult(std::move(account), [this](const ActivityResult&) { requestUpdate(); });
+        else
+          LOG_ERR("SETTINGS", "OOM: YBX Account screen");
         break;
       case SettingAction::KOReaderSync:
         startActivityForResult(std::make_unique<KOReaderSettingsActivity>(renderer, mappedInput), resultHandler);

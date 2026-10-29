@@ -178,3 +178,92 @@ TEST(YbxAccountModel, AtomicTokenRecoveryNeverOverwritesCommittedNewToken) {
   EXPECT_EQ(f.items.at(p),"new-token");
   EXPECT_EQ(f.items.size(),1u);
 }
+
+// Layout tests cover both shipped panel sizes and all 4 rotations. This
+// verifies geometry before device flashing; visual acceptance remains physical.
+#include "util/YbxAccountLayout.h"
+
+namespace {
+bool accountContains(freeink::ui::Rect outer, freeink::ui::Rect inner) {
+  return inner.width > 0 && inner.height > 0 &&
+         inner.x >= outer.x && inner.y >= outer.y &&
+         inner.right() <= outer.right() && inner.bottom() <= outer.bottom();
+}
+bool accountOverlaps(freeink::ui::Rect a, freeink::ui::Rect b) {
+  return a.x < b.right() && a.right() > b.x &&
+         a.y < b.bottom() && a.bottom() > b.y;
+}
+}  // namespace
+
+TEST(YbxAccountUiLayout, AllStatesFitFourOrientationsOnX3X4AndX4Pro) {
+  for (auto panel : {freeink::ui::Size{480, 800}, freeink::ui::Size{528, 792}}) {
+    for (int orientation = 0; orientation < 4; ++orientation) {
+      const int w = orientation % 2 ? panel.height : panel.width;
+      const int h = orientation % 2 ? panel.width : panel.height;
+      for (bool pairing : {false, true}) {
+        for (int line : {18, 22, 26}) {
+          const auto safe = ybxaccountui::rect(20, 8, w - 40, h - 16);
+          const auto ui = ybxaccountui::layout(safe, line, line + 4, pairing);
+          ASSERT_TRUE(accountContains(safe, ui.brandMark));
+          ASSERT_TRUE(accountContains(safe, ui.eyebrow));
+          ASSERT_TRUE(accountContains(safe, ui.title));
+          ASSERT_TRUE(accountContains(safe, ui.headerLine));
+          EXPECT_FALSE(accountOverlaps(ui.headerLine, ui.actions[0]));
+          EXPECT_EQ(ui.actionCount, pairing && !ui.compact ? 2 : 3);
+          for (int i = 0; i < ui.actionCount; ++i) {
+            EXPECT_TRUE(accountContains(safe, ui.actions[i]));
+            EXPECT_GE(ui.actions[i].height, 48);
+            EXPECT_FALSE(accountOverlaps(ui.headerLine, ui.actions[i]));
+            for (int j = i + 1; j < ui.actionCount; ++j)
+              EXPECT_FALSE(accountOverlaps(ui.actions[i], ui.actions[j]));
+          }
+          if (pairing) {
+            EXPECT_TRUE(accountContains(safe, ui.code));
+            EXPECT_TRUE(accountContains(safe, ui.codeCaption));
+            EXPECT_FALSE(accountOverlaps(ui.code, ui.actions[0]));
+            EXPECT_TRUE(accountContains(safe, ui.pairHelp));
+            EXPECT_FALSE(accountOverlaps(ui.pairHelp, ui.actions[0]));
+            if (ui.qrInline) {
+              EXPECT_TRUE(accountContains(safe, ui.inlineQr));
+              EXPECT_GE(ui.inlineQr.width, 160);
+              EXPECT_FALSE(accountOverlaps(ui.inlineQr, ui.code));
+              EXPECT_FALSE(accountOverlaps(ui.inlineQr, ui.pairWait));
+              EXPECT_FALSE(accountOverlaps(ui.inlineQr, ui.actions[0]));
+              EXPECT_FALSE(accountOverlaps(ui.inlineQr, ui.pairHelp));
+            }
+          } else {
+            EXPECT_TRUE(accountContains(safe, ui.sectionTitle));
+            EXPECT_TRUE(accountContains(safe, ui.status));
+            EXPECT_TRUE(accountContains(ui.status, ui.statusCaption));
+            EXPECT_TRUE(accountContains(ui.status, ui.statusDetail));
+            for (int i = 0; i < 3; ++i) {
+              ASSERT_TRUE(accountContains(safe, ui.sources[i]));
+              EXPECT_GE(ui.sources[i].height, 45);
+              EXPECT_TRUE(accountContains(ui.sources[i], ui.sourceMarks[i]));
+              EXPECT_TRUE(accountContains(ui.sources[i], ui.sourceTitles[i]));
+              EXPECT_TRUE(accountContains(ui.sources[i], ui.sourceDetails[i]));
+              EXPECT_FALSE(accountOverlaps(ui.sources[i], ui.status));
+              EXPECT_FALSE(accountOverlaps(ui.sources[i], ui.actions[0]));
+              if (ui.sourceBands) {
+                EXPECT_TRUE(accountContains(ui.sources[i], ui.sourceActionLeft[i]));
+                EXPECT_TRUE(accountContains(ui.sources[i], ui.sourceActionRight[i]));
+              }
+              if (i > 0) EXPECT_FALSE(accountOverlaps(ui.sources[i-1], ui.sources[i]));
+            }
+            EXPECT_FALSE(accountOverlaps(ui.status, ui.actions[0]));
+          }
+        }
+      }
+    }
+  }
+}
+TEST(YbxAccountUiLayout, QRIsVisibleAndResponsiveInBothOrientations) {
+  const auto portrait = ybxaccountui::layout(ybxaccountui::rect(20, 8, 440, 760), 22, 27, true);
+  const auto landscape = ybxaccountui::layout(ybxaccountui::rect(20, 8, 760, 440), 22, 27, true);
+  EXPECT_TRUE(portrait.qrInline);
+  EXPECT_TRUE(landscape.qrInline);
+  EXPECT_GE(portrait.inlineQr.width, 220);
+  EXPECT_GE(landscape.inlineQr.width, 96);
+  EXPECT_FALSE(accountOverlaps(portrait.inlineQr, portrait.code));
+  EXPECT_FALSE(accountOverlaps(landscape.inlineQr, landscape.code));
+}
