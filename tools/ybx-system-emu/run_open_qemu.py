@@ -104,7 +104,10 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
             x4pro_gt911: bool = False,
             x4pro_sd_power: bool = False,
             s3_realtime: bool = False,
-            sd_original_fat: Path | None = None) -> dict:
+            sd_original_fat: Path | None = None,
+            x4pro_spi2: bool = False) -> dict:
+    if x4pro_spi2 and chip != "s3":
+        raise ValueError("--x4pro-spi2 requires ESP32-S3")
     if sd_original_fat is not None and (chip != "s3" or sd_image is None):
         raise ValueError("guest FAT evidence requires S3 and attached SD card")
     sha256=validate_image(image)
@@ -145,6 +148,8 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
             machine += ",ybx-x4pro-gt911=on"
         if x4pro_sd_power:
             machine += ",ybx-x4pro-sd-power=on"
+        if x4pro_spi2:
+            machine += ",ybx-x4pro-spi2=on"
         cmd=[
             "docker","run","--rm","--network","none",
             "--platform","linux/arm64",
@@ -208,6 +213,8 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
         "virtual_x4pro_i2c_attached": bool(x4pro_i2c and chip == "s3"),
         "virtual_x4pro_gt911_attached": bool(x4pro_gt911 and chip == "s3"),
         "virtual_x4pro_sd_power_gate": bool(x4pro_sd_power and chip == "s3"),
+        "virtual_x4pro_spi2_pio": bool(x4pro_spi2 and chip == "s3"),
+        "epd_panel_transport_verified": False,
         "guest_sd_power_cycle_verified": False,
         "s3_realtime": bool(chip == "s3" and s3_realtime),
         "guest_fat_evidence_requested": bool(sd_original_fat),
@@ -245,6 +252,8 @@ def main()->int:
                    help="opt-in GPIO-powered GT911 registers and synthetic input via QMP")
     p.add_argument("--x4pro-sd-power", action="store_true",
                    help="opt-in native SD slot powered by GPIO1 HIGH and GPIO5 LOW")
+    p.add_argument("--x4pro-spi2", action="store_true",
+                   help="EXPERIMENTAL GP-SPI2 PIO MMIO only, NO panel/DMA")
     p.add_argument("--s3-realtime", action="store_true",
                    help="do not use -icount for S3: observe real-time factory firmware boot")
     p.add_argument("--sd-original-fat-image", type=Path,
@@ -262,6 +271,8 @@ def main()->int:
         p.error("--x4pro-gt911 requires S3 and --x4pro-i2c")
     if args.x4pro_sd_power and args.chip == "c3":
         p.error("--x4pro-sd-power requires ESP32-S3")
+    if args.x4pro_spi2 and args.chip == "c3":
+        p.error("--x4pro-spi2 requires ESP32-S3")
     if args.sd_original_fat_image and args.chip == "c3":
         p.error("--sd-original-fat-image requires ESP32-S3")
     if args.chip=="s3" and not args.s3_image:p.error("provide --s3-image")
@@ -295,7 +306,8 @@ def main()->int:
                        args.x4pro_sd_power if chip == "s3" else False,
                        args.s3_realtime if chip == "s3" else False,
                        args.sd_original_fat_image.expanduser().resolve(strict=True)
-                       if chip == "s3" and args.sd_original_fat_image else None)
+                       if chip == "s3" and args.sd_original_fat_image else None,
+                       args.x4pro_spi2 if chip == "s3" else False)
         print(f"{chip}: exit={result['runtime_exit_code']}, "
               f"ROM={result['rom_seen']}, flash={result['spi_flash_boot_seen']}, "
               f"SDMMC error={result['sdmmc_error']}, "

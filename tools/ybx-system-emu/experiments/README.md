@@ -222,3 +222,18 @@ evidence) are integrated with `run_open_qemu.py --s3-realtime
 Screenshots directory and nonblank 1bpp BMP on SD; FAT mount
 is VERIFIED by file creation, not inferred from CPU or UART.
 Full EPD display and app lifecycle remain unverified.
+
+## 0015 — experimental GP-SPI2 CPU-controlled transaction transport, NOT EPD
+
+`0015-s3-optin-gpspi2-transaction-scaffold.patch` adds
+opt-in S3 GP-SPI2 MMIO at 0x60024000, distinct from the
+SPI1 flash/Octal PSRAM at 0x60002000. Supports CPU FIFO
+`SPI_W0..W15`, MOSI data length from MS_DLEN, and
+self-clearing USR/UPDATE operation bits. QTest/QMP checks
+one 0x11,0x22,0x33,0x44 transfer and generic-machine
+negative probe; real original X4 Pro factory firmware
+issued 11,496 PIO transfers carrying 720,246 bytes in
+one bounded 18s run. Real firmware UART readiness, slave
+display state, CS/DC/RESET/BUSY GPIO, DMA/GDMA and
+EPD pixels are all NOT proven. Keep #38 in progress.
+No production firmware changes and no default opt-in.

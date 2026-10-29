@@ -79,7 +79,7 @@ with a ROM-only boot log.
 | ESP32-S3 CPU | ROM/boot/app machine code execute | both cores/PSRAM, runtime health |
 | SPI Flash | real boot from merged image | NVS read/write, OTA image selection and rollback |
 | I²C | opt-in BM8563/CW2017/GT911 model and synthetic touch over QMP verified in compiled QEMU | real GPIO interrupt-matrix routing and touch-to-UI response |
-| SPI e-ink | peripheral controller exists, **no panel model** | implement SSD1677 + UC8253/UC8179/UC8279 command/data state machine, busy/reset GPIO, 1bpp frame extraction |
+| SPI e-ink | **Experimental opt-in** GP-SPI2 CPU PIO transport at 0x60024000; real X4 Pro firmware issued 11,496 transfers / 720,246 bytes; NO physical panel | GPIO CS/D-C/RESET/BUSY, DMA/GDMA, SSD1677/UC8179/UC8279 and real pixel frame capture |
 | SD (X3/X4) | no verified virtual SPI card | SD SPI command/state and FAT file image |
 | SD (X4 Pro) | **PROVEN:** native SDMMC DMA read/write, GPIO1/5 power cycle, factory firmware creates FAT16 Screenshots directory and 1-bit BMP on MBR-partitioned test image | SPI2 e-paper output, guest lifecycle and input integration |
 | Wi-Fi | emulated AP/NAT implemented by ESP-EMU, **firmware not provisioned/connected** | controlled AP provisioning, DHCP, timeout and Wi-Fi fallback tests |

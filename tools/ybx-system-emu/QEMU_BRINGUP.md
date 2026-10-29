@@ -1011,3 +1011,53 @@ readiness still fails due to bounded QEMU timeout (exit 124);
 e-paper SPI output, actual touch-to-UI feedback, network/TLS
 and lifecycle acceptance remain separate. Source tree for
 firmware and physical media were not modified.
+
+### 29 October: experimental GP-SPI2 PIO actually driven by X4 Pro factory code
+
+The Espressif QEMU S3 machine maps SPI1 Flash/Octal PSRAM
+at 0x60002000, but **not** GP-SPI2 at 0x60024000.
+The actual S3 ESP-IDF `soc/spi_reg.h` GP-SPI2 register
+offsets are NOT the SPI1 flash controller offsets, so reusing
+the SPI1 implementation unchanged is incorrect.
+
+New optional/EXPERIMENTAL patch
+`0015-s3-optin-gpspi2-transaction-scaffold.patch` adds a
+separate GP-SPI2 state/SSI bus at 0x60024000 using machine
+option `ybx-x4pro-spi2=on` or runner `--x4pro-spi2`.
+The initial CPU-controlled MOSI register path recognizes
+SPI_CMD.USR bit24, SPI_CMD.UPDATE bit23, USER at 0x10,
+USER2 at 0x18, MS_DLEN at 0x1C and SPI_W0 at 0x98.
+Both command bits are self-clearing; leaving UPDATE set
+**hangs the guest SPI configuration driver**. The model
+sends the CPU FIFO bytes in register order through an
+isolated SSI bus and exposes read-only QOM diagnostics
+`/machine/soc/spi2`: `transactions`, `bytes-sent`,
+`last-byte`. It does not attach an EPD controller or
+fake a rendered screen.
+
+Live compiled-QEMU `probe_x4pro_spi2_qtest.py` passed
+QTest + QMP: verified byte stream 0x11,0x22,0x33,0x44
+(4 bytes), one PIO transaction, self-clearing USER and
+UPDATE bits, and generic S3 has no GP-SPI2 child.
+QA `s3-x4pro-spi2-0015-qtest.json`, QEMU SHA-256
+`cae31a0f86d2e78eaa49f0d27bb003711d6c89a77d9868654e509090ea8b7cb4`.
+
+An independent bounded **18s actual factory guest CPU run**
+without QTest accelerator in offline Docker observed through
+QMP **11,496 real GP-SPI2 PIO transactions and 720,246
+MOSI data bytes**. Before the UPDATE self-clear fix, the
+same probe recorded zero. Guest ROM UART appeared, but
+application UART was still silent in this bounded run,
+so this is evidence only for active GP-SPI2 register/data
+transport, NOT full firmware readiness, an initialized EPD,
+successful DMA, panel BUSY/RESET, or pixels.
+QA `s3-x4pro-spi2-guest-0015-18s.json`, script
+`probe_x4pro_spi2_guest.py`.
+
+**Next open #38 tasks:** preserve the actual X4 Pro GPIO
+SCLK12/MOSI11/CS13/D-C18/RST14/BUSY6; connect chip-select
+and D/C output callbacks, implement SPI2/EPD command/data
+state, SSD1677/UC8179/UC8279 model(s), busy polarity,
+waveform timing, GDMA/descriptor transfers and frame
+capture from actual EPD RAM rather than guest-written
+BMP screenshot. `epaper_verified=false` remains mandatory.

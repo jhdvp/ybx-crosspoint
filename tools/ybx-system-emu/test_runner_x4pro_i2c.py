@@ -159,3 +159,27 @@ class X4ProRunnerTests(TestCase):
             with self.assertRaisesRegex(ValueError, "requires S3"):
                 run_one("c3", image, qemu, root / "logs", 2,
                         sd, "test-builder", sd_original_fat=sd)
+
+
+    def test_spi2_optin_is_pio_only_and_does_not_claim_epaper(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image, qemu = self.make_flash_rom(root, "s3")
+            with patch("run_open_qemu.subprocess.run",
+                       return_value=SimpleNamespace(
+                           stdout="", stderr="", returncode=124)) as proc:
+                report = run_one("s3", image, qemu, root / "logs", 2,
+                                 None, "test-builder", x4pro_spi2=True)
+            cmd = proc.call_args.args[0]
+            self.assertIn("esp32s3,ybx-x4pro-spi2=on", cmd)
+            self.assertTrue(report["virtual_x4pro_spi2_pio"])
+            self.assertFalse(report["epd_panel_transport_verified"])
+            self.assertFalse(report["epaper_verified"])
+
+    def test_spi2_optin_rejected_on_c3(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image, qemu = self.make_flash_rom(root, "c3")
+            with self.assertRaisesRegex(ValueError, "ESP32-S3"):
+                run_one("c3", image, qemu, root / "logs", 2,
+                        None, "test-builder", x4pro_spi2=True)
