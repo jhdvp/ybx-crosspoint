@@ -1,4 +1,7 @@
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <vector>
+#include <string>
 
 #include "util/YbxAccountModel.h"
 
@@ -64,4 +67,114 @@ TEST(YbxAccountModel, TokenValidationAndBackoffAreBounded) {
   EXPECT_EQ(slowedDownIntervalMs(3000UL), 8000UL);
   EXPECT_EQ(slowedDownIntervalMs(60000UL), 60000UL);
   EXPECT_EQ(slowedDownIntervalMs(0xffffffffUL), 60000UL);
+}
+
+TEST(YbxAccountModel, DiagnosesProviderSessionOnlyForKnown409Error) {
+  EXPECT_EQ(checkedListsOutcome(409, false, "books_consent_required"), ListsOutcome::ProviderSession);
+  EXPECT_EQ(checkedListsOutcome(409, false, "conflict"), ListsOutcome::Failed);
+  EXPECT_EQ(checkedListsOutcome(403, true, ""), ListsOutcome::DeviceRemoved);
+  EXPECT_EQ(checkedListsOutcome(401, false, ""), ListsOutcome::InvalidToken);
+  EXPECT_EQ(checkedListsOutcome(-1, false, ""), ListsOutcome::Offline);
+  EXPECT_EQ(checkedListsOutcome(200, false, ""), ListsOutcome::Ok);
+}
+TEST(YbxAccountModel, ClearsOnlyTokenScopedCacheWithFailClosedErrors) {
+  struct Files {
+    std::vector<std::string> current = {
+      "/plugins/ybx/events.jsonl", "/plugins/ybx/events.jsonl.bak",
+      "/plugins/ybx/reading-summary.json.pending",
+      "/plugins/ybx/achievements.json.response",
+      "/plugins/ybx/books/novel.epub", "/plugins/ybx/reading-positions.json"
+    };
+    bool exists(const std::string& path) {
+      return std::find(current.begin(),current.end(),path)!=current.end();
+    }
+    bool remove(const std::string& path) {
+      auto it=std::find(current.begin(),current.end(),path);
+      if(it==current.end()) return false;
+      current.erase(it); return true;
+    }
+  } files;
+  EXPECT_FALSE(clearScopedCaches(files, ""));
+  EXPECT_TRUE(clearScopedCaches(files, "/plugins/ybx"));
+  EXPECT_EQ(files.current.size(), 2u);
+  EXPECT_TRUE(files.exists("/plugins/ybx/books/novel.epub"));
+  EXPECT_TRUE(files.exists("/plugins/ybx/reading-positions.json"));
+  struct BrokenFiles {
+    bool exists(const std::string&) { return true; }
+    bool remove(const std::string&) { return false; }
+  } broken;
+  EXPECT_FALSE(clearScopedCaches(broken, "/plugins/ybx"));
+}
+TEST(YbxAccountModel, CabinetSourcesDeepLinkIsFixedTrustedOrigin) {
+  EXPECT_EQ(CABINET_SOURCES_URL, "https://my.ybx.app/cabinet#sources");
+}
+
+#include "util/PluginTokenAtomic.h"
+#include <map>
+#include <utility>
+
+// Fake SD surface: tests the sequence and failure recovery, not a filesystem.
+struct TokenFilesFake {
+  std::map<std::string,std::string> items;
+  bool failStaging = false;
+  bool failPromotion = false;
+  bool exists(const std::string& p) { return items.count(p) != 0; }
+  bool remove(const std::string& p) { return items.erase(p) != 0; }
+  bool rename(const std::string& a,const std::string& b) {
+    if (failPromotion && a.find(".pending") != std::string::npos) return false;
+    const auto it=items.find(a);
+    if(it==items.end() || exists(b)) return false;
+    items.emplace(b, it->second);
+    items.erase(it);
+    return true;
+  }
+  bool stage(const std::string& path) {
+    if(failStaging) return false;
+    items[path]="new-token";
+    return true;
+  }
+};
+TEST(YbxAccountModel, AtomicTokenReplacementPreservesOldOnWriteFailure) {
+  TokenFilesFake f;
+  f.items["/plugins/ybx/token.json"]="old-token";
+  f.failStaging=true;
+  EXPECT_FALSE(plugintoken::replace(f,"/plugins/ybx/token.json",[&](const auto& p){return f.stage(p);}));
+  EXPECT_EQ(f.items.at("/plugins/ybx/token.json"),"old-token");
+  EXPECT_EQ(f.items.size(),1u);
+}
+TEST(YbxAccountModel, AtomicTokenReplacementRollsBackOnRenameError) {
+  TokenFilesFake f;
+  const std::string p="/plugins/ybx/token.json";
+  f.items[p]="old-token";
+  f.failPromotion=true;
+  EXPECT_FALSE(plugintoken::replace(f,p,[&](const auto& stage){return f.stage(stage);}));
+  EXPECT_TRUE(plugintoken::recover(f,p));
+  EXPECT_EQ(f.items.at(p),"old-token");
+  EXPECT_EQ(f.items.size(),1u);
+}
+TEST(YbxAccountModel, AtomicTokenReplacementPromotesNewAndPrunesBackup) {
+  TokenFilesFake f;
+  const std::string p="/plugins/ybx/token.json";
+  f.items[p]="old-token";
+  EXPECT_TRUE(plugintoken::replace(f,p,[&](const auto& stage){return f.stage(stage);}));
+  EXPECT_EQ(f.items.at(p),"new-token");
+  EXPECT_EQ(f.items.size(),1u);
+}
+TEST(YbxAccountModel, AtomicTokenRecoveryRestoresOldOnInterruptedPromotion) {
+  TokenFilesFake f;
+  const std::string p="/plugins/ybx/token.json";
+  f.items[p+".bak"]="old-token";
+  f.items[p+".pending"]="uncommitted-new";
+  EXPECT_TRUE(plugintoken::recover(f,p));
+  EXPECT_EQ(f.items.at(p),"old-token");
+  EXPECT_EQ(f.items.size(),1u);
+}
+TEST(YbxAccountModel, AtomicTokenRecoveryNeverOverwritesCommittedNewToken) {
+  TokenFilesFake f;
+  const std::string p="/plugins/ybx/token.json";
+  f.items[p]="new-token";
+  f.items[p+".bak"]="old-token";
+  EXPECT_TRUE(plugintoken::recover(f,p));
+  EXPECT_EQ(f.items.at(p),"new-token");
+  EXPECT_EQ(f.items.size(),1u);
 }

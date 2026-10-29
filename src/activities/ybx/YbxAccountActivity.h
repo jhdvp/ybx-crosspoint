@@ -6,10 +6,12 @@
 #include "components/UiAppHost.h"
 #include "components/controls/button.h"
 #include "util/ButtonNavigator.h"
+#include "components/OptionPopup.h"
 #include "util/YbxAccountModel.h"
 
-// Read-only native account sources. The plugin catalog remains the sole
-// device-code/pairing owner: this screen never mints, persists or deletes keys.
+// Native YBX account sources and device-code pairing. Uses the existing
+// protected plugin token reader/writer and cabinet ownership boundaries;
+// per-provider link/repair/unlink remains cabinet-authenticated.
 class YbxAccountActivity final : public Activity, public UiAppHost {
  public:
   YbxAccountActivity(GfxRenderer& renderer, MappedInputManager& input)
@@ -21,7 +23,7 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
   bool preventAutoSleep() override { return state_ == State::Pairing; }
 
  private:
-  enum class State { NotConnected, Ready, Loading, Failed, InvalidToken, Unsupported, Pairing, PairFailed };
+  enum class State { NotConnected, Ready, Loading, Failed, InvalidToken, DeviceRemoved, ProviderSession, Unsupported, Pairing, PairFailed };
   static void screen(UiScreen& screen, void* user);
   static void action(const freeink::ui::ActionEvent& event, void* user);
   void draw(UiScreen& screen);
@@ -33,6 +35,9 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
   void showPairQr();
   void activate(int value);
   void openPluginCatalog();
+  void showManageOptions();
+  void showCabinetSourcesQr();
+  void confirmSwitchAccount();
 
   ybxaccount::Summary sources_{};
   State state_ = State::NotConnected;
@@ -41,6 +46,8 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
   bool refreshPending_ = false;
   bool pairPending_ = false;
   bool pairExpired_ = false;
+  bool switchingAccount_ = false;
+  OptionPopup managePopup_;
   struct Pairing {
     std::string deviceCode;
     std::string userCode;

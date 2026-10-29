@@ -22,6 +22,8 @@
 #include "util/QrUtils.h"
 #include "network/TlsTransport.h"
 #include "activities/reader/QrDisplayActivity.h"
+#include "activities/util/ConfirmationActivity.h"
+#include <cctype>
 
 namespace fui = freeink::ui;
 namespace {
@@ -57,6 +59,20 @@ bool loadPairTarget(std::string& file) {
   file = pluginhttp::inPluginDir(dir, kTokenFilename);
   return true;
 }
+
+bool deviceRemovedHeader(const pluginhttp::Headers& headers) {
+  for (const auto& h : headers) {
+    std::string name = h.first;
+    for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (name == "x-ybx-device-removed" && ybxaccount::headerIsTrue(h.second)) return true;
+  }
+  return false;
+}
+
+struct ScopedCacheStorage {
+  bool exists(const std::string& path) { return Storage.exists(path.c_str()); }
+  bool remove(const std::string& path) { return Storage.remove(path.c_str()); }
+};
 
 pluginhttp::Headers jsonHeaders() {
   return {{"Content-Type", "application/json"}};
@@ -117,6 +133,7 @@ void YbxAccountActivity::onEnter() {
   pairing_.clear();
   pairPending_ = false;
   pairExpired_ = false;
+  switchingAccount_ = false;
   Connection info;
   const ConfigResult ready = loadConnection(info);
   state_ = ready == ConfigResult::Ready ? State::Ready
@@ -173,14 +190,28 @@ void YbxAccountActivity::refresh() {
   requestUpdateAndWait();
   String response;
   const unsigned long deadline = millis() + kRequestTimeoutMs;
+  pluginhttp::Headers responseHeaders;
   const int code = pluginhttp::request(
       nullptr, kListsUrl, "GET", "", info.headers, response, kMaxListsBytes,
-      nullptr, [&] { return ybxaccount::deadlineReached(millis(), deadline); }, kRequestTimeoutMs);
+      &responseHeaders, [&] { return ybxaccount::deadlineReached(millis(), deadline); }, kRequestTimeoutMs);
   State next = State::Failed;
   ybxaccount::Summary incoming;
-  if (code == 401 || code == 403) {
-    next = State::InvalidToken;
-  } else if (code >= 200 && code < 300) {
+  std::string detailCode;
+  if (code == 409) {
+    JsonDocument error;
+    if (!deserializeJson(error, response)) detailCode = error["detail"]["code"] | "";
+  }
+  switch (ybxaccount::checkedListsOutcome(code, deviceRemovedHeader(responseHeaders), detailCode)) {
+    case ybxaccount::ListsOutcome::DeviceRemoved:
+      next = State::DeviceRemoved;
+      break;
+    case ybxaccount::ListsOutcome::InvalidToken:
+      next = State::InvalidToken;
+      break;
+    case ybxaccount::ListsOutcome::ProviderSession:
+      next = State::ProviderSession;
+      break;
+    case ybxaccount::ListsOutcome::Ok: {
     JsonDocument doc;
     if (!deserializeJson(doc, response)) {
       JsonArrayConst lists = doc["lists"].as<JsonArrayConst>();
@@ -191,6 +222,10 @@ void YbxAccountActivity::refresh() {
         next = State::Ready;
       }
     }
+    break;
+    }
+    default:
+      break;
   }
   // Once the token changes or is rejected, never show another account's
   // remembered source list as if it were current.
@@ -216,13 +251,15 @@ void YbxAccountActivity::cancelPairing() {
   pairPending_ = false;
   pairExpired_ = false;
   if (state_ == State::Pairing || state_ == State::PairFailed)
-    state_ = State::NotConnected;
+    state_ = switchingAccount_ ? State::Ready : State::NotConnected;
+  switchingAccount_ = false;
 }
 
 void YbxAccountActivity::beginPairing() {
   // A valid existing account must not be silently replaced. The optional
   // account-switch/revoke workflow needs its own explicit confirmation.
-  if (state_ == State::Ready || state_ == State::Loading || state_ == State::Pairing) return;
+  if ((state_ == State::Ready && !switchingAccount_) ||
+      state_ == State::Loading || state_ == State::Pairing) return;
   std::string tokenFile;
   if (!loadPairTarget(tokenFile)) {
     state_ = State::Unsupported;
@@ -236,12 +273,15 @@ void YbxAccountActivity::beginPairing() {
                            [this](const ActivityResult& result) {
                              returnedFromChild_ = true;
                              pairPending_ = !result.isCancelled;
+                             if (result.isCancelled) switchingAccount_ = false;
                              waitConfirmRelease_ = mappedInput.isPressed(MappedInputManager::Button::Confirm);
                              waitBackRelease_ = mappedInput.isPressed(MappedInputManager::Button::Back);
                            });
     return;
   }
-  cancelPairing();
+  pairing_.clear();
+  pairExpired_ = false;
+  pairPending_ = false;
   {
     RenderLock lock(*this);
     state_ = State::Loading;
@@ -321,13 +361,14 @@ void YbxAccountActivity::pollPairing() {
         state_ = State::PairFailed;
       } else {
         const std::string dir = PluginLocations::findPluginDir("ybx");
-        const std::string pending = dir + "/events.jsonl";
-        // Never replay a prior account's queued reading events under a new
-        // token. Fail closed if the stale outbox cannot be cleared.
-        const bool clean = !Storage.exists(pending.c_str()) || Storage.remove(pending.c_str());
-        if (!clean || !pluginhttp::saveTokenToFile(file, kTokenPath, token))
+        // Only rebuildable token-scoped material is removed. Never delete
+        // books, user-local reading sessions, bookmarks or progress.
+        ScopedCacheStorage cacheStorage;
+        const bool clean = ybxaccount::clearScopedCaches(cacheStorage, dir);
+        if (!clean || !pluginhttp::saveTokenToFileAtomic(file, kTokenPath, token))
           state_ = State::PairFailed;
         else {
+          switchingAccount_ = false;
           pairing_.clear();
           sources_.clear();
           fetched_ = false;
@@ -390,6 +431,7 @@ void YbxAccountActivity::loop() {
     pollPairing();
     if (state_ != State::Pairing) return;  // Do not process stale taps after token exchange/expiry.
   }
+  if (managePopup_.handleInput(mappedInput, [this] { requestUpdate(); })) return;
   if (allowBack && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     if (state_ == State::Pairing) {
       cancelPairing();
@@ -428,14 +470,63 @@ void YbxAccountActivity::activate(int value) {
   }
   if (value == 0) activityManager.goHome();
   if (value == 1) {
-    if (state_ == State::NotConnected || state_ == State::InvalidToken || state_ == State::PairFailed)
+    if (state_ == State::ProviderSession) {
+      showCabinetSourcesQr();
+    } else if (state_ == State::NotConnected || state_ == State::InvalidToken ||
+               state_ == State::DeviceRemoved || state_ == State::PairFailed) {
       beginPairing();
-    else
+    } else {
       refresh();
+    }
   }
-  if (value == 2) openPluginCatalog();
+  if (value == 2) showManageOptions();
 }
 void YbxAccountActivity::openPluginCatalog() { activityManager.goToPlugins(false); }
+
+void YbxAccountActivity::showCabinetSourcesQr() {
+  startActivityForResult(
+      std::make_unique<QrDisplayActivity>(renderer, mappedInput,
+                                          std::string(ybxaccount::CABINET_SOURCES_URL)),
+      [this](const ActivityResult&) {
+        returnedFromChild_ = true;
+        waitConfirmRelease_ = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+        waitBackRelease_ = mappedInput.isPressed(MappedInputManager::Button::Back);
+        requestUpdate();
+      });
+}
+
+void YbxAccountActivity::confirmSwitchAccount() {
+  if (state_ != State::Ready) return;
+  auto dialog = makeUniqueNoThrow<ConfirmationActivity>(
+      renderer, mappedInput, tr(STR_YBX_ACCOUNT_SWITCH),
+      tr(STR_YBX_ACCOUNT_SWITCH_CONFIRM), tr(STR_CANCEL), tr(STR_CONFIRM));
+  if (!dialog) return;
+  startActivityForResult(std::move(dialog), [this](const ActivityResult& result) {
+    returnedFromChild_ = true;
+    waitConfirmRelease_ = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+    waitBackRelease_ = mappedInput.isPressed(MappedInputManager::Button::Back);
+    if (result.isCancelled) return;
+    switchingAccount_ = true;
+    pairPending_ = true;  // Defer network activity out of child completion.
+  });
+}
+
+void YbxAccountActivity::showManageOptions() {
+  if (state_ == State::Loading || state_ == State::Pairing) return;
+  static constexpr StrId READY[] = {
+      StrId::STR_YBX_ACCOUNT_MANAGE, StrId::STR_YBX_ACCOUNT_SWITCH,
+      StrId::STR_YBX_HOME_CATALOGS, StrId::STR_CANCEL};
+  static constexpr StrId LIMITED[] = {
+      StrId::STR_YBX_ACCOUNT_MANAGE, StrId::STR_YBX_HOME_CATALOGS, StrId::STR_CANCEL};
+  const bool canSwitch = state_ == State::Ready;
+  managePopup_.show(StrId::STR_OPDS_MY_ACCOUNT, canSwitch ? READY : LIMITED,
+                    canSwitch ? 4 : 3, 0, [this, canSwitch](int choice) {
+    if (choice == 0) showCabinetSourcesQr();
+    else if (canSwitch && choice == 1) confirmSwitchAccount();
+    else if (choice == (canSwitch ? 2 : 1)) openPluginCatalog();
+  });
+  requestUpdate();
+}
 void YbxAccountActivity::button(UiScreen& ui, fui::Rect bounds, int value, const char* label) {
   props_.label = label;
   props_.action = 1;
@@ -496,7 +587,10 @@ void YbxAccountActivity::draw(UiScreen& ui) {
   const char* status = tr(STR_YBX_ACCOUNT_UNAVAILABLE);
   if (state_ == State::Ready) status = fetched_ ? tr(STR_YBX_ACCOUNT_UPDATED) : tr(STR_YBX_ACCOUNT_REFRESH);
   if (state_ == State::Loading) status = tr(STR_LOADING_POPUP);
-  if (state_ == State::NotConnected || state_ == State::InvalidToken) status = tr(STR_YBX_SYNC_NOT_PAIRED);
+  if (state_ == State::NotConnected) status = tr(STR_YBX_SYNC_NOT_PAIRED);
+  if (state_ == State::InvalidToken) status = tr(STR_YBX_ACCOUNT_TOKEN_INVALID);
+  if (state_ == State::DeviceRemoved) status = tr(STR_YBX_ACCOUNT_DEVICE_REMOVED);
+  if (state_ == State::ProviderSession) status = tr(STR_YBX_ACCOUNT_PROVIDER_REPAIR);
   if (state_ == State::Unsupported) status = tr(STR_YBX_PLUGIN_UPDATE);
   if (state_ == State::PairFailed)
     status = pairExpired_ ? tr(STR_YBX_ACCOUNT_EXPIRED) : tr(STR_PLUGIN_AUTH_FAILED);
@@ -506,14 +600,18 @@ void YbxAccountActivity::draw(UiScreen& ui) {
   const int y = safe.y + safe.height - 64;
   button(ui, {static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 0, tr(STR_BACK));
   const bool needsPair = state_ == State::NotConnected || state_ == State::InvalidToken ||
-                         state_ == State::PairFailed;
+                         state_ == State::DeviceRemoved || state_ == State::PairFailed;
+  const char* primary = state_ == State::ProviderSession ? tr(STR_YBX_ACCOUNT_MANAGE) :
+                        needsPair ? (state_ == State::PairFailed ? tr(STR_RETRY) : tr(STR_PLUGIN_SIGN_IN))
+                                  : tr(STR_UPDATE);
   button(ui, {static_cast<int16_t>(x + cell + spacing), static_cast<int16_t>(y),
               static_cast<int16_t>(cell), 48}, 1,
-         needsPair ? (state_ == State::PairFailed ? tr(STR_RETRY) : tr(STR_PLUGIN_SIGN_IN)) : tr(STR_UPDATE));
+         primary);
   button(ui, {static_cast<int16_t>(x + (cell + spacing) * 2), static_cast<int16_t>(y),
-              static_cast<int16_t>(cell), 48}, 2, tr(STR_YBX_HOME_CATALOGS));
+              static_cast<int16_t>(cell), 48}, 2, tr(STR_YBX_ACCOUNT_OPTIONS));
 }
 void YbxAccountActivity::render(RenderLock&&) {
+  if (managePopup_.processRender(renderer, mappedInput)) return;
   renderer.clearScreen();
   renderUi();
   if (state_ == State::Pairing && !pairing_.verifyUrl.empty()) {

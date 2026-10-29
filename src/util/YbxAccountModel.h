@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string_view>
+#include <string>
 
 // Pure logic behind the native YBX account screen: which connected sources a
 // /catalog/lists response describes, what an HTTP status means for the stored
@@ -96,6 +97,38 @@ inline bool isProviderSessionBody(std::string_view code) {
 
 inline bool headerIsTrue(std::string_view value) {
   return value == "true" || value == "True" || value == "1";
+}
+
+// Reader-token failures and upstream session failures must never be conflated.
+// A 409 is actionable only when the server supplies the specific consent code;
+// unrecognized 409s remain ordinary failures.
+inline ListsOutcome checkedListsOutcome(int status, bool deviceRemoved, std::string_view detailCode) {
+  if (status == 409)
+    return isProviderSessionBody(detailCode) ? ListsOutcome::ProviderSession : ListsOutcome::Failed;
+  return listsOutcomeFromStatus(status, deviceRemoved);
+}
+
+// Exact first-party cabinet destination. Connector mutations require a cabinet
+// session; reader bearer credentials are never attached to this link.
+inline constexpr std::string_view CABINET_SOURCES_URL = "https://my.ybx.app/cabinet#sources";
+
+// Explicit fixed-file allowlist for account-bound ephemeral data. These are
+// rebuildable from the server; book files, sidecars, personal local sessions
+// and saved reading positions are not included.
+inline constexpr std::array<std::string_view, 10> ACCOUNT_SCOPED_FILES = {
+    "events.jsonl", "events.jsonl.bak", "events.jsonl.pending",
+    "reading-summary.json", "reading-summary.json.bak", "reading-summary.json.pending",
+    "achievements.json", "achievements.json.bak", "achievements.json.pending",
+    "achievements.json.response"
+};
+template <typename Files>
+bool clearScopedCaches(Files& files, const std::string& pluginDir) {
+  if (pluginDir.empty()) return false;
+  for (const auto name : ACCOUNT_SCOPED_FILES) {
+    const std::string path = pluginDir + "/" + std::string(name);
+    if (files.exists(path) && !files.remove(path)) return false;
+  }
+  return true;
 }
 
 constexpr unsigned long MIN_POLL_INTERVAL_SECONDS = 3;

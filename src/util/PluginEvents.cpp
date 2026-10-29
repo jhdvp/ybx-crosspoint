@@ -510,7 +510,9 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
                                       mf.authReq.method,
                                       drainSubstituted(mf.authReq.body, token, config, meta, vars, ts, id), authHeaders,
                                       mf.authTokenPath, minted, shouldAbort, timeout())) {
-      pluginhttp::saveTokenToFile(mf.tokenFile, mf.tokenPath, minted);
+      // Never retry under a token we failed to persist: next drain must not
+      // assume the device is authenticated as the same account.
+      if (!pluginhttp::saveTokenToFileAtomic(mf.tokenFile, mf.tokenPath, minted)) return false;
       token = minted;
       status = run(token);
     }
