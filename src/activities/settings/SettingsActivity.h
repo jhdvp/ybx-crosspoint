@@ -186,6 +186,7 @@ struct SettingInfo {
 // its option popup, or launches its sub-screen.
 class SettingsActivity final : public UiListActivity {
   const SettingsSection section;
+  const StrId focusSetting;
   std::vector<SettingInfo> settings;
 
   bool preserveQuickResumeTimeoutOn = false;
@@ -215,7 +216,8 @@ class SettingsActivity final : public UiListActivity {
   void drawFooter() override;
 
  public:
-  SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, SettingsSection section);
+  SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, SettingsSection section,
+                   StrId focusSetting = StrId::STR_NONE_OPT);
   void onEnter() override;
   void render(RenderLock&& lock) override;
 };

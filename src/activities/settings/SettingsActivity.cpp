@@ -155,8 +155,8 @@ void SettingsActivity::rebuildSettings() {
 }
 
 SettingsActivity::SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                   const SettingsSection section)
-    : UiListActivity("Settings", renderer, mappedInput), section(section) {}
+                                   const SettingsSection section, const StrId focusSetting)
+    : UiListActivity("Settings", renderer, mappedInput), section(section), focusSetting(focusSetting) {}
 
 void SettingsActivity::onEnter() {
   UiListActivity::onEnter();
@@ -167,6 +167,11 @@ void SettingsActivity::onEnter() {
   syncQuickResumeTimeoutForSleepScreen(/*sleepScreenChanged=*/true, /*quickResumeTimeoutChanged=*/false);
 
   rebuildSettings();
+  if (focusSetting != StrId::STR_NONE_OPT) {
+    const auto it = std::find_if(settings.begin(), settings.end(),
+                                 [this](const SettingInfo& entry) { return entry.nameId == focusSetting; });
+    if (it != settings.end()) nav.requestSelection(static_cast<int>(it - settings.begin()));
+  }
 }
 
 // Rebuilds rowValues_/rowItems_ (label + actionValue) for settings.

@@ -267,3 +267,20 @@ TEST(YbxAccountUiLayout, QRIsVisibleAndResponsiveInBothOrientations) {
   EXPECT_FALSE(accountOverlaps(portrait.inlineQr, portrait.code));
   EXPECT_FALSE(accountOverlaps(landscape.inlineQr, landscape.code));
 }
+
+#include "util/YbxSettingsNavigation.h"
+TEST(YbxSettingsNavigation, AllOriginalSettingsRowsAndSystemFallbackAreRealRoutes) {
+  using namespace ybxsettings;
+  ASSERT_EQ(ORDER.size(), 9u);
+  constexpr std::array<Destination, 9> expected = {
+    Destination::Account, Destination::Account, Destination::Sync,
+    Destination::DisplayTheme, Destination::Language, Destination::DisplaySleep,
+    Destination::Updates, Destination::About, Destination::AllSettings
+  };
+  for (size_t i = 0; i < ORDER.size(); ++i) {
+    EXPECT_TRUE(selectable(static_cast<int>(i)));
+    EXPECT_EQ(destination(ORDER[i]), expected[i]);
+  }
+  EXPECT_FALSE(selectable(-1));
+  EXPECT_FALSE(selectable(9));
+}

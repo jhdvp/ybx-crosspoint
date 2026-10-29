@@ -41,3 +41,28 @@ The monochrome firmware uses FreeInk's nearest e-ink gray (`Color::LightGray`) i
 - No firmware flashing, main merge, OTA publication or production deployment without explicit acceptance.
 
 This branch is intentionally review-only, stacked on the native-account implementation PR.
+
+## YBX Settings dashboard (29 October 2026)
+
+The system Settings root on the X3/X4/X4 Pro profiles now follows the existing
+`08-settings.png` visual information hierarchy, **without deleting FreeInk settings**:
+
+- **Account** — opens native YBX Account (real pairing and source list).
+- **Sources** — opens the source overview (provider mutations remain in the authenticated cabinet).
+- **Synchronization** — opens YBX controls in existing KOReaderSync settings when paired; otherwise account pairing. Enabled/disabled status reads the actual YBX sync switch rather than the generic plugins flag.
+- **Appearance** — jumps to the real UI Theme setting under Display.
+- **Language** — existing language selector, current language value from I18N.
+- **Sleep screen** — jumps to the real Sleep Screen setting under Display, without inventing a YBX statistics sleep mode.
+- **Updates** — existing OTA check flow, not a new updater.
+- **Support** — real device information/diagnostics screen; a **send report** operation is not present in the firmware and is **not** claimed to exist.
+- **System settings** — retains access to all six FreeInk settings categories, including controls, network and library. Back returns to the YBX dashboard only when it was the entry root; direct settings-section deep links preserve their previous Back behavior.
+
+Rows use a high-contrast monochrome list with separators and right-side actual
+values. Nine entries scroll on the shorter landscape panel. The code does not
+invent an account identity, provider count, sleep-screen value or support endpoint.
+The home layout does not change outside the YBX screen profiles.
+
+Review gates: compare actual device screenshots with 08-settings, verify
+physical focus and touch navigation, long locales, updated language/theme values,
+and OTA/back/reboot behavior. Host tests validate all nine route definitions;
+neither host tests nor the HTML/PNG references can prove hardware UX acceptance.
