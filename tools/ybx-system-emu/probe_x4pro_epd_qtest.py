@@ -53,7 +53,7 @@ def save_bmp(path,frame):
                      for y in range(H-1,-1,-1))
     path.write_bytes(bytes(header)+payload)
 
-def run(qemu,rom,outbmp):
+def run(qemu,rom,outbmp,irq_probe=False):
     with TemporaryDirectory(prefix="ybx-ssd1677-qtest-") as td:
         temp=Path(td)
         bios=temp/"rom";bios.mkdir()
@@ -72,6 +72,19 @@ def run(qemu,rom,outbmp):
                 client,reader,qmp=qmp_connect(socket)
                 qt=QTest(process)
                 assert get(qmp,"frames")==0
+                # BUSY is active-HIGH, GPIO6 high-level interrupt can be
+                # configured by the guest. It MUST deassert automatically
+                # when the panel releases BUSY, unlike an edge IRQ.
+                if irq_probe:
+                    qt.wr(GPIO+0x8c,(1<<13)|(5<<7))
+                    assert qt.rd(GPIO+0x44)&(1<<6)==0
+                def gpio_irq():
+                    r=qmp("qom-get",{"path":"/machine/soc/gpio",
+                                      "property":"ybx-gpio-irq-level"})
+                    assert "return" in r,r
+                    return r["return"]
+                if irq_probe:
+                    assert gpio_irq()==0
                 # All three board output pins: default driven high before enable
                 qt.wr(GPIO+0x08,PINS)
                 qt.wr(GPIO+0x24,PINS)
@@ -104,6 +117,9 @@ def run(qemu,rom,outbmp):
                 assert get(qmp,"frames")==1
                 assert get(qmp,"busy")==1
                 assert qt.rd(GPIO+0x3c)&(1<<6)
+                if irq_probe:
+                    assert qt.rd(GPIO+0x44)&(1<<6)
+                    assert gpio_irq()==1
                 assert get(qmp,"nonwhite")==8
                 frame=bytes.fromhex(get(qmp,"visible-hex"))
                 assert len(frame)==SIZE
@@ -112,6 +128,9 @@ def run(qemu,rom,outbmp):
                 qt.tick(351_000_000)
                 assert get(qmp,"busy")==0
                 assert qt.rd(GPIO+0x3c)&(1<<6)==0
+                if irq_probe:
+                    assert qt.rd(GPIO+0x44)&(1<<6)==0
+                    assert gpio_irq()==0
                 # SSD1677 addresses X in PIXELS: x=792 is physical byte99;
                 # next MOSI byte wraps X and advances Y to the next row.
                 for command,params in (
@@ -144,6 +163,7 @@ def run(qemu,rom,outbmp):
                         "ram_writes_before_reset":8,
                         "frames":get(qmp,"frames"),
                         "busy_pulse_verified":True,
+                        "gpio6_level_irq_follows_epd_busy":bool(irq_probe),
                         "non_display_poweron_excluded":True,
                         "ssd1677_x_10bit_pixel_addressing":True,
                         "pixel_to_byte_row_wrap_verified":True,
@@ -171,9 +191,11 @@ def main():
     a.add_argument("--rom",type=Path,required=True)
     a.add_argument("--out",type=Path,required=True)
     a.add_argument("--out-bmp",type=Path,required=True)
+    a.add_argument("--gpio-irq-probe",action="store_true",
+                   help="requires experimental GPIO IRQ patches 0020-0022")
     arg=a.parse_args()
     res=run(arg.qemu_bin.resolve(strict=True),arg.rom.resolve(strict=True),
-            arg.out_bmp.resolve())
+            arg.out_bmp.resolve(),arg.gpio_irq_probe)
     res.update({"qemu_sha256":hashlib.sha256(arg.qemu_bin.read_bytes()).hexdigest(),
                 "rom_sha256":hashlib.sha256(arg.rom.read_bytes()).hexdigest(),
                 "out_bmp":str(arg.out_bmp.resolve())})

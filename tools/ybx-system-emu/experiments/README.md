@@ -280,3 +280,63 @@ same-run FAT file-creation gate is still open. Separate #37 guest
 FAT16 file-writing proof remains valid. Full user input/UI,
 alternate panel controllers and physical E-Ink waveform accuracy
 are NOT verified.
+
+## 0019–0022 — GT911 guest readback counters, GPIO interrupt wiring, X4 Pro buttons
+
+Apply after 0018, in order:
+- `0019-s3-gt911-guest-i2c-readback-counters.patch`: opt-in QMP
+  counters for actual guest reads 0x814E, first point 0x8150, ACK
+  clear and synthetic events. Important to distinguish QMP injection
+  from true guest handling.
+- `0020-s3-gpio-input-status-irq-matrix.patch`: S3 GPIO_PINn
+  MMIO interrupt type/enable, GPIO_STATUS0/1 W1TC and IRQ routing
+  to `ETS_GPIO_INTR_SOURCE`. Edge IRQ latched until W1TC.
+- `0021-x4pro-digital-button-pullups.patch`: board-specific
+  GPIO0/3/7 active-LOW keys read HIGH in idle. Original QEMU
+  input defaults were LOW and mimicked three held keys.
+- `0022-s3-gpio-level-irq-deassert.patch`: essential fix;
+  GPIO6 SSD1677 BUSY triggered a permanent CPU1 IRQ storm
+  under the first 0020 implementation. Level interrupts now
+  track the current physical pin level and automatically clear
+  after BUSY falls; edge status still requires W1TC.
+
+Compiled QTest covers GT911 I2C + GPIO10 edge status and true
+GPIO6 EPD BUSY high->low level deassert. The earlier unsound
+natural splash-to-home transition is NOT accepted as touch-to-UI;
+live factory 092c2be5 test requires actual new guest 0x8150 reads,
+GT911 ACKs, stable home *before* injection and subsequent changed
+SSD1677 image. Do not enable these patches in default machine.
+
+### 0020–0022 quarantine: NOT for a real guest, 0023 standalone safe pullups
+
+A real factory guest confirmed GPIO6 EPD BUSY config
+`GPIO_PIN6_REG=0x2180` (BOTH_EDGES, INT_ENA=1). The experimental
+0020 interrupt matrix route latches GPIO_STATUS0 bit6,
+traps FreeRTOS CPU1 in an IRQ loop and prevents the full home
+screen. Patch 0022 only fixes HIGH/LOW **level** interrupt
+deassert; the actual guest pin6 is configured for **edge**
+interrupts. Do not enable/accept 0020/0021/0022 by default.
+These patches are retained exclusively for reproducible
+research, and NOT applied in the working isolated QEMU source.
+
+`0023-x4pro-standalone-idle-button-pullups.patch` is a safe
+independent replacement for the key pullups from 0021,
+which otherwise depends on 0020. Apply 0023 after 0019
+WITHOUT 0020–0022: X4 Pro keys GPIO0, GPIO3, GPIO7 idle
+HIGH even after reset; QTest verifies actual GPIO_IN bits.
+This cannot, by itself, establish full guest-to-UI touch.
+
+## 0024 — SYSTIMER read-only comparator telemetry
+
+`0024-s3-systimer-readonly-comparator-counters.patch` is
+reversible, read-only diagnostics of real S3 timer callback fires
+and comparator reprogramming. Confirmed guest FreeRTOS tick
+activity on both active comparators, while GT911 guest I2C
+read and 2 ACKs worked but YBX home did not change.
+Corrected raw digitizer coords: More (350,760), Library
+(130,760). Strict home-loaded 150ms More tap remained
+`true_guest_touch_to_ui_verified=false`.
+QA: s3-x4pro-systimer-guest-0024.json and
+s3-x4pro-gt911-correct-more-0024.json.
+GPIO IRQ patches 0020–22 remain quarantined; safe 0023
+remains applied independently of them.

@@ -84,7 +84,7 @@ with a ROM-only boot log.
 | SD (X4 Pro) | **PROVEN:** native SDMMC DMA read/write, GPIO1/5 card power, guest FAT16 file creation in separate run; **same-run** SDMMC sector reads and nonblank SSD1677 EPD pixels | same-run FAT write, lifecycle and input integration |
 | Wi-Fi | emulated AP/NAT implemented by ESP-EMU, **firmware not provisioned/connected** | controlled AP provisioning, DHCP, timeout and Wi-Fi fallback tests |
 | TLS | crypto CPU/peripheral may be emulated, **zero YBX TLS handshakes verified** | isolated HTTPS test server with trust roots, failure cases, cert expiry, redirect/auth isolation |
-| Buttons/touch | synthetic GT911 touch and Home events, GPIO10 input-level feedback, QTest verified | GPIO interrupt-matrix and guest UI interaction |
+| Buttons/touch | GT911 QTest protocol, contact/release/home and GPIO10 input feedback VERIFIED; strict real guest tap-to-new-SSD1677 UI **NOT PASSED**; diagnostic guest GT911 I2C counters and X4 Pro key pullups | actual RTOS task wake/poll, touch-to-UI frame, safe GPIO IRQ matrix routing (0020–22 quarantined) |
 | End-to-end YBX | Factory firmware FAT file writes (separate run), same-run SDMMC reads + SSD1677 home UI **VERIFIED**, full device **NOT PASSED** | same-run FAT writes, touch-to-UI response, GPIO IRQ, DMA/GDMA, Wi-Fi/TLS and lifecycle tests |
 
 **Why this is not a minor configuration task:** The current distributed

@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+"""Live original X4 Pro guest GT911 contact -> actual SSD1677 framebuffer.
+
+No QTest CPU, no UI substitutions. Drive synthetic GT911 coordinate/state
+through existing QMP sensor properties, read actual SSD1677 RAM via QMP.
+"""
+import argparse
+import hashlib
+import json
+import re
+import shutil
+import subprocess
+import time
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from probe_x4pro_touch_injection_qtest import qmp_connect
+from epd_frame_io import save_mono_png, ssd1677_landscape_to_portrait
+from probe_x4pro_epd_qtest import SIZE
+
+
+def sensor(qmp, prop, value):
+    r=qmp("qom-set",{"path":"/machine/soc","property":"ybx-touch-"+prop,
+                     "value":value})
+    if "return" not in r:
+        return {"ok":False,"error":r.get("error",r)}
+    return {"ok":True}
+
+
+def get(qmp, prop):
+    r=qmp("qom-get",{"path":"/machine/soc","property":"ybx-epd-"+prop})
+    if "return" not in r:
+        raise AssertionError((prop,r))
+    return r["return"]
+
+
+def cpu_sample(qmp):
+    fast=qmp("query-cpus-fast")
+    hmp=qmp("human-monitor-command",{"command-line":"info registers -a"})
+    raw=hmp.get("return",hmp)
+    pcs=[]
+    if isinstance(raw,str):
+        for part in re.split(r"\bCPU#(?=\d)",raw)[1:]:
+            index=part.splitlines()[0].strip()
+            regs={}
+            for field in ("PC","CCOUNT","INTERRUPT","INTENABLE",
+                          "CCOMPARE0","CCOMPARE1","CCOMPARE2",
+                          "EPC1","EXCCAUSE","PS"):
+                match=re.search(r"\b"+field+r"=([0-9a-fA-F]+)",part)
+                if match: regs[field]="0x"+match.group(1)
+            pcs.append({"cpu":int(index),**regs})
+    gpio=qmp("qom-get",{"path":"/machine/soc/gpio",
+                        "property":"ybx-gpio-irq-level"})
+    gpio_status={}
+    for key,addr in (("status-lo",0x60004044),("status-hi",0x60004050),
+                     ("pin6-config",0x6000408c),("input-lo",0x6000403c),
+                     ("enable-lo",0x60004020)):
+        r=qmp("human-monitor-command",
+              {"command-line":f"xp /1wx 0x{addr:x}"})
+        gpio_status[key]=r.get("return",r)
+    timers={}
+    for n in range(3):
+        timers[str(n)]={}
+        for kind in ("fires","reprograms"):
+            r=qmp("qom-get",{"path":"/machine/soc/systimer",
+                         "property":f"ybx-comparator-{n}-{kind}"})
+            timers[str(n)][kind]=r.get("return",r)
+    return {
+      "systimer_comparators":timers,
+      "qmp_cpu_count":len(fast.get("return",[])),
+      "registers_all":pcs,
+      "hmp_error":raw if not isinstance(raw,str) else None,
+      "gpio_irq_level":gpio.get("return",gpio),
+      "gpio_status_mmio":gpio_status,
+    }
+
+
+def x4pro_raw_to_portrait(raw_x:int,raw_y:int)->tuple[int,int]:
+    """FreeInk X4 Pro: swapXY, flipY, then GfxRenderer::Portrait.
+
+    The two rotations cancel in logical portrait coordinates.
+    This mapping is backed by BoardConfig.h X4Pro and GfxRenderer.cpp.
+    """
+    if not (0<=raw_x<=479 and 0<=raw_y<=799):
+        raise ValueError("raw GT911 X4 Pro coordinate outside sensor bounds")
+    native_x=raw_y
+    native_y=479-raw_x
+    return 479-native_y,native_x
+
+
+def touch_metrics(qmp):
+    metrics={}
+    for prop in ("status-reads","point-reads","status-clears","injected-frames"):
+        r=qmp("qom-get",{"path":"/machine/soc","property":"ybx-touch-"+prop})
+        assert "return" in r, (prop,r)
+        metrics[prop]=r["return"]
+    return metrics
+
+
+def sample(qmp, name, out):
+    state={key:get(qmp,key) for key in
+           ("frames","nonwhite","ram-writes","commands","busy","last-command")
+           if key != "last-command"} # last-command not exposed through SoC alias
+    if state["frames"]:
+        r=qmp("qom-get",{"path":"/machine/soc",
+                         "property":"ybx-epd-visible-hex"})
+        if "return" not in r:
+            raise AssertionError(r)
+        frame=bytes.fromhex(r["return"])
+        assert len(frame)==SIZE
+        state["frame_sha256"]=hashlib.sha256(frame).hexdigest()
+        if state["nonwhite"]>0:
+            png=out.with_name(out.stem+"-"+name+".png")
+            save_mono_png(png,ssd1677_landscape_to_portrait(frame),480,800)
+            state["png"]=str(png)
+    return state
+
+
+def assess_touch_to_ui(before,after,before_touch,after_touch,injections):
+    """Require mature home UI, guest I2C press AND release, and new EPD pixels.
+
+    Do not accept splash-to-home progression or QMP-only injection as proof.
+    """
+    return bool(
+        before.get("frames",0)>=2 and before.get("nonwhite",0)>=4000
+        and before.get("frame_sha256")
+        and after.get("frame_sha256")
+        and before["frame_sha256"]!=after["frame_sha256"]
+        and after["frames"]>before["frames"]
+        and after_touch["point-reads"]>before_touch["point-reads"]
+        and after_touch["status-clears"]>=before_touch["status-clears"]+2
+        and all(item.get("ok") for item in injections.values())
+    )
+
+
+def run(a):
+    with TemporaryDirectory(prefix="ybx-gt911-guest-ui-") as tmp:
+        t=Path(tmp)
+        bios=t/"rom";bios.mkdir()
+        shutil.copyfile(a.rom,bios/"esp32s3_rev0_rom.bin")
+        shutil.copyfile(a.flash,t/"factory-flash.bin")
+        shutil.copyfile(a.sd_image,t/"sd.img")
+        socket=t/"qmp.sock"
+        cmd=[str(a.qemu_bin),"-machine",
+             "esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on,"
+             "ybx-x4pro-sd-power=on,ybx-x4pro-spi2=on,"
+             "ybx-x4pro-epd=on",
+             "-m","8M","-global","ssi_psram.is_octal=on",
+             "-nographic","-monitor","none",
+             "-serial","null","-serial","null","-serial","null",
+             "-serial","stdio",
+             "-qmp",f"unix:{socket},server=on,wait=off",
+             "-L",str(bios),
+             "-drive",f"file={t/'factory-flash.bin'},if=mtd,format=raw",
+             "-drive",f"file={t/'sd.img'},if=sd,format=raw"]
+        with (t/"out.log").open("w") as stdout,(t/"err.log").open("w") as stderr:
+            process=subprocess.Popen(cmd,stdin=subprocess.DEVNULL,stdout=stdout,
+                                     stderr=stderr)
+            client=None
+            try:
+                client,reader,qmp=qmp_connect(socket)
+                time.sleep(a.boot_seconds)
+                before=sample(qmp,"before",a.out)
+                before_touch=touch_metrics(qmp)
+                cpu_before=cpu_sample(qmp)
+                # A splash-to-home transition after injection is NOT an input
+                # response. Require finished home (>=2 SSD1677 frames).
+                baseline_home_ready=(before["frames"]>=2
+                                     and before["nonwhite"]>=4000)
+                injections={}
+                # x,y here are RAW digitizer coordinates. X4 Pro swaps x/y
+                # and flips panel Y. (rawX 130,rawY 760) targets portrait
+                # bottom-right More button, not native landscape pixels.
+                injections["set-x"]=sensor(qmp,"x",a.raw_x)
+                injections["set-y"]=sensor(qmp,"y",a.raw_y)
+                injections["press"]=sensor(qmp,"state",1)
+                time.sleep(a.press_seconds)
+                during=sample(qmp,"during",a.out)
+                during_touch=touch_metrics(qmp)
+                cpu_during=cpu_sample(qmp)
+                injections["release"]=sensor(qmp,"state",0)
+                time.sleep(a.after_seconds)
+                after=sample(qmp,"after",a.out)
+                after_touch=touch_metrics(qmp)
+                cpu_after=cpu_sample(qmp)
+                # A point can be injected while firmware unavailable; compare
+                # the actual SSD1677 image and refresh counts, NOT QMP success.
+            finally:
+                if client:client.close()
+                process.terminate()
+                try:process.communicate(timeout=3)
+                except subprocess.TimeoutExpired:process.kill();process.communicate()
+        guest_uart=(t/"out.log").read_text(errors="replace")
+        host_error=(t/"err.log").read_text(errors="replace")
+    changed=(before.get("frame_sha256") and after.get("frame_sha256") and
+             before["frame_sha256"]!=after["frame_sha256"])
+    result={
+        "factory_flash_sha256":hashlib.sha256(a.flash.read_bytes()).hexdigest(),
+        "qemu_sha256":hashlib.sha256(a.qemu_bin.read_bytes()).hexdigest(),
+        "configuration":{
+            "boot_seconds":a.boot_seconds,"press_seconds":a.press_seconds,
+            "after_seconds":a.after_seconds,"raw_gt911_xy":[a.raw_x,a.raw_y],
+            "nominal_ui_target":(
+                "More button" if (a.raw_x,a.raw_y)==(350,760)
+                else "Library button" if (a.raw_x,a.raw_y)==(130,760)
+                else "custom"),
+            "expected_portrait_xy":x4pro_raw_to_portrait(a.raw_x,a.raw_y)},
+        "before":before,"injection_results":injections,
+        "during":during,"after":after,
+        "home_ready_before_injection":baseline_home_ready,
+        "cpu_before":cpu_before,"cpu_during":cpu_during,"cpu_after":cpu_after,
+        "touch_metrics_before":before_touch,
+        "touch_metrics_during":during_touch,
+        "touch_metrics_after":after_touch,
+        "guest_gt911_point_read_after_injection":
+            after_touch["point-reads"]>before_touch["point-reads"],
+        "guest_gt911_cleared_after_injection":
+            after_touch["status-clears"]>=before_touch["status-clears"]+2,
+        "gt911_injection_qmp_accepted":all(i["ok"] for i in injections.values()),
+        "guest_epd_frame_sha_changed_after_contact":bool(changed),
+        "guest_epd_frame_count_increased":after["frames"]>before["frames"],
+        "true_guest_touch_to_ui_verified":assess_touch_to_ui(
+            before,after,before_touch,after_touch,injections),
+        "guest_rom_uart": "ESP-ROM:" in guest_uart,
+        "guest_app_uart": "Preferences.cpp" in guest_uart,
+        "uart_tail":guest_uart[-900:],
+        "host_stderr_tail":host_error[-1100:],
+        "physical_touch_verified":False
+    }
+    a.out.parent.mkdir(parents=True,exist_ok=True)
+    a.out.write_text(json.dumps(result,indent=2)+"\n")
+    print(json.dumps(result,indent=2),flush=True)
+    return result
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    for key in ("qemu-bin","rom","flash","sd-image","out"):
+        p.add_argument("--"+key,type=Path,required=True)
+    p.add_argument("--boot-seconds",type=float,default=37)
+    p.add_argument("--press-seconds",type=float,default=0.8)
+    p.add_argument("--after-seconds",type=float,default=14)
+    p.add_argument("--raw-x",type=int,default=130)
+    p.add_argument("--raw-y",type=int,default=760)
+    a=p.parse_args()
+    run(a)
+
+
+if __name__=="__main__":main()

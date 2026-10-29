@@ -94,6 +94,8 @@ def main():
     parser.add_argument("--qemu-bin",type=Path,required=True)
     parser.add_argument("--rom",type=Path,required=True)
     parser.add_argument("--out",type=Path,required=True)
+    parser.add_argument("--gpio-irq-probe",action="store_true",
+                        help="requires experimental GPIO IRQ patch 0020-0022")
     args=parser.parse_args()
     with TemporaryDirectory(prefix="ybx-qtest-touch-") as tmp:
         scratch=Path(tmp)
@@ -136,6 +138,16 @@ def main():
                 def assert_int(expected):
                     observed=bool(q.rd(GPIO+0x3c)&(1<<10))
                     assert observed==expected,(observed,expected)
+                def irq_level():
+                    r=execute("qom-get",{"path":"/machine/soc/gpio",
+                                 "property":"ybx-gpio-irq-level"})
+                    assert "return" in r,r
+                    return r["return"]
+                # Real X4Pro side/power buttons have passive pullups.
+                # On reset idle GPIO0/3/7 must be HIGH, else stock
+                # firmware sees all three as permanently held.
+                keys=(1<<0)|(1<<3)|(1<<7)
+                assert q.rd(GPIO+0x3c)&keys==keys
                 # Same genuine power-on + reset sequence as FreeInk SDK.
                 q.wr(GPIO+0x24,0x416)
                 assert q.i2c_send(ADDR,[0x81,0x40]) == 0x400
@@ -146,17 +158,36 @@ def main():
                 assert status()==0
                 q.wr(GPIO+0x28,1<<10)  # Host returns GPIO10 to input.
                 assert_int(False)
+                # ESP-IDF GPIO_PIN10_REG: CPU0 INT_ENA bit13 and BOTHEDGES
+                # INT_TYPE=3 at bits9:7. Status is GPIO_STATUS_REG 0x44,
+                # cleared via GPIO_STATUS_W1TC_REG 0x4C.
+                if args.gpio_irq_probe:
+                    q.wr(GPIO+0x9c,(1<<13)|(3<<7))
+                    q.wr(GPIO+0x4c,1<<10)
+                    assert q.rd(GPIO+0x44)&(1<<10)==0
+                    assert irq_level()==0
 
                 inject("x",120)
                 inject("y",640)
                 inject("state",1)  # single contact; ready + IRQ
                 assert status()==0x81,status()
                 assert_int(True)
+                if args.gpio_irq_probe:
+                    assert q.rd(GPIO+0x44)&(1<<10)
+                    assert irq_level()==1
+                    q.wr(GPIO+0x4c,1<<10)
+                    assert q.rd(GPIO+0x44)&(1<<10)==0
+                    assert irq_level()==0
                 point=q.i2c_read(ADDR,0x8150,8)
                 assert point[:4]==[120,0,128,2],point
                 assert q.i2c_send(ADDR,[0x81,0x4e,0])==0x80
                 assert status()==0
                 assert_int(False)
+                if args.gpio_irq_probe:
+                    # Falling edge is independently captured by GPIO_STATUS.
+                    assert q.rd(GPIO+0x44)&(1<<10)
+                    q.wr(GPIO+0x4c,1<<10)
+                    assert irq_level()==0
 
                 inject("state",0)  # release frame: ready but no contact
                 assert status()==0x80
@@ -182,7 +213,20 @@ def main():
                 assert q.i2c_send(ADDR,[0x81,0x4e])==0x400
                 assert_int(False)
 
+                guest_readback={}
+                for prop in ("status-reads","point-reads",
+                             "status-clears","injected-frames"):
+                    metric=execute("qom-get",{"path":"/machine/soc",
+                                         "property":"ybx-touch-"+prop})
+                    assert "return" in metric, (prop,metric)
+                    guest_readback[prop]=metric["return"]
+                assert guest_readback["status-reads"]>=5,guest_readback
+                assert guest_readback["point-reads"]>=1,guest_readback
+                assert guest_readback["status-clears"]>=4,guest_readback
+                assert guest_readback["injected-frames"]>=4,guest_readback
+
                 report={
+                    "i2c_access_counters_qtest":guest_readback,
                     "qtest_mmio_commands":q.commands,
                     "dynamic_qmp_injection":True,
                     "injection_is_simulated_only":True,
@@ -195,6 +239,9 @@ def main():
                     "touch_record_bytes":point,
                     "gpio10_input_feedback":True,
                     "status_clear_deasserts_gpio10":True,
+                    "s3_gpio10_edge_status_w1tc":bool(args.gpio_irq_probe),
+                    "s3_gpio10_irq_line_level":bool(args.gpio_irq_probe),
+                    "x4pro_idle_active_low_buttons_pulled_high":True,
                     "power_off_rejects_touch_injection":True,
                     "power_off_i2c_nack":True,
                     "gpio1_master_rail_required":True,

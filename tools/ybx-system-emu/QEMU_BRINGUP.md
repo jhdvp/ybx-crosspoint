@@ -1172,3 +1172,153 @@ The portable no-Pillow exporter created
 directly from QMP bytes (no SD screenshot). Image proof is the
 480x800 YBX home screen with Library/More, Continue Reading and
 Statistics. Host Python regression suite: 99 tests passed.
+
+### 29 October: X4 Pro GT911 guest-to-UI acceptance — NOT YET PASSED
+
+Previous compiled-QEMU QTest verified GT911 raw register/status/point
+protocol and GPIO10 input-level feedback. The NEW actual firmware test
+`probe_x4pro_guest_touch_ui.py` runs unmodified factory 092c2be5,
+sees the real SSD1677 panel's home-page 1bpp RAM via QMP, injects a
+raw GT911 contact `(x=130,y=760)` (nominal portrait More button),
+releases it, and checks a post-contact frame. It does **not** use
+QTest CPU or fake UI. Strict acceptance requires:
+1. Home already rendered BEFORE injection (>=2 SSD1677 updates,
+   >=4000 nonwhite bytes); otherwise natural boot splash-to-home
+   progression is an unrelated event.
+2. QMP contact press+release accepted;
+3. guest REALLY read touch points via I2C 0x8150 after the injection
+   and ACKed at least two new GT911 frames via write 0x814E=0;
+4. guest SSD1677 refreshed and displayed frame SHA changed.
+
+The first exploratory **early** 23s injection falsely correlated
+splash-to-home redraw with touch; it was invalid and is NOT evidence.
+A strict later test (38s boot, 0.8s contact, 16s after) reported
+`home_ready_before_injection=true` but `status-reads=2`
+(no new reads), `point-reads=0`, `status-clears=0`,
+2 injected frames accepted, unchanged panel SHA/count and
+`true_guest_touch_to_ui_verified=false`. Evidence:
+`qa-20261029/s3-x4pro-real-guest-more-touch-0019-strict.json`.
+The host suite includes 7 acceptance **negative regression** tests
+to reject false positives. This is an explicit remaining blocker,
+not solved by declaring the virtual GT911 QTest protocol complete.
+
+Patch 0019 adds opt-in GT911 QOM diagnostic counters for actual guest
+reads of 0x814E status, reads of 0x8150 first touch point, status
+ACK writes to 0x814E and QMP injected frames. Counters are read-only
+and do not affect the I2C behavior. Compiled QEMU QTest validated
+6 status reads, 1 point read, 4 ACKs, 4 injected frames.
+
+The live QMP CPU diagnostic captured **BOTH** S3 CPUs in
+`esp_cpu_wait_for_intr` (PC=0x403808aa, symbolized by binary-
+identical factory IROM rebuilt ELF), inside
+`esp_vApplicationIdleHook` (EPC1=0x422a89a8) at before/during/after
+injection. CPU CCOUNT advances, but neither core was processing
+new GT911 I2C frames in the stable UI test:
+`qa-20261029/s3-x4pro-real-guest-dual-cpu-0019.json`.
+Both CPUs idle is not inherently a firmware defect; could be
+incorrectly modeled wakeup or missing periodic task/event schedule.
+Do NOT assume GPIO10 or the I2C model is solely to blame.
+
+Patch 0020 experimentally routes ESP32-S3 GPIO controller IRQ
+to `ETS_GPIO_INTR_SOURCE` and emulates GPIO_PINn_REG
+INT_TYPE/INT_ENA, GPIO_STATUS0/1 and status W1TC. Compiled QTest
+verified positive/negative GPIO10 edges, pending register status,
+W1TC clearing and qdev IRQ level; generic S3 defaults remain
+unchanged. Patch 0021 opt-in board passive pullups restores
+X4 Pro active-LOW nav/power keys GPIO0, GPIO3 and GPIO7 HIGH at
+reset, instead of stock QEMU incorrectly reading all LOW.
+`s3-x4pro-gt911-gpioirq-pullups-0021-qtest.json` passes.
+
+**Regressive experimental discovery:** with 0020/0021 before level
+IRQ correction, factory app CPU1 repeatedly entered level-1 IRQ and
+stopped at splash; GPIO_STATUS0=0x40 identified **GPIO6 SSD1677
+BUSY**, QMP IRQ level was stuck HIGH:
+`s3-x4pro-gpio-irq-status-0021.json`. Edge IRQ status is latched
+until W1TC, but a **level-sensitive** interrupt must deassert as
+soon as its physical input becomes inactive (BUSY HIGH->LOW).
+Patch 0022 fixes both recomputation of level status and refreshing
+IRQ on the *falling* transition, not just the rising trigger.
+Compiled SSD1677 QTest now confirms GPIO6 HIGH-level IRQ asserts
+while EPD BUSY high and auto-deasserts after 350ms virtual
+refresh without W1TC. This has NO claim of real electrophoretic
+waveform timing or full GPIO/RTC mux emulation.
+
+**Still open:** whether the corrected IRQ path is enough to allow
+original firmware to poll GT911 and navigate from home. Do not
+mark full touch-to-UI, entire #38 or full-system emulation done
+until the strict live guest EPD frame and actual guest I2C evidence
+both pass. The 0019–0022 experiments are reversible opt-in QEMU
+source patches; production firmware is unchanged.
+
+#### 29 October final isolation: GPIO6 edge IRQ storm; 0020–0022 quarantined
+
+Further 35s real guest HMP physical GPIO register capture identified
+`GPIO_STATUS_REG (0x60004044)=0x40` while
+`GPIO_PIN6_REG (0x6000408c)=0x2180`. This is
+**GPIO6 BUSY with INT_TYPE=3 (BOTH_EDGES, bits[9:7]) and
+INT_ENA=1 (bit13)**, NOT a level-sensitive interrupt.
+Therefore 0022's level auto-deassert is valid in its own QTest
+but does **NOT** repair the real firmware case. The status remains
+latched; the new GPIO IRQ route continually interrupts CPU1
+(`INTERRUPT=0x22`, PC in low-level interrupt path); the firmware
+does not reach its normal YBX home screen and GT911 I2C is not
+polled. Evidence:
+`qa-20261029/s3-x4pro-gpio6-pin-config-0022.json`,
+`qa-20261029/s3-x4pro-real-guest-level-irq-0022.json`.
+
+Consequently opt-in patches 0020/0021/0022 are **QUARANTINED**,
+NOT activated in the current isolated QEMU build, despite passing
+MMIO-only QTests. They must not be promoted to the default chain
+or called working guest interrupt service. A real GPIO interrupt
+matrix model must distinguish the Xtensa core-specific GPIO
+INT_ENA and routing, and recover actual W1TC behavior in the
+FreeRTOS ISR before acceptance; simply ignoring BUSY events
+would mask a genuine modeling issue.
+
+Safe, independent replacement patch
+`0023-x4pro-standalone-idle-button-pullups.patch` is instead
+applied directly after 0019, with no GPIO IRQ wiring changes.
+It restores idle HIGH for active-LOW X4 Pro GPIO0/3/7 keys,
+is opt-in to the X4 Pro I2C/GT911 profile, and leaves all
+other GPIO input states and generic S3 behavior unchanged.
+Compiled QEMU QTests for GT911 and SSD1677 pass with 0019+0023;
+QTest must omit `--gpio-irq-probe` unless explicitly reproducing
+the quarantined 0020–22 experiment.
+
+### 29 October: GT911 → guest I2C verified, UI action not verified (0024)
+
+The isolated S3 model now has optional 0019 GT911 QMP counters,
+safe 0023 X4 Pro passive pullups on active-low GPIO0/3/7 and
+diagnostic-only 0024 SYSTIMER counters. 0020–0022 GPIO IRQ patches
+are **quarantined and unapplied**: real guest GPIO6 BUSY BOTH_EDGES
+produced a stuck IRQ and stalled splash. Do NOT promote them to
+normal QEMU builds. Patch 0024 changes no scheduling, interrupt
+routing or callback decisions. Read-only `/machine/soc/systimer`
+properties `ybx-comparator-{0,1,2}-{fires,reprograms}` expose
+actual guest comparator events.
+
+Actual original X4 Pro factory guest on compiled QEMU:
+after mature home render, a GT911 QMP press+release was read
+and ACKed by firmware (0x8150 read once, 0x814E=0 ACK twice).
+In the 37s boot + 8s test, SYSTIMER comparators 0/1 each fired
+about 8,880 more times, falsifying a stopped-FreeRTOS-tick
+hypothesis; both CPU cores sampled in esp_cpu_wait_for_intr are
+normally idle between IRQs. QA s3-x4pro-systimer-guest-0024.json.
+
+**Coordinate correction:** X4 Pro's BoardConfig touch swapXY,
+flipY plus GfxRenderer's Portrait touch transform mean raw GT911
+(x,y) equals logical portrait (x,y). (130,760) is Library, not
+More as earlier incorrectly labeled. Updated runner uses a tested
+x4pro_raw_to_portrait() transform, and corrected More target
+(350,760). A real 150ms QMP contact in the More area at 35s
+boot had 245→1404 status reads, 0→1 point reads, 0→2
+status ACKs, but SAME SSD1677 frame SHA and frame count before
+and 12s after release, so `true_guest_touch_to_ui_verified=false`.
+See s3-x4pro-gt911-correct-more-0024.json.
+
+Remaining acceptance: firmware-side wasTouchTap →
+MappedInputManager::wasScreenTapped → UiAppHost::routeTouch →
+YbxHomeUi::selectedAction → HomeActivity::loop, or independent
+GPIO button-to-GUI acceptance. The unmodified production app
+has not demonstrated input-to-screen navigation. Do not close
+#38 or claim fully interactive emulation.
