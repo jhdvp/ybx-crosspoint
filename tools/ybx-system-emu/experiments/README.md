@@ -99,3 +99,32 @@ revision was rebuilt, but C3 factory IROM did **not** binary-match;
 do not overinterpret C3 ELF line mappings. See
 `../QEMU_BRINGUP.md` for logs, hashes, register semantics, and
 strict boot acceptance requirements.
+
+## 0009 — X4 Pro BM8563 RTC + CW2017 gauge, explicit S3 machine opt-in
+
+`0009-s3-optin-bm8563-cw2017.patch` introduces
+`hw/i2c/ybx_x4pro_i2c.c` and uses Espressif QEMU's existing
+I2C bus model from 0007. Do **not** add these virtual devices to
+generic S3 by default. To enable this simulation:
+
+```text
+-machine esp32s3,ybx-x4pro-i2c=on
+```
+
+The option belongs to **-machine**; `-global xtensa.esp32s3...`
+does not work (QEMU reports an invalid global class). The YBX
+emulator runner now supports `--x4pro-i2c` and records its
+attachment in `report.json`. C3 rejects the option. QTest
+exercises both negative and positive configurations and full
+I2C register read/write and CW2017 80-byte profile upload.
+It does not imply verified hardware/boot readiness.
+
+Modes and constraints: synthetic 70% battery/3800mV (overridable
+on the CW2017 QEMU device), real host-synchronized BCD RTC with
+basic writable registers, no charger GPIO21 status, no GT911,
+no power gating or I2C wake interrupts, no power-accurate analogue
+inputs. See `../QEMU_BRINGUP.md` for validated chip addresses,
+QTest evidence, I2C device limitations and boot/acceptance status.
+QEMU's current `esp32_gpio.c` write handler is a stub; proper
+GT911 simulation requires GPIO2 (active-low power), GPIO4 (reset),
+GPIO10 (interrupt) behavior first.

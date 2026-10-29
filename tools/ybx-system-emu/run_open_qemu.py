@@ -79,7 +79,8 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
             s3_rom_image: Path | None = None,
             usb_serial: bool = False,
             c3_rom_image: Path | None = None,
-            s3_octal_psram_mb: int | None = None) -> dict:
+            s3_octal_psram_mb: int | None = None,
+            x4pro_i2c: bool = False) -> dict:
     sha256=validate_image(image)
     rom_name = "esp32c3-rom.bin" if chip=="c3" else "esp32s3_rev0_rom.bin"
     rom=qemu/"build-ybx"/rom_name
@@ -106,6 +107,10 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
             shutil.copyfile(rom_source, custom_bios / rom_name)
             bios_dir = "/work/bios"
         target,machine=EMU[chip]
+        if x4pro_i2c:
+            if chip != "s3":
+                raise ValueError("--x4pro-i2c is supported only on ESP32-S3")
+            machine += ",ybx-x4pro-i2c=on"
         cmd=[
             "docker","run","--rm","--network","none",
             "--platform","linux/arm64",
@@ -150,6 +155,8 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
         "runtime_exit_code":exit_code,"duration_limit_s":seconds,
         "usb_serial_routed":usb_serial,
         "virtual_octal_psram_mb": (s3_octal_psram_mb if chip == "s3" else None),
+        "virtual_x4pro_i2c_attached": bool(x4pro_i2c and chip == "s3"),
+        "virtual_x4pro_gt911_attached": False,
         "sdmmc_error":"sdmmc_host_reset returned 0x107" in log,
         "rom_present":True,
         "sdcard_attached":bool(chip=="s3" and sd_image),
@@ -175,6 +182,8 @@ def main()->int:
                    help="route USB Serial/JTAG to host using QEMU patch 0005")
     p.add_argument("--s3-octal-psram-mb",type=int,choices=(8,16),
                    help="attach Octal PSRAM, 8 or 16 MiB, to S3 QEMU")
+    p.add_argument("--x4pro-i2c", action="store_true",
+                   help="opt-in synthetic BM8563/CW2017 devices; GT911 not implemented")
     p.add_argument("--qemu-root",type=Path,
                    default=Path.home()/".local/state/ybx-emulator-upstream/qemu")
     p.add_argument("--docker-image",default="ybx-qemu-builder:20261029")
@@ -182,6 +191,8 @@ def main()->int:
     p.add_argument("--duration",type=int,default=12)
     args=p.parse_args()
     if not 2 <= args.duration <= 60:p.error("duration must be 2..60s")
+    if args.x4pro_i2c and args.chip == "c3":
+        p.error("--x4pro-i2c requires ESP32-S3")
     if args.chip=="s3" and not args.s3_image:p.error("provide --s3-image")
     if args.chip=="c3" and not args.c3_image:p.error("provide --c3-image")
     if args.chip=="both" and (not args.c3_image or not args.s3_image):
@@ -207,7 +218,7 @@ def main()->int:
                   if chip == "c3" and args.c3_rom_image else None)
         result=run_one(chip,image,root,output,args.duration,sd,
                        args.docker_image,s3_rom,args.usb_serial,c3_rom,
-                       args.s3_octal_psram_mb)
+                       args.s3_octal_psram_mb,args.x4pro_i2c)
         print(f"{chip}: exit={result['runtime_exit_code']}, "
               f"ROM={result['rom_seen']}, flash={result['spi_flash_boot_seen']}, "
               f"SDMMC error={result['sdmmc_error']}, "

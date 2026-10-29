@@ -668,3 +668,74 @@ inaccurate. Do not ship this prototype as a virtual instrument.
 
 All **58/58 host regression tests pass**. Tests cover simulation
 harness and **register contracts**, not complete YBX app startup.
+
+### 29 October: opt-in BM8563 + CW2017 virtual I2C peripherals (experiment 0009)
+
+The pinned FreeInk SDK hardware analysis of Xteink X4 Pro identifies
+I2C0 on SDA GPIO39/SCL GPIO38: BM8563 RTC (PCF8563-compatible)
+at **0x51**, CW2017 battery fuel gauge at **0x63**, and GT911 touch
+at **0x5d**, alternate 0x14. This experiment implements **only**
+the RTC and battery; these devices are *simulated*, not sensors on the
+user's Mac. The **S3 machine default remains no sensors**, with NACK
+for both addresses until explicitly enabled.
+
+A new opt-in parameter is available after applying
+`experiments/0009-s3-optin-bm8563-cw2017.patch`
+on top of 0007/0008 as documented in the experiments README:
+
+```text
+-machine esp32s3,ybx-x4pro-i2c=on
+```
+
+Or for the reproducible YBX runner, append `--x4pro-i2c` to an
+S3 run with `--s3-octal-psram-mb 8` and the other usual image,
+ROM, SD and QEMU root arguments. This flag is forbidden for C3,
+explicitly recorded in the boot report as
+`virtual_x4pro_i2c_attached`, and **never** sets
+`virtual_x4pro_gt911_attached` to true. Unknown I2C addresses
+continue to NACK.
+
+- `ybx.bm8563` has the BM8563 register layout: control1/control2
+  (0x00/0x01), BCD seconds/minutes/hours/day/weekday/month/year
+  (0x02..0x08), and alarm/timer registers through 0x0F.
+  It uses QEMU's virtual RTC time offset, supports register-pointer
+  writes and repeated-start reads, and deliberately does **not** claim
+  full RTC oscillator/alarms/interrupt emulation.
+- `ybx.cw2017`: VERSION=0x0D while in normal mode, VCELL at 0x02/0x03,
+  SoC at 0x04, MODE=0x08, profile flag=0x0B, 80-byte
+  BATINFO registers 0x10..0x5F. Reads show zero percent before
+  the profile is uploaded and update-enabled; full 80-byte writes
+  followed by the 0x80 flag enable the configurable simulated
+  SoC (default **70%**) and simulated VCELL (**3800mV**). This
+  is not real battery telemetry. The gauge does **not** infer
+  charger state from an I2C register: FreeInk SDK records charging
+  on GPIO21, not yet modeled in QEMU. The battery profile bytes
+  remain those supplied by the guest (not a copied OEM curve).
+- GT911 is **not** attached. It needs GPIO2 active-low power,
+  GPIO4 reset and GPIO10 interrupt; QEMU's current
+  `esp32_gpio.c` writes are a stub. Adding a slave which always
+  ACKs would be demonstrably wrong. Implement GPIO register updates
+  and power-gated GT911 behavior first, with tests for NACK while
+  unpowered and valid reads only after its reset sequence.
+
+**Verified against actual compiled QEMU**, not a mock: tool
+`probe_x4pro_i2c_qtest.py` runs QEMU QTest with the profile
+both disabled and enabled, checking real I2C0 MMIO START/STOP,
+ACK/NACK, FIFO read, writing/reading the RTC control register,
+valid BCD clock, version 0x0D, profile-missing SoC=0,
+eight 10-byte BATINFO chunks, full-profile flag, 70% synthetic
+SoC, first/last profile byte, and converted simulated 3800mV.
+**46 live QTest reads** in the enabled case and **6** in disabled.
+Report `qa-20261029/s3-x4pro-rtc-gauge-qtest.json`
+includes ROM and QEMU binary SHA256 hashes.
+
+A separate bounded 18-second real-firmware QEMU run using the optional
+board profile reached ROM and bootloader entry but did not produce
+verified application UART or e-paper/SD mount. This is **not**
+an acceptance pass: `qa-20261029/s3-x4pro-rtc-gauge-uart.log`.
+Formal runner report is in
+`qa-20261029/s3-x4pro-i2c-runner/report.json`.
+No synthetic battery or RTC result is presented as real hardware data.
+
+Host regression: **63/63 Python tests passed** after including the
+new runner and QTest contract tests.
