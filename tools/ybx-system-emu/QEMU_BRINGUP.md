@@ -91,3 +91,33 @@ python3 tools/ybx-system-emu/run_open_qemu.py --chip both \
 No CPU-to-SPI e-paper framebuffer, SD card file IO, Wi-Fi, TLS, or device
 interaction was proven in this QEMU fork. A successfully compiled QEMU does
 not mean a successfully emulated Xteink board.
+
+## CPU crash analysis and first source-level fix (29 October 2026)
+
+The initial C3 crash was in the upstream QEMU file `hw/dma/esp32c3_gdma.c`:
+
+- Three C3 GDMA interrupt banks occupy 0x10 bytes each (offsets 0x00–0x2c); the code erroneously decoded their channels with `DMA_DIR_REGS_SIZE=0x60`, making offsets 0x10–0x2c index outside `R_DMA_INT_RAW..CLR` and assert.
+- Fixed *both* interrupt-bank read and write to use `DMA_INT_CHAN_REGS_SIZE=0x10`.
+- Corrected a second source defect: the conversion table has **five input and four output interrupt bits**. Dividing its odd length by two misclassified the fifth input bit. Now both mapping directions use five input entries.
+- Patch is stored as `patches/0001-esp32c3-gdma-interrupt-layout.patch` in YBX; `sh tools/ybx-system-emu/apply_qemu_patches.sh` applies it only when cleanly applicable, or reports already applied, and never touches the YBX firmware.
+- Verified a real incremental `ninja -j3 qemu-system-riscv32` build. **The previous GDMA assertion no longer occurs** in the actual C3 factory-image run. However, the guest now logs eFuse key/signature warnings, and QEMU reports a heap corruption on timeout/exit. It still does **not** reach a proven YBX application UART startup. Do not call the CPU boot complete in open QEMU.
+
+S3 ROM behavior is now traced independently for CPU 0 and 1:
+
+- Core 0 executes reset-vector instructions, ROM `boot_prepare` and later `usb_uart_device_tx_one_char`, then enters the **debug exception vector at 0x40000280** and loops at 0x40000288.
+- Recorded `EXCCAUSE=0x0000000e`, `DEBUGCAUSE=0x00000008`, `EXCVADDR=0xffffffff`, `EPC1=0x40049057`. The ROM symbol for the EPC is `usb_uart_device_tx_one_char`. This suggests an invalid pointer/access in ROM UART logic; its root cause is **not yet proven**.
+- Core 1 waits at ROM address 0x40043a3e for a CPU-startup handoff. That is a normal wait condition *while the first core initializes*, not itself proof of a dual-core emulation defect.
+- The ROM ELF directly supplied to QEMU via `-kernel` fails on overlapping ELF program regions. Supplying only the 1,460-byte ROM DRAM initializer through generic `-device loader` also failed to load. Neither failed experiment is presented as a fix.
+- The 64 MiB FAT16 card is attached to the QEMU virtual S3 SDMMC, but **no FAT mount or block I/O has been verified**.
+
+Detailed logs, disassembly traces and JSON status are local-only:
+`~/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qemu-cpu-blocker-20261029/report.json`.
+
+### Current next failure gates
+
+1. Fix S3 boot ROM/DRAM initialization or emulated ROM USB-UART pointer behavior, verify actual `bootloader` and application UART, not merely that TCG executes instructions.
+2. Fix C3's remaining invalid eFuse/secure-boot state and QEMU heap-corruption symptom, then require application UART and watchdog stability.
+3. Verify S3 SDMMC blocks and FAT mount from YBX machine code.
+4. Implement GP-SPI2 and SSI e-paper attachment only after repeatable guest boot.
+
+**Not completed:** whole-firmware SPI/e-ink, SD, Wi-Fi and TLS integration. Not deployed or flashed.

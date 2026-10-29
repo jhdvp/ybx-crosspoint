@@ -78,8 +78,11 @@ def run_one(chip: str, image: Path, qemu: Path, output: Path,
             "Preferences.cpp", "Wire.cpp", "sdmmc", "Arduino")),
         "sdmmc_error":"sdmmc_host_reset returned 0x107" in log,
         "gdma_assertion":"esp32c3_generic_int_reg" in log,
+        "host_heap_corruption":any(marker in log for marker in (
+            "corrupted size vs. prev_size", "malloc():", "double free")),
         "qemu_abort":any(marker in log for marker in (
-            "Assertion ", "assertion failed", "Bail out!", "unknown type", "ERROR:")),
+            "Assertion ", "assertion failed", "Bail out!", "unknown type",
+            "ERROR:", "corrupted size vs. prev_size", "malloc():", "double free")),
         "qemu_timeout":"terminating on signal 15" in log,
         "rom_present":True,
         "sdcard_attached":bool(chip=="s3" and sd_image),
