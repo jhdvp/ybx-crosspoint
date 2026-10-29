@@ -108,6 +108,7 @@ def main():
              "timeout","-k","2s","7s",
              "/qemu/build-ybx/qemu-system-xtensa",
              "-machine","esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on",
+             "-accel","qtest",
              "-nographic","-monitor","none","-serial","null",
              "-qtest","stdio","-L","/bios"]
         result=subprocess.run(cmd,input=p.text(),text=True,

@@ -762,25 +762,75 @@ boot strap preservation. Real evidence is in
 This verifies GPIO **register behavior**, NOT a GPIO-to-GT911
 connection. It must not be considered proof of a working touchscreen.
 
-### 29 October: GT911 experiment 0011 — compiled, NOT accepted
+### 29 October: GT911 experiment 0011 — power/reset I2C QTest PASSED
 
-`0011-s3-optin-gt911-power-gating.patch` is a draft:
-virtual GT911 device with separate S3 machine flag
-`-machine esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on`.
-Its GPIO2 active-low power, GPIO4 reset and GPIO10 address selection
-connect to named output levels implemented in 0010; the intended
-I2C behavior is NACK while unpowered/reset, 50 ms power-on
-settling delay, GT911 product ID at 0x8140, status 0x814e and no
-fabricated touches. It does not model real contact events, HOME key
-interrupt, GPIO input IRQ, full configuration, or physical hardware.
+The earlier `FAIL Unknown command 'clock_step'` was a **harness
+configuration bug**, not a limitation of Espressif QEMU's clock
+implementation: `-qtest stdio` exposes memory access commands but
+`clock_step` is available only with `-accel qtest`. The corrected
+`probe_x4pro_gt911_qtest.py` invokes **both** options and uses
+QEMU's real deterministic virtual clock.
 
-The draft compiles, but **QTest acceptance is BLOCKED**:
-`probe_x4pro_gt911_qtest.py` calls `clock_step`, which this
-configured QEMU QTest endpoint rejects with
-`FAIL Unknown command 'clock_step'`. It has therefore **not**
-verified NACK/ACK transitions, readiness timing or alternate address,
-and must not be included in the standard `apply_qemu_patches.sh`.
-Do not set runner evidence `virtual_x4pro_gt911_attached=true`
-or close Kaneo #36 until a usable clock/timing test and real
-guest firmware checks are completed. The reliable 0009 runner
-continues to show GT911 as absent.
+The **compiled QEMU machine**, with explicit
+`-machine esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on`, passed
+**20 observed MMIO readbacks** checking:
+- NACK for GT911 at 0x5D while unpowered, held in GPIO4 reset
+  and before the 50ms readiness interval;
+- power-on GPIO2 low, GPIO4 low held 3ms then high, and clock
+  advanced by 60ms;
+- I2C ACK, product ID `911` at registers 0x8140..0x8142 and
+  idle touch status 0 at 0x814E;
+- NACK after GPIO2 power-off and after power-on without a fresh
+  GPIO4 reset;
+- GPIO10 sampled HIGH at reset release selects alternate
+  address 0x14, and old 0x5D NACKs.
+
+Evidence: `qa-20261029/s3-x4pro-gt911-qtest.json`, with QEMU and
+ROM SHA-256 hashes. The explicit opt-in runner argument
+`--x4pro-gt911` additionally requires S3 and `--x4pro-i2c`.
+Its evidence flags distinguish `virtual_x4pro_gt911_attached=true`
+from `gt911_input_verified=false`. The QTest verifies *virtual
+board GPIO-to-I2C behavior*, **NOT** injected real user touches,
+touch interrupts, complete Goodix configuration or full firmware
+readiness. This patch remains an **experiment** (not included in
+the default `apply_qemu_patches.sh`) until those other acceptance
+gates are addressed. Kaneo #36 remains in progress.
+
+### 29 October: application IROM execution despite silent UART
+
+8s bounded QEMU execution without `-icount`, using the opt-in
+BM8563/CW2017/GT911 device profile, produced an Xtensa instruction
+trace in `qa-20261029/s3-gt911-boot-trace.log`. The existing
+factory-IROM-range analyzer confirmed 43,827 application-IROM
+instruction records of 93,390 records total. Crucially, the
+factory application IROM segment at 0x42000020, length **2,792,968
+bytes**, exactly equals the isolated reproducible `092c2be5`
+X4 Pro build: **same SHA-256
+`b2116bc0fd2985d67d83ce8dbb346c41c0464a576b8aa829912a77ab4cf4e7c4`**
+(`qa-20261029/s3-gt911-firmware-irom-parity.json`).
+
+ELF `xtensa-esp32s3-elf-nm -anC` correlation proves that actual
+application instructions were executed from code symbols including
+`ActivityManager`, `InputManager::pollGt911`,
+`InputManager::beginGt911`, `HalDisplay`, `HalStorage`,
+`SDCardManager`, `HWCDC::available`, and `HalGPIO::isPressed`.
+This is **stronger than bootloader-only execution**. It does
+**not** verify those components initialized successfully, displayed
+pixels, mounted FAT or read physical touch events. Instruction
+traces enumerate translated blocks, not frequency or completion
+of high-level operations. Report:
+`qa-20261029/s3-gt911-execution-report.json`.
+
+A separate 12s formal `run_open_qemu.py --x4pro-i2c
+--x4pro-gt911 ...` run exits 1 because its strict acceptance
+requires app UART and normal termination; those were not seen.
+`qa-20261029/s3-x4pro-gt911-runner/report.json` explicitly has
+`virtual_x4pro_gt911_attached=true`, no guest panic, but
+`gt911_input_verified=false`,
+`epaper_verified=false`, `sd_mount_verified=false` and
+`qemu_timeout=true`. **Do not promote to full emulator READY.**
+
+Host suite with corrected GT911 probe and optional-runner checks:
+**70/70** Python unit tests pass; live compiled-QEMU GT911 QTest
+passes independently (host unit count does not include the live
+external QEMU command).

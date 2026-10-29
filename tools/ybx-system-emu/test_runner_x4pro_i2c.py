@@ -44,3 +44,29 @@ class X4ProRunnerTests(TestCase):
             with self.assertRaisesRegex(ValueError, "ESP32-S3"):
                 run_one("c3", image, qemu, root / "logs", 2,
                         None, "test-builder", x4pro_i2c=True)
+
+
+    def test_gt911_optin_in_machine_does_not_claim_real_input(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image, qemu = self.make_flash_rom(root, "s3")
+            with patch("run_open_qemu.subprocess.run",
+                       return_value=SimpleNamespace(
+                           stdout="", stderr="", returncode=124)) as proc:
+                report = run_one("s3", image, qemu, root / "logs", 2,
+                                 None, "test-builder", x4pro_i2c=True,
+                                 x4pro_gt911=True)
+            command = proc.call_args.args[0]
+            self.assertEqual(command[command.index("-machine") + 1],
+                "esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on")
+            self.assertTrue(report["virtual_x4pro_gt911_attached"])
+            self.assertFalse(report["gt911_input_verified"])
+            self.assertFalse(report["epaper_verified"])
+
+    def test_gt911_without_i2c_fails_closed(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image, qemu = self.make_flash_rom(root, "s3")
+            with self.assertRaisesRegex(ValueError, "requires"):
+                run_one("s3", image, qemu, root / "logs", 2,
+                        None, "test-builder", x4pro_gt911=True)

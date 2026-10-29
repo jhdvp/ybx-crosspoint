@@ -140,16 +140,25 @@ normal S3 still ignores writes, opt-in S3 updates both GPIO
 register banks, preserves boot strap and toggles GPIO2/4/10
 direction/output correctly. This is GPIO MMIO groundwork only.
 
-## 0011 — draft, unaccepted GT911 power-gated slave
+## 0011 — GT911 GPIO power/reset/address I2C verified; input still pending
 
 `0011-s3-optin-gt911-power-gating.patch` (after 0010)
-compiles an optional GT911 with active-low GPIO2 power,
-GPIO4 reset and GPIO10 address select, plus synthetic idle
-product/status reads. No touch events are invented. It is **NOT
-ACCEPTED**: this QEMU QTest endpoint returns
-`FAIL Unknown command 'clock_step'` and thus cannot verify
-the 2 ms reset/50 ms ready delays via its existing test
-`probe_x4pro_gt911_qtest.py`. Do not include 0011 in the
-default patch application pipeline, do not claim functional
-touch input, and leave Kaneo #36 open. Add proper timing
-tests or a different deterministic test clock first.
+compiles an optional Goodix GT911 model on S3 I2C0, with GPIO2
+active-low power, GPIO4 reset, GPIO10 address selection, no
+fabricated touches and idle status at 0x814E. Its real compiled-QEMU
+**deterministic QTest passes** after fixing the runner to use
+`-accel qtest` alongside `-qtest stdio`. This unlocks the
+`clock_step` command, previously rejected due to missing
+QTest accelerator. The script checks 0x5D/0x14, NACK while
+unpowered/in reset, minimum reset and ready delays, product
+registers and no contacts. JSON evidence
+`qa-20261029/s3-x4pro-gt911-qtest.json`.
+
+A standalone YBX runner opt-in `--x4pro-gt911` requires
+`--x4pro-i2c`; the generic S3 default is unchanged. This
+validates **synthetic device handshake and MMIO behavior**, not
+touch-event injection, input GPIO interrupts, full Goodix setup,
+e-ink panel output, SD mount or full guest ready. 0011 remains
+EXPERIMENTAL rather than added to the default patch chain.
+See `../QEMU_BRINGUP.md` for the IROM-execution evidence and
+exact factory/build SHA matching.
