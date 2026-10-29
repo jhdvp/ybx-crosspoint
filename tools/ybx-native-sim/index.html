@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YBX Native FreeInkUI Simulator</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#222;background:#eee}
+*{box-sizing:border-box}body{margin:0}
+header{background:#161916;color:#fff;padding:15px 24px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+header strong{font-size:18px;letter-spacing:.04em}header span{font-size:12px;color:#ccc}
+.controls{background:#fff;padding:12px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;border-bottom:1px solid #ccc}
+label{display:flex;flex-direction:column;font-size:11px;font-weight:700;gap:5px}
+select,button{font:inherit;border:1px solid #a4aaa2;padding:9px;background:#fff;border-radius:4px;cursor:pointer}
+button:focus-visible,select:focus-visible{outline:3px solid #888;outline-offset:3px}
+main{max-width:1300px;display:grid;grid-template-columns:minmax(280px,1fr) minmax(250px,400px);gap:20px;margin:auto;padding:18px}
+.left{display:flex;align-items:center;flex-direction:column;gap:12px}
+.topline{display:flex;justify-content:space-between;gap:8px;width:100%;align-items:center}
+.topline h1{font-size:16px;margin:0}.topline span{font-family:monospace;font-size:12px;color:#666}
+.stage{width:100%;min-height:580px;display:flex;align-items:flex-start;justify-content:center;overflow:auto}
+.device{position:relative;background:#232623;padding:12px;border-radius:14px;box-shadow:0 12px 25px #0002;max-width:100%}
+.device::after{position:absolute;right:-4px;top:23%;width:4px;height:78px;background:#505450;content:""}
+.frame{position:relative;line-height:0;background:white}
+.frame img{display:block;width:100%;height:auto;image-rendering:pixelated}
+.hit{position:absolute;border:0;background:transparent;outline-offset:-2px;padding:0;cursor:pointer;border-radius:0}
+.hit:hover{outline:2px dashed #777;background:rgba(140,140,140,.12)}
+.hit:focus-visible{outline:2px solid #000}
+.right{background:white;border:1px solid #ddd;padding:15px;border-radius:8px;height:fit-content}
+.right h2{font-size:14px;margin:0 0 12px}.right img{display:block;width:100%;max-height:510px;object-fit:contain;border:1px solid #ddd;background:#e7e8e3}
+.right p,.footnote{font-size:12px;color:#555;line-height:1.55}
+.actions{display:flex;flex-wrap:wrap;justify-content:center;gap:9px}.actions button{font-size:12px;min-width:80px}
+.actions .primary{background:#191b18;color:white}
+.modalShade{position:fixed;inset:0;background:#0008;display:grid;place-items:center;padding:24px}
+.modal{background:white;border:2px solid #111;padding:20px;max-width:410px;width:100%}
+.modal h2{margin:0 0 10px;font-size:22px}.modal p{font-size:14px;line-height:1.5}
+.modal .actions{justify-content:flex-end}
+#debug{font:12px ui-monospace,monospace;color:#555;min-height:22px}
+@media(max-width:800px){main{display:flex;flex-direction:column;padding:10px}.stage{min-height:360px}.right{width:100%}.controls{padding:9px}}
+</style></head><body>
+<header><strong>YBX · FreeInkUI Native Simulator</strong><span>С++ → 1-bit framebuffer → PNG · без ESP32 / SD / Wi-Fi</span></header>
+<div class="controls">
+<label>Экран<select id="screen"><option value="sources">Источники</option><option value="pair">Подключение</option><option value="settings">Настройки</option></select></label>
+<label>Устройство<select id="model"><option value="x3">X3 · 480×800</option><option value="x4">X4 · 480×800</option><option value="x4pro" selected>X4 Pro · 528×792</option></select></label>
+<label>Ориентация<select id="orientation"><option value="portrait">Портрет</option><option value="landscape">Альбом</option><option value="portrait-inverted">Портрет 180°</option><option value="landscape-inverted">Альбом 180°</option></select></label>
+<label>Состояние<select id="scenario">
+<option value="linked">2 источника</option><option value="all">3 источника</option><option value="empty">Пустой каталог</option><option value="unpaired">Нет привязки</option><option value="expired">Токен истёк</option><option value="removed">Устройство удалено</option><option value="offline">Нет сети</option><option value="provider">Ошибка провайдера</option><option value="loading">Обновление</option><option value="codeExpired">Истёк код</option></select></label>
+<button id="refresh">Перерисовать</button>
+</div>
+<main><section class="left"><div class="topline"><h1>Нативный framebuffer FreeInkUI</h1><span id="dimensions">—</span></div>
+<div class="stage" id="stage"><div class="device" id="device"><div class="frame" id="frame"><img id="picture" alt="Нативный эмуляторный кадр"/></div></div></div>
+<div class="actions"><button data-key="back">Назад</button><button data-key="prev">↑ Назад по кнопкам</button><button data-key="enter" class="primary">Выбрать</button><button data-key="next">↓ Далее</button></div>
+<p class="footnote">Нажимай кнопки непосредственно на дисплее или используй клавиши ↑ / ↓ / Enter / Esc. Обозначения и демонстрационные данные не связаны с реальным аккаунтом.</p>
+<div id="debug" role="status" aria-live="polite"></div></section>
+<aside class="right"><h2>Исходный эталонный PNG (28.10.2026)</h2><img id="reference" alt="Эталонный макет"><p>Слева рисует реальный C++ <code>FreeInkUI::DisplayTarget</code> с <code>YbxAccountLayout.h</code>, справа — утверждённый эскиз. Экран Settings использует настоящие FreeInkUI settingRow и маршруты YBX.</p><p>Это <b>не эмуляция процессора</b> ESP32 и не запуск всего <code>firmware.bin</code>. Для полного тестирования Wi-Fi, SPI/e-ink, SD и TLS нужно отдельное окружение и аппаратная приёмка.</p></aside></main>
+<div id="modals"></div>
+<script>
+const $=id=>document.getElementById(id);
+const state={screen:"sources",model:"x4pro",orientation:"portrait",scenario:"linked",focus:1};
+let hits=[],busy=false,latestRequest=0;
+const modal=(heading,detail)=>{$("modals").innerHTML='<div class="modalShade"><div class="modal"><h2>'+heading+'</h2><p>'+detail+'</p><div class="actions"><button id="dismiss">Закрыть</button></div></div></div>';$("dismiss").onclick=()=>{$("modals").innerHTML="";};};
+async function render(){
+ const request=++latestRequest;busy=true;
+ for(const key of ["screen","model","orientation","scenario"])$(key).value=state[key];
+ const query=new URLSearchParams(state);
+ $("debug").textContent="Выполняется нативный C++ рендеринг…";
+ try{
+ const res=await fetch("/frame?"+query.toString(),{cache:"no-store"});
+ if(!res.ok)throw Error("HTTP "+res.status);
+ const data=await res.json();
+ if(request!==latestRequest)return; // Discard stale frames during rapid control changes.
+ const img=$("picture");img.src=data.image;
+ const wrap=$("frame");wrap.style.width=data.width+"px";wrap.style.height=data.height+"px";
+ $("dimensions").textContent=data.width+"×"+data.height+" px";
+ hits=data.hits;
+ wrap.querySelectorAll("button.hit").forEach(x=>x.remove());
+ for(let i=0;i<hits.length;i++){
+  const h=hits[i];
+  const el=document.createElement("button");el.type="button";el.className="hit";
+  el.style.left=h.x+"px";el.style.top=h.y+"px";el.style.width=h.w+"px";el.style.height=h.h+"px";
+  el.title=h.action+" · "+(i+1);el.setAttribute("aria-label",h.action+" "+(i+1));
+  el.onclick=()=>act(h);
+  wrap.append(el);
+ }
+ // Scale the whole pixel surface, hitbox coordinates included.
+ const avail=$("stage").clientWidth-40;
+ const scale=Math.min(1,avail/(data.width+24));
+ $("device").style.width=data.width*scale+24+"px";
+ $("device").style.height=data.height*scale+24+"px";
+ wrap.style.transform="scale("+scale+")";
+ wrap.style.transformOrigin="top left";
+ $("reference").src="/reference/"+({sources:"06-sources",pair:"07-pair",settings:"08-settings"}[state.screen])+".png";
+ $("debug").textContent=data.renderer+" · "+hits.length+" активных областей";
+ }catch(ex){if(request===latestRequest)$("debug").textContent="Ошибка: "+ex.message;}
+ finally{if(request===latestRequest)busy=false;}
+}
+function act(hit){
+ const action=hit.action;
+ if(action==="settings"){state.focus=hit.focus;
+  if(hit.focus<2){state.screen="sources";state.focus=1;}
+  else modal("Системный раздел",["","","Синхронизация","Оформление","Язык","Экран сна","Обновления","Поддержка","Все настройки"][hit.focus]+" — находится в прошивке FreeInk, но не запущен в этом host-процессе.");
+ }else if(action==="cancel"){state.screen="sources";state.focus=1;}
+ else if(action==="back"){state.screen="settings";state.focus=0;}
+ else if(action==="primary"){
+  if(["unpaired","expired","removed"].includes(state.scenario)){state.screen="pair";state.focus=1;}
+  else state.scenario="linked";
+ }else if(action==="refresh"){state.scenario="linked";}
+ else if(action==="cabinet")modal("Источники в кабинете","Управление выполняется через https://my.ybx.app/cabinet#sources — секреты ридера сюда не передаются.");
+ else if(action==="options")modal("Действия","Управление источниками · Сменить аккаунт · Каталоги. Это меню сценариев, не выполнение API.");
+ else if(action==="renew"){state.scenario="unpaired";modal("Новый код","Здесь должен запрашиваться новый device-code у сервера. В симуляторе сеть отключена.");}
+ else if(action==="qr")modal("QR демонстрационный","Рисунок QR в нативном кадре намеренно не сканируется и не содержит ключи.");
+ render();
+}
+function move(delta){const max=state.screen==="settings"?9:3;state.focus=(state.focus+delta+max)%max;render();}
+document.querySelectorAll(".controls select").forEach(node=>node.onchange=()=>{
+ state[node.id]=node.value;
+ state.focus=state.screen==="settings"?0:1;
+ render();
+});
+$("refresh").onclick=render;
+document.querySelectorAll("[data-key]").forEach(node=>node.onclick=()=>{
+ const key=node.dataset.key;
+ if(key==="next")move(1);else if(key==="prev")move(-1);
+ else if(key==="back")act({action:"back"});
+ else act({action:state.screen==="settings"?"settings":state.screen==="pair"?["cancel","renew","qr"][state.focus]:["back","primary","options"][state.focus],focus:state.focus});
+});
+document.addEventListener("keydown",ev=>{
+ if(["INPUT","SELECT","TEXTAREA"].includes(document.activeElement?.tagName))return;
+ if(ev.key==="ArrowDown"){ev.preventDefault();move(1);}
+ if(ev.key==="ArrowUp"){ev.preventDefault();move(-1);}
+ if(ev.key==="Escape"){ev.preventDefault();act({action:"back"});}
+ if(ev.key==="Enter"){ev.preventDefault();const b=document.querySelector('[data-key="enter"]');b.click();}
+});
+window.addEventListener("resize",()=>{render();});
+render();
+</script></body></html>
