@@ -13,3 +13,22 @@ Trace: `~/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qemu-boot-d
 **Decision:** Experiment rejected as an effective boot fix. Patch reverted from the actual QEMU worktree and retained here only as a reproducible hypothesis. Do not deploy, assume ROM completeness, or count this as a passing emulation gate.
 
 Next: investigate why ROM UART's output pointer is invalid/exceptional by inspecting ESP32-S3 ROM runtime initialization, reset peripherals and specific exception registers; avoid bypassing ROM initialization.
+
+## 0004 — forced DRAM initializer load (rejected)
+
+`0004-s3-rom-initializer-trial.patch` is a discarded experiment against
+Espressif QEMU's `hw/xtensa/esp32s3.c` (base `febae18`, after accepted
+C3 GDMA + USB Serial/JTAG patches).
+
+The patch loads generated local ROM writable-section values into RAM before
+Xtensa CPU reset. HMP inspection confirmed that the RAM pointer at
+`0x3fceffe4` was initially `0x3fcef6a4`, but ROM reset overwritten it
+with zero, leaving the same `LoadProhibited` at `0x400494ff`.
+It must NOT be added to `apply_qemu_patches.sh`.
+
+**Superseding working solution:** `../extract_rom_with_sections.py`
+reconstructs the guest ROM's **copy-source addresses** using the local
+Espressif ELF; the original (unchanged) accepted-patch QEMU then proceeds
+beyond the previous fatal ROM handler. Evidence and remaining acceptance
+gates are in `../QEMU_BRINGUP.md`. No hardware or production firmware
+was changed.

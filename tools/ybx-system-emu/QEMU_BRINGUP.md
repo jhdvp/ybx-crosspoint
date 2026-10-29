@@ -121,3 +121,304 @@ Detailed logs, disassembly traces and JSON status are local-only:
 4. Implement GP-SPI2 and SSI e-paper attachment only after repeatable guest boot.
 
 **Not completed:** whole-firmware SPI/e-ink, SD, Wi-Fi and TLS integration. Not deployed or flashed.
+
+## Host-runner evidence hardening (29 October 2026)
+
+The original 64 MiB file at `artifacts/ybx-esp32-system-emulation-20261029/qemu/ybx-test-sd-64m.img`
+was inspected: its first 512 bytes are all zero, including the BPB, filesystem
+type and boot signature. Its apparent size **does not make it a FAT image**.
+It was never evidence of an SD mount.
+
+A replacement **disposable** FAT16 image was created with the pinned Linux
+builder's `mkfs.fat` at:
+`~/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qa-20261029/ybx-test-sd-fat16.img`.
+
+Reproduce safely (no network or real reader SD card):
+
+```sh
+out="$HOME/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qa-20261029"
+mkdir -p "$out"
+docker run --rm --network none --platform linux/arm64 \
+  --mount "type=bind,src=$out,dst=/out" \
+  ybx-qemu-builder:20261029 \
+  mkfs.fat -C -F 16 -n YBXTEST /out/ybx-test-sd-fat16.img 65536
+```
+
+`run_open_qemu.py` now checks the FAT16/FAT32 boot-sector marker at the correct
+offset, 0x55AA signature and basic BPB sector fields, **not** the FAT directory
+or real guest read/write. A header passing these checks is not proof of a
+mountable filesystem. The runner also distinguishes QEMU process crashes
+(including GDMA assertions) from timeouts, preserves actual exit codes, handles
+`TimeoutExpired` output regardless of whether Python returned bytes or text,
+and checks only the QEMU binary required for the selected target.
+
+Live isolated boot smoke test with the new FAT16 card: 2-second runs on
+both C3 and S3 returned 124 (host timeout) with **no ROM/application UART
+markers**. Both boot gates therefore remain **UNVERIFIED**. The S3 card was
+attached, not mounted; no SDMMC block IO was observed. The generated report:
+`~/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qa-20261029/boot/report.json`.
+
+Host unit-test command:
+
+```sh
+python3 -m unittest discover -s tools/ybx-system-emu -p 'test_*.py'
+```
+
+This verifies report classification and FAT boot-sector rejection, never
+complete firmware or hardware compatibility.
+
+## Root cause confirmed: missing ROM reset-copy payloads (29 October 2026)
+
+**New reproducible finding, superseding the rejected DRAM-only experiment:**
+
+The ESP32-S3 ROM reset routine traverses copy descriptors at
+`0x40057354..0x400575c4`. These copy **from instruction ROM to DRAM**.
+The original `extract_rom_elf.py` produced the instruction-ROM PT_LOAD bytes,
+but the local ELF also holds initialized writable sections that must populate
+the descriptor **source addresses** within instruction ROM. Consequently:
+
+- `spi_dummy_len_fix()` at `0x400494ff` accessed an uninitialized pointer
+  `rom_spiflash_legacy_data` in DRAM (`0x3fceffe4`) and raised
+  `EXCCAUSE=0x1c`, `EXCVADDR=0x1b`; the ROM's
+  `ets_fatal_exception_handler` then looped at `0x40050f3f`.
+- ROM reset descriptor for that pointer:
+  destination `0x3fceffe4..0x3fceffec`, source `0x40057874`.
+  The original extracted ROM's source was zero; the local ROM ELF gives
+  `0x3fcef6a4` for the first word. Other SPI Flash structures have the
+  same omission (for example, source `0x40058130`).
+- Pre-populating DRAM in a separate QEMU experiment was **not** effective,
+  since the guest ROM reset routine overwrote it again with zero and
+  `0xffffffff`. The rejected source-level trial is preserved only at
+  `experiments/0004-s3-rom-initializer-trial.patch`, not in accepted patches.
+- The host-only `extract_rom_with_sections.py` reconstructs the **original
+  ROM reset-copy data sources** using the locally installed Espressif ROM
+  ELF's writable sections. It populates 19 nonempty regions without
+  altering any instruction opcodes, firmware binary, FreeInk SDK, or the
+  accepted QEMU source. The separate `extract_rom_data.py` extracts the
+  writable section values and validates expected SPI legacy pointers.
+
+Reproduce the corrected ROM from a local PlatformIO ROM ELF:
+
+```sh
+out="$HOME/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qa-20261029"
+rom="$HOME/.platformio/tools/tool-esp-rom-elfs/esp32s3_rev0_rom.elf"
+python3 tools/ybx-system-emu/extract_rom_with_sections.py \
+  --elf "$rom" --out "$out/esp32s3-rom-complete.bin"
+python3 tools/ybx-system-emu/run_open_qemu.py \
+  --chip s3 --duration 4 \
+  --s3-image "$HOME/Projects/YBX/artifacts/ybx-reader-ui-20261029/settings/YBX-SETTINGS-UNRELEASED-x4pro-092c2be5-factory.bin" \
+  --s3-rom-image "$out/esp32s3-rom-complete.bin" \
+  --sd-image "$out/ybx-test-sd-fat16.img" \
+  --out "$out/corrected-rom-runner"
+```
+
+**Results and precise limits:**
+
+- Corrected local S3 ROM: 393216 bytes, SHA-256
+  `7c3220323773980fe73d929af322bb66b06432feb959ca620c2c5429b8e15f31`.
+- Using the **unchanged** previously built accepted-patch QEMU, the
+  8-second traced experiment no longer enters `0x40050f3f`, and the
+  CPU executes instructions in the `0x403cxxxx` IRAM range (up to
+  `0x403ce4d0`), consistent with advancing past ROM startup.
+  Evidence: `qa-20261029/s3-complete-rom-trace.log` compared with
+  `qa-20261029/s3-rom-initializers-trace.log`.
+- The portable `--s3-rom-image` runner copies the corrected ROM to
+  a disposable, sandbox-mounted BIOS directory and records ROM SHA-256.
+  It **does not modify** the checked-out QEMU binaries or normal ROM image.
+  Its 4-second S3 run returned exit 124; no guest UART boot/app markers,
+  no verified SDMMC mount, no e-paper, no Wi-Fi/TLS. A timeout is failure,
+  not a passing boot gate. See
+  `qa-20261029/corrected-rom-runner/report.json`.
+- The available evidence does not yet establish stable bootloader completion
+  or application startup; next inspect the `0x403cdaxx` routine and
+  UART/peripheral state, then require an explicit guest bootloader and
+  application UART log before claiming success.
+
+Host tests:
+```sh
+python3 -m unittest discover -s tools/ybx-system-emu -p 'test_*.py'
+```
+33 tests passed, including reconstructed ROM copy-table bounds and a
+mocked isolated custom-ROM runner. No physical Xteink device was flashed.
+
+### Verified factory-app IROM reachability (20-second QEMU execution)
+
+Using the corrected S3 ROM with the **unchanged accepted-patch** open QEMU
+and the actual `092c2be5` X4 Pro factory image, a longer isolated
+20-second instruction trace reaches the image's executable Flash mapping:
+
+- The ESP application image header at flash offset `0x10000` declares
+  the IROM segment **`0x42000020..0x422a9e28`** (end exclusive).
+- The QEMU trace contains **8,663 instruction-disassembly records** with
+  PC inside this **same declared factory application segment**, ranging
+  from `0x421bab08` to `0x422a8e6a` (first `0x421c487c`).
+- The prior ROM fatal loop `0x40050f3f` is **absent**.
+  Instructions also execute in IRAM at `0x403cxxxx`.
+- The 20-second VM ended with host timeout `124`, without application
+  UART readiness messages. Therefore **real application IROM code was
+  reached**, but initialization, stable event loop and full device
+  behavior are **not accepted**.
+
+To reproduce proof from the saved (local-only) trace and exact factory image:
+
+```sh
+out="$HOME/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qa-20261029"
+python3 tools/ybx-system-emu/analyze_qemu_trace.py \
+  --factory-image "$HOME/Projects/YBX/artifacts/ybx-reader-ui-20261029/settings/YBX-SETTINGS-UNRELEASED-x4pro-092c2be5-factory.bin" \
+  --trace "$out/s3-complete-rom-long-trace.log" \
+  --out "$out/app-irom-evidence.json"
+```
+
+The analyzer parses actual ESP image segment headers, validates bounds,
+and checks trace addresses against those exact declared IROM ranges.
+Trace disassembly records indicate that QEMU translated/reached this
+machine-code path; they do **not** prove the full firmware lifecycle.
+
+The complete evidence lives at `qa-20261029/app-irom-evidence.json`.
+Current host test suite: **37/37 pass**.
+
+### USB Serial/JTAG output and actual application panic (29 October 2026)
+
+Open QEMU's `esp32c3_jtag.c` model used by both ESP32-C3 and S3 originally
+returned TX-ready (patch 0003) but discarded actual FIFO writes. The newer
+`esp32c6_jtag.c` already implements the equivalent TX-byte-to-chardev
+handoff. The separate verified-for-S3 patch
+`patches/0005-usb-serial-jtag-output.patch` exposes a chardev for the
+C3/S3 peripheral and maps it to the serial port *after* the physical UARTs
+(C3 index 2, S3 index 3); normal UART0 is not replaced.
+
+S3 build of QEMU + patches 0001, 0003, 0005 succeeded. With the corrected
+ROM and `-serial null -serial null -serial null -serial stdio`, the **real**
+X4 Pro firmware (SHA-256
+`268c62e01ada2958fe2df0122a73dc1c037d646207805a6d14a5a6d146434b25`)
+produces:
+
+- `ESP-ROM:esp32s3-20210327`, `boot:0x4 (SPI_FLASH_BOOT)`,
+  real bootloader loads from flash and `entry 0x403c8898`.
+- ESP-IDF `octal_psram` / `esp_psram` reports that the PSRAM chip is
+  unavailable or its bus mode is wrong. The firmware continues without it,
+  then generates a **guest** `Guru Meditation Error: LoadProhibited` at
+  **`PC=0x421c615e`**, `EXCVADDR=0x00000003`, and reboots.
+- This is neither successful application startup nor a QEMU process abort.
+  It is a real guest exception with its own backtrace, visible only after
+  USB Serial/JTAG output is connected.
+- Retesting with QEMU `-m 8M` (which attaches its existing virtual PSRAM
+  device) produced the same PSRAM initialization errors and panic. This
+  strongly suggests a missing or mismatched **Octal PSRAM protocol/mode**
+  rather than solely missing configured RAM quantity.
+- `run_open_qemu.py --usb-serial` now exposes this diagnostic output;
+  it requires a QEMU built with patch 0005, and reports
+  `guest_panic_detected` separately from `qemu_abort`.
+  It refuses to claim an acceptance PASS on a timed-out or panicking guest.
+
+Evidence: `qa-20261029/s3-usbjtag-uart.log`,
+`qa-20261029/s3-psram8-usbjtag-uart.log`, and
+`qa-20261029/s3-usbjtag-runner/report.json`.
+
+For direct S3 UART reproduction using the patched **isolated** QEMU:
+
+```sh
+out="$HOME/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qa-20261029"
+qemu="$HOME/.local/state/ybx-emulator-upstream/qemu-rominit-20261029"
+python3 tools/ybx-system-emu/run_open_qemu.py \
+  --chip s3 --duration 20 --usb-serial --qemu-root "$qemu" \
+  --s3-image "$HOME/Projects/YBX/artifacts/ybx-reader-ui-20261029/settings/YBX-SETTINGS-UNRELEASED-x4pro-092c2be5-factory.bin" \
+  --s3-rom-image "$out/esp32s3-rom-complete.bin" \
+  --sd-image "$out/ybx-test-sd-fat16.img" \
+  --out "$out/s3-usb-serial-report"
+```
+
+Next acceptance work: investigate the Octal PSRAM mode register sequence in
+the S3 SPI1/PSRAM emulator, then require a stable ESP-IDF startup. A
+successful boot still would not establish SDMMC mount, panel, touch, Wi-Fi,
+TLS or the complete YBX UI. No production firmware, SDK or hardware
+modification occurred in this experiment.
+
+### Remaining ESP32-C3 ROM blocker / S3 Octal PSRAM observation
+
+The QEMU RISC-V target also builds with the independent USB Serial/JTAG
+chardev patch 0005. A real X3/X4 C3 factory image (same `092c2be5`
+revision) with `--usb-serial` exposes a ROM-level
+`Guru Meditation Error: Load access fault` at
+**`PC=0x4004cc4e`**, `MTVAL=0x0000001b`, `MCAUSE=0x5`;
+the second-stage bootloader has not been observed. The exact matching
+local Espressif C3 rev3 ROM ELF disassembles `0x4004cc4e` as
+`spi_dummy_len_fix(): lbu a4,27(a5)`; the preceding instruction loads
+`rom_spiflash_legacy_data` from DRAM `0x3fcdfff0`.
+This is analogous to the confirmed S3 missing-reset-initializers failure,
+but **no corresponding C3 ROM source-image correction has been tested yet**.
+Evidence: `qa-20261029/c3-usbjtag-runner/qemu-c3.log`.
+
+For S3, the QEMU `ssi_psram` device defaults `is_octal=false`
+even when `-m 8M` attaches an 8 MiB chip. The guest's actual X4 Pro
+firmware uses Octal PSRAM. The separate test command
+`-m 8M -global ssi_psram.is_octal=on` was verified by QEMU
+`info qtree` (device shows `is_octal=true`, `size_mbytes=8`).
+With Octal enabled, the earlier explicit 'PSRAM chip not connected'
+diagnostic disappears, but a 25-second no-icount run still ultimately
+panics at **the same `PC=0x421c615e`, `EXCVADDR=0x3`** and
+restarts repeatedly. Therefore the PSRAM mode mismatch was **not**
+the sole cause, and this remains an incomplete emulator.
+Evidence: `qa-20261029/s3-octal8-25s-uart.log` and
+`qa-20261029/s3-octal-qtree.log`.
+
+Symbolization of the S3 guest panic requires the **exact matching ELF**
+for factory image revision `092c2be5`; other available worktree ELFs
+have different SHA-256 hashes. Do **not** assign a function name to
+`0x421c615e` based on a different binary. Next work should retain a
+matching ELF and map file with every saved factory image, investigate
+the S3 panic accurately, and separately reconstruct C3 ROM reset-copy
+sources before declaring either guest boot stable.
+
+### ESP32-C3 rev3 ROM fixed: factory application code reached (29 October 2026)
+
+The real C3 factory image was initially stopping inside its ROM's
+`spi_dummy_len_fix` at `PC=0x4004cc4e`, `MTVAL=0x1b`, before
+any bootloader entry. Unlike the S3 rev0 table, the C3 rev3 ROM's
+32 reset-copy descriptors occupy `0x40059200..0x40059400`.
+The descriptor for `rom_spiflash_legacy_data` copies **8 bytes**
+from source `0x40059658` into destination `0x3fcdfff0`.
+The old extracted ROM had `0x00000000` at this source, while the
+matching local `esp32c3_rev3_rom.elf` has `0x3fcdf5c0`.
+
+The new `extract_c3_rom_with_sections.py` restores **14**
+nonempty reset-copy sources using writable PROGBITS payloads from
+that exact Espressif ROM ELF. No instruction code is altered.
+The C3 corrected ROM (local-only, never committed) has SHA-256
+`5d723d466490c3295ac54068c9e90b9bc9bb5a1f03b974012b1e28a56411e511`.
+
+Reproduction, from the `CrossPoint-firmware` worktree:
+
+```sh
+out="$HOME/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qa-20261029"
+python3 tools/ybx-system-emu/extract_c3_rom_with_sections.py \
+  --elf "$HOME/.platformio/tools/tool-esp-rom-elfs/esp32c3_rev3_rom.elf" \
+  --out "$out/esp32c3-rom-complete.bin"
+python3 tools/ybx-system-emu/run_open_qemu.py \
+  --chip c3 --usb-serial --duration 12 \
+  --qemu-root "$HOME/.local/state/ybx-emulator-upstream/qemu-rominit-20261029" \
+  --c3-image "$HOME/Projects/YBX/artifacts/ybx-reader-ui-20261029/settings/YBX-SETTINGS-UNRELEASED-default-092c2be5-factory.bin" \
+  --c3-rom-image "$out/esp32c3-rom-complete.bin" \
+  --out "$out/c3-corrected-runner"
+```
+
+The **unchanged real C3 factory image** now prints
+`SPI_FAST_FLASH_BOOT`, loads `0x3fcd5820`, `0x403cbf10`,
+`0x403ce710` and hands off at `entry 0x403cbf10`.
+It then crashes **within the mapped factory application IROM** at
+`MEPC=0x421e01e8`, `MCAUSE=5`, `MTVAL=0x3`,
+followed by a software reset. This is a **new guest application-level
+blocker**, not the old ROM-level exception. It was reproduced both by
+direct QEMU and by isolated `--c3-rom-image` runner. The latter
+returns nonzero (timeout 124) and marks `guest_panic_detected=true`.
+
+Evidence (local artifacts, not Git LFS):
+`qa-20261029/c3-corrected-rom-uart.log`,
+`qa-20261029/c3-corrected-runner/report.json`.
+The C3 and S3 crashes both have faulting address 0x3, but their
+function identity and shared root cause remain unproven until
+symbolization with the **exact matching** `092c2be5` ELF.
+
+The host suite now has **44/44 passing unit tests**; this confirms
+ROM source reconstruction and runner isolation, **not** firmware
+readiness, SDMMC, display, touch or Wi-Fi/TLS support.

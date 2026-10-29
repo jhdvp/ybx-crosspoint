@@ -1,15 +1,17 @@
 #!/bin/sh
-# Apply tested ESP32-C3 GDMA fix to the SEPARATE espressif/qemu checkout.
+# Apply tested ESP32 peripheral fixes to a SEPARATE espressif/qemu checkout.
 # Never changes FreeInkSDK or production YBX Reader firmware.
 set -eu
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 QEMU_ROOT="$HOME/.local/state/ybx-emulator-upstream/qemu"
 if [ "$#" -gt 0 ]; then QEMU_ROOT="$1"; fi
-test -d "$QEMU_ROOT/.git" || { echo "Not a QEMU Git checkout: $QEMU_ROOT" >&2; exit 2; }
+git -C "$QEMU_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+  echo "Not a QEMU Git checkout: $QEMU_ROOT" >&2; exit 2;
+}
 
 # Apply only accepted, verified CPU-peripheral corrections.
-# In particular, experiments/0002-s3-rom-dram-experiment.patch is rejected.
-for name in 0001-esp32c3-gdma-interrupt-layout.patch 0003-usb-serial-jtag-tx-ready.patch; do
+# The DRAM initializer experiments under experiments/ are rejected.
+for name in 0001-esp32c3-gdma-interrupt-layout.patch 0003-usb-serial-jtag-tx-ready.patch 0005-usb-serial-jtag-output.patch; do
   PATCH="$HERE/patches/$name"
   test -s "$PATCH" || { echo "Missing patch: $PATCH" >&2; exit 2; }
   if git -C "$QEMU_ROOT" apply --reverse --check "$PATCH" 2>/dev/null; then
