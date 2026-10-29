@@ -1061,3 +1061,114 @@ state, SSD1677/UC8179/UC8279 model(s), busy polarity,
 waveform timing, GDMA/descriptor transfers and frame
 capture from actual EPD RAM rather than guest-written
 BMP screenshot. `epaper_verified=false` remains mandatory.
+
+### 29 October: real X4 Pro firmware renders nonblank YBX home screen on virtual SSD1677
+
+**Experiment 0016 (panel) + 0017 (RAM telemetry) + 0018 (correct SSD1677 addressing).**
+These are *opt-in* patches for the isolated QEMU fork, applied in this order after
+0015. They have NOT been enabled in default firmware or the accepted emulator
+patch chain. Machine must specify `ybx-x4pro-spi2=on,ybx-x4pro-epd=on`.
+S3 FreeInk X4 Pro's verified pin mapping is CLK GPIO12, MOSI GPIO11,
+CS GPIO13, D/C GPIO18, RESET GPIO14, BUSY GPIO6 (BUSY active HIGH).
+The QEMU GP-SPI2 PIO bus delivers real MOSI bytes to a separate SSD1677 SSI
+slave; GPIO13 gates CS, GPIO18 distinguishes command/data, GPIO14 resets
+the panel, GPIO6 reads a timed virtual BUSY pulse. The panel has real 48,000
+bytes of 1bpp 800x480 display memory. The QMP property
+`/machine/soc:ybx-epd-visible-hex` exports *only that panel's RAM*, NOT an
+arbitrary app screenshot or manually prepared UI.
+
+**Important corrected implementation defect:** SSD1677 `0x44` contains
+FOUR X-window bytes and X is a 10-bit **pixel** index; `0x4E` contains TWO
+X-counter bytes. The initial 0016 model interpreted them as 2-byte/
+1-byte offsets and silently wrote every payload byte to the wrong
+column. Genuine FreeInk `Ssd1677Driver::setRamArea` sets
+X=0..799 and Y=479..0, data entry 0x01 (X ascending, Y descending), so
+one MOSI payload byte increments X by eight pixels and wraps to the next
+Y row. Patch 0018 corrects all of this, supports auto-white RAM
+initialization 0x46=0xF7, and tracks 0x22 update control.
+SSD1677 `0x20` performs BOTH panel power transitions and image update;
+only `0x22` with bit2 DISPLAY_START qualifies as an actual image
+refresh. Earlier telemetry that counted every `0x20` as a frame was
+over-inclusive. The 0018 test explicitly confirms `0x22=0xC0;
+0x20` is a *power-on without display update* and `0x22=0xF7;
+0x20` does refresh. Both X last-byte to next-row and BUSY
+timing are verified by **compiled QEMU QTest/QMP**, no physical device.
+The virtual BUSY timer is 350ms (synthetic, not an electrophoretic
+waveform), and `0x26` old-plane memory and DMA/GDMA are not modeled.
+
+**Real firmware and genuine framebuffer acceptance:** With untouched
+X4 Pro 092c2be5 factory program plus real S3 ROM, octal PSRAM, BM8563,
+CW2017, GT911, GPIO1/5 SD power, MBR FAT16 SD card, and the optional
+SPI2/SSD1677 panel, the original guest executed PIO SPI2
+transfers and wrote 144,000 bytes to panel BW RAM (3 full passes).
+In a bounded 33-second guest run, QMP recorded
+`frames=2`, `ram-writes=144000`,
+`nonwhite-visible=4743`, `update-ctrl2=0xFC`,
+`SPI2.transactions=3862`, and `SPI2.bytes-sent=240112`.
+The captured **native, guest-written** panel RAM contains a nonblank
+YBX home page (Continue Reading, Library, Statistics, More).
+Raw 800x480 1bpp frame SHA256:
+`e79c2ad5f2b60b16fe3f20625742d5f1343f5785552d1b32c11f33c42a874672`.
+The correct logical portrait 480x800 rendering is a lossless
+transpose of the physical matrix (clockwise rotation plus X mirror),
+not a generated UI. Original evidence:
+`qa-20261029/s3-x4pro-ssd1677-guest-0018-33s.json`,
+`qa-20261029/s3-x4pro-ssd1677-guest-0018-33s.bmp`,
+`qa-20261029/s3-x4pro-ssd1677-guest-0018-33s-portrait-upright.png`.
+A portable 1bpp PNG exporter without Pillow was added in
+`epd_frame_io.py`; the live guest-QMP runner emits upright portrait
+PNG ONLY if a real nonblank SSD1677 frame was observed. No app-provided
+screenshot is substituted for physical-panel RAM.
+
+**This proves** ESP32-S3 guest code really talks to GP-SPI2 and
+reaches the SSD1677 controller model, sends commands/data with
+GPIO-driven CS/D-C/RESET and updates a nonblank virtual panel RAM.
+**It does NOT prove** physical E-Ink electrical timing, all SSD1677
+registers, waveform/ghosting, UC8179/UC8279 batch variants,
+DMA/GDMA descriptors, guest button/touch-to-frame feedback,
+lifecycle readiness, network/TLS or complete physical device behavior.
+The 33-second guest run still has no application UART (only ROM UART);
+the decoded UI frame itself is the direct app-code execution evidence.
+Keep mixed task #38 IN PROGRESS; completed sub-stage is SSD1677 PIO
+pixel frame capture, not full EPD coverage.
+
+#### 29 October, same-run SDMMC plus SSD1677 pixel evidence
+
+The QMP guest probe now accepts `--original-fat <ORIGINAL_FAT16>`
+and `--trace-sd`. It copies the MBR SD card to a temporary disk,
+runs the **unchanged factory S3 guest** on real CPU, captures the
+SSD1677 portrait PNG only after detecting nonwhite panel memory,
+traces native `sdbus_command` and sector reads/writes, and optionally
+analyzes post-run FAT changes with the original superfloppy image.
+
+In the same bounded 33-second guest run:
+- 3,862 real SPI2 PIO transactions / 240,112 MOSI bytes;
+- two DISPLAY_START-gated EPD frame refreshes, 4,743 nonwhite panel
+  bytes, 144,000 RAM writes; extracted true 480x800 YBX home UI;
+- 32 actual SDMMC card commands and SIX sector reads, including
+  MBR physical sector 0, FAT16 partition boot sector LBA2048
+  (byte address 0x100000) and root directory sector LBA2308
+  (byte address 0x120800);
+- **zero SD sector writes**, no newly created Screenshots
+  directory, so simultaneous FAT file *creation* is NOT verified;
+- no virtual GUI interactions beyond initial home page, no ESP-IDF
+  app UART, no actual flash migration/OTA behavior verified.
+
+Report `qa-20261029/s3-x4pro-ssd1677-guest-sd-trace-0018.json`
+and native card trace
+`qa-20261029/s3-x4pro-ssd1677-guest-sd-trace-0018.sdtrace.log`.
+Use the strict separate earlier #37 FAT file-creation test for actual
+SD writes. Do NOT infer that absence of screenshot creation proves
+FAT mount failure: firmware may choose not to create a new file when
+a physical EPD model is present. The combined evidence gate is
+`guest_simultaneous_sdmmc_reads_and_epd_pixels_verified=true`;
+`guest_simultaneous_sd_and_epd_verified=false` remains correct for
+the stricter file-writing condition.
+
+A repeated **33-second real guest run** produced bit-identical raw
+panel RAM SHA256 `e79c2ad5f2b60b16fe3f20625742d5f1343f5785552d1b32c11f33c42a874672`.
+The portable no-Pillow exporter created
+`qa-20261029/s3-x4pro-ssd1677-guest-0018-final.png`
+directly from QMP bytes (no SD screenshot). Image proof is the
+480x800 YBX home screen with Library/More, Continue Reading and
+Statistics. Host Python regression suite: 99 tests passed.

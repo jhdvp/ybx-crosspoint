@@ -237,3 +237,46 @@ one bounded 18s run. Real firmware UART readiness, slave
 display state, CS/DC/RESET/BUSY GPIO, DMA/GDMA and
 EPD pixels are all NOT proven. Keep #38 in progress.
 No production firmware changes and no default opt-in.
+
+## 0016–0018 — virtual X4 Pro SSD1677 via actual GP-SPI2 + GPIO, guest UI capture
+
+Apply in order after 0015:
+- `0016-s3-x4pro-ssd1677-panel-gpio-frame.patch` — opt-in
+  `ybx-x4pro-epd=on` SSI slave connected to the S3 GP-SPI2 controller,
+  CS13/D-C18/RST14/BUSY6 and true 48KB mono panel RAM with QMP visibility.
+- `0017-ssd1677-guest-ram-telemetry.patch` — QMP reads for
+  0x24/0x26 command counts and nonwhite RAM byte metrics, for
+  diagnosing guest resets vs real screen content.
+- `0018-ssd1677-10bit-pixel-ram-refresh-gating.patch` — required
+  hardware-correct SSD1677 10-bit X pixel coordinates (0x44 uses
+  FOUR bytes, 0x4E TWO), X+8 byte advance with Y decrement, 0x22
+  DISPLAY_START bit2 gating before 0x20 counts as refresh.
+  Without 0018 the genuine guest panel remains incorrectly white.
+
+Compiled-QEMU QTest asserts CS/DC/reset, pin6 BUSY, full 800x480 RAM,
+0xC0 power-on DOES NOT refresh, 0xF7 refresh DOES, and X pixel
+boundary x=792 followed by row wrap preserves both payload bytes.
+Actual original 092c2be5 factory app produced two valid display
+updates with 4,743 nonwhite panel bytes and recognizable YBX
+home screen over GP-SPI2, without any test-supplied UI or SD-BMP
+shortcut. `probe_x4pro_spi2_guest.py --epd` captures true SSD1677
+RAM via QMP and, on nonblank frames, generates a 480x800 upright
+PNG using lossless conversion in `epd_frame_io.py`.
+QEMU reports and image under `qa-20261029/s3-x4pro-ssd1677-guest-0018-33s*`.
+
+These patches remain experimental. DMA/GDMA, UC8179/UC8279,
+physical EPD waveform accuracy, and real guest input-to-frame
+state changes are NOT implemented or accepted.
+
+### Same-run SD + EPD acceptance scope
+
+The real factory S3 guest with SSD1677 opt-in and GPIO1/5-powered
+SDMMC produced 32 native SD card commands/6 sector reads and a
+nonblank virtual panel frame in **the same guest execution**.
+See `s3-x4pro-ssd1677-guest-sd-trace-0018.json` and
+`s3-x4pro-ssd1677-guest-sd-trace-0018.sdtrace.log`.
+It did not write new SD sectors in this run, so the stricter
+same-run FAT file-creation gate is still open. Separate #37 guest
+FAT16 file-writing proof remains valid. Full user input/UI,
+alternate panel controllers and physical E-Ink waveform accuracy
+are NOT verified.

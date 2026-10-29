@@ -79,13 +79,13 @@ with a ROM-only boot log.
 | ESP32-S3 CPU | ROM/boot/app machine code execute | both cores/PSRAM, runtime health |
 | SPI Flash | real boot from merged image | NVS read/write, OTA image selection and rollback |
 | I²C | opt-in BM8563/CW2017/GT911 model and synthetic touch over QMP verified in compiled QEMU | real GPIO interrupt-matrix routing and touch-to-UI response |
-| SPI e-ink | **Experimental opt-in** GP-SPI2 CPU PIO transport at 0x60024000; real X4 Pro firmware issued 11,496 transfers / 720,246 bytes; NO physical panel | GPIO CS/D-C/RESET/BUSY, DMA/GDMA, SSD1677/UC8179/UC8279 and real pixel frame capture |
+| SPI e-ink | **Verified virtual SSD1677 pixel-frame capture** from real X4 Pro factory firmware via GP-SPI2 PIO, CS13/D-C18/RST14/BUSY6: 2 display updates, 48,000-byte nonblank 800x480 panel RAM and correctly oriented 480x800 YBX home screen | hardware waveform timing/accuracy, DMA/GDMA, UC8179/UC8279, application lifecycle and cross-client tests remain open |
 | SD (X3/X4) | no verified virtual SPI card | SD SPI command/state and FAT file image |
-| SD (X4 Pro) | **PROVEN:** native SDMMC DMA read/write, GPIO1/5 power cycle, factory firmware creates FAT16 Screenshots directory and 1-bit BMP on MBR-partitioned test image | SPI2 e-paper output, guest lifecycle and input integration |
+| SD (X4 Pro) | **PROVEN:** native SDMMC DMA read/write, GPIO1/5 card power, guest FAT16 file creation in separate run; **same-run** SDMMC sector reads and nonblank SSD1677 EPD pixels | same-run FAT write, lifecycle and input integration |
 | Wi-Fi | emulated AP/NAT implemented by ESP-EMU, **firmware not provisioned/connected** | controlled AP provisioning, DHCP, timeout and Wi-Fi fallback tests |
 | TLS | crypto CPU/peripheral may be emulated, **zero YBX TLS handshakes verified** | isolated HTTPS test server with trust roots, failure cases, cert expiry, redirect/auth isolation |
 | Buttons/touch | synthetic GT911 touch and Home events, GPIO10 input-level feedback, QTest verified | GPIO interrupt-matrix and guest UI interaction |
-| End-to-end YBX | SD/FAT file creation proven; full device **NOT PASSED** | SPI2 e-paper output, interaction, guest lifecycle, account tests |
+| End-to-end YBX | Factory firmware FAT file writes (separate run), same-run SDMMC reads + SSD1677 home UI **VERIFIED**, full device **NOT PASSED** | same-run FAT writes, touch-to-UI response, GPIO IRQ, DMA/GDMA, Wi-Fi/TLS and lifecycle tests |
 
 **Why this is not a minor configuration task:** The current distributed
 `esp-emu` CLI provides `--i2c-dev` for register files but exposes no
