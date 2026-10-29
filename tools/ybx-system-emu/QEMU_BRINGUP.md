@@ -834,3 +834,53 @@ Host suite with corrected GT911 probe and optional-runner checks:
 **70/70** Python unit tests pass; live compiled-QEMU GT911 QTest
 passes independently (host unit count does not include the live
 external QEMU command).
+
+### 29 October: QMP-driven virtual touch events + GPIO10 feedback (0012)
+
+A separate **opt-in experimental** patch
+`0012-s3-gt911-touch-injection-gpio-feedback.patch`, applied after
+0011, adds runtime `/machine/soc` QOM properties
+`ybx-touch-x`, `ybx-touch-y`, `ybx-touch-state`.
+Use QMP `qom-set` to inject a single raw-coordinate GT911 frame:
+state=1 touch press, 0 touch release, 2 capacitive HOME down,
+3 HOME up. Coordinates are the X4 Pro GT911 **raw portrait** axes:
+X=0..479, Y=0..799, with FreeInk SDK performing `swapXY`
+and board-specific flips. Out-of-range coordinates and injection
+on an unpowered/unready GT911 are rejected. **No input by default.**
+These are synthetic emulator controls and never claim real sensor
+readings. No fictitious GT911 hardware registers are added.
+
+The GT911 responds with a new-data bit 0x80 at 0x814E,
+contact count=1 for a press, HOME bit 0x10 for HOME down, then
+the raw 8-byte contact record at 0x8150. A guest write of
+`[0x81,0x4e,0x00]` clears the frame and deasserts virtual
+GPIO10 feedback. GPIO10 must be switched to INPUT after the
+GT911 reset/address-selection sequence. The opt-in ESP32 GPIO
+model now accepts external pin input and reports it in
+GPIO_IN when the pin is not output-enabled; it does **not**
+yet emulate the full GPIO edge interrupt/matrix mechanism.
+
+**Live compiled-QEMU test passed**:
+`probe_x4pro_touch_injection_qtest.py` is executed **inside**
+the isolated offline Docker builder where both QTest stdio and
+a QMP Unix socket can communicate with one QEMU instance. It
+uses `-accel qtest`, exercises 235 actual MMIO commands,
+injects coordinates (120,640) and verifies the exact bytes
+`[120,0,128,2,64,0,0,0]`, touch press 0x81, release
+0x80, HOME press 0x90, HOME release 0x80,
+GPIO10 input feedback before/after guest status acknowledgement,
+invalid coordinate rejection and power-off NACK.
+Evidence `qa-20261029/s3-x4pro-touch-injection-qtest.json`.
+**Not proof of full YBX UI, rendering, input integration, or
+electrical touch IRQ hardware**.
+
+Run the deterministic test without host/device passthrough:
+```sh
+docker run --rm --network none --platform linux/arm64 \
+  -v "$QEMU_ROOT:/qemu:ro" -v "$YBX_TOOLS:/tests:ro" \
+  -v "$QA_DIRECTORY:/work" -w /work ybx-qemu-builder:20261029 \
+  python3 -u /tests/probe_x4pro_touch_injection_qtest.py \
+  --qemu-bin /qemu/build-ybx/qemu-system-xtensa \
+  --rom /work/s3-full-rom-generator-test.bin \
+  --out /work/s3-x4pro-touch-injection-qtest.json
+```

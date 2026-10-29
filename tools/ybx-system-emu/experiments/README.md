@@ -162,3 +162,20 @@ e-ink panel output, SD mount or full guest ready. 0011 remains
 EXPERIMENTAL rather than added to the default patch chain.
 See `../QEMU_BRINGUP.md` for the IROM-execution evidence and
 exact factory/build SHA matching.
+
+## 0012 — synthetic touchscreen events and GPIO10 level feedback (QTest/QMP)
+
+`0012-s3-gt911-touch-injection-gpio-feedback.patch` (after 0011)
+provides opt-in `/machine/soc` QMP properties
+`ybx-touch-x` / `ybx-touch-y` / `ybx-touch-state` for
+deterministic synthetic GT911 single-contact and HOME events.
+It implements 0x814E READY/CONTACT/HOME status, 0x8150 eight-byte
+contact data, guest acknowledgment, and GPIO_IN[10] when the
+pin is configured as input. State 0=release, 1=touch press,
+2=HOME press, 3=HOME release. The raw portrait coordinate bounds
+are checked. It is only a simulator interface, **not real hardware**.
+The live offline Docker QTest+QMP probe `probe_x4pro_touch_injection_qtest.py`
+passed 235 MMIO commands in the same QEMU instance, with product
+data/clock/status readback and output hashes in the QA directory.
+Does not prove GPIO edge interrupt-matrix dispatch, GUI response,
+EPD pixels or SD mount. Leave those tasks open.
