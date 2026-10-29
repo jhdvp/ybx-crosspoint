@@ -1,4 +1,4 @@
-# 0025 — Factory X4 Pro GT911 → UI routing, live GDB evidence
+> **CORRECTION — 2026-10-30:** This investigation has progressed and the earlier UI-block diagnosis is superseded by [0036-x4pro-render-notification-evidence.md](0036-x4pro-render-notification-evidence.md). The genuine guest **does** select More: onAction pending=4, selectedAction=4, HomeActivity accepts and activates index 4. onMoreOpen completes plugin-path lookups and requests a redraw. FreeRTOS xTaskGenericNotify returns pdPASS for the render task, yet the task is not observed waking to paint a new SSD1677 frame. Also the supposed +236-byte UiAppHost pointer corruption was a false GDB pre-entry register interpretation: caller HomeActivity=0x3fcec858 and actual YbxHomeUi=0x3fcec944 are two distinct objects. Do not patch Xtensa entry/retw or claim uiReady corruption based on the old 0025 notes. The end-to-end changed-screen acceptance remains false.\n\n# 0025 — Factory X4 Pro GT911 → UI routing, live GDB evidence
 
 Status: **input reaches the YBX UI action callback; EPD navigation remains
 UNVERIFIED**. This is an isolated developer-tool experiment, not a
