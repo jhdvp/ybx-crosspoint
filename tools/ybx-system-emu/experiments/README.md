@@ -204,3 +204,21 @@ SHA and written/read-back sector SHA match exactly. There is
 no new hardware model or patch. Still need verified firmware
 FAT mount, GPIO5 active-LOW SD power gating, and e-paper SPI.
 Do **not** describe these low-level tests as a full app boot.
+
+## 0014 — board-power-aware SDMMC and observed guest FAT16 file writes
+
+Apply `0014-x4pro-sdmmc-board-power-gate.patch` after 0013.
+Opt-in S3 machine property `ybx-x4pro-sd-power=on` requires
+GPIO1 HIGH + GPIO5 LOW for actual SD card commands; power cycling
+resets the SD protocol. Default machine unaffected and combined
+GT911/SD GPIO1 fanout passes compiled QTest.
+
+The original X4 Pro firmware executes SdFat with MBR partition
+#1, NOT a FAT16 superfloppy. Host helpers
+`make_sd_mbr_image.py` (safe 128MiB MBR-partitioned image)
+and `analyze_guest_fat_image.py` (post-guest FAT chain and BMP
+evidence) are integrated with `run_open_qemu.py --s3-realtime
+--sd-original-fat-image`. Factory guest created an actual
+Screenshots directory and nonblank 1bpp BMP on SD; FAT mount
+is VERIFIED by file creation, not inferred from CPU or UART.
+Full EPD display and app lifecycle remain unverified.

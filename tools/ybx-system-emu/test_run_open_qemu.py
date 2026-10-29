@@ -75,6 +75,34 @@ class SdValidationTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             validate_sd_image(self.make_sd(temp, "FAT32"))
 
+    def test_valid_mbr_fat16_first_partition(self):
+        with TemporaryDirectory() as temp:
+            raw = self.make_sd(temp, "FAT16").read_bytes()
+            disk = bytearray(4096)
+            disk[510:512] = bytes((0x55, 0xaa))
+            disk[446] = 0x00
+            disk[450] = 0x06
+            disk[454:458] = (1).to_bytes(4, "little")
+            disk[458:462] = (1).to_bytes(4, "little")
+            disk[512:1024] = raw
+            image = Path(temp) / "mbr.img"
+            image.write_bytes(disk)
+            validate_sd_image(image)
+
+    def test_rejects_fat_part_outside_image(self):
+        with TemporaryDirectory() as temp:
+            raw = self.make_sd(temp, "FAT16").read_bytes()
+            disk = bytearray(4096)
+            disk[510:512] = bytes((0x55, 0xaa))
+            disk[450] = 0x06
+            disk[454:458] = (9).to_bytes(4, "little")
+            disk[458:462] = (64).to_bytes(4, "little")
+            disk[512:1024] = raw
+            image = Path(temp) / "invalid-mbr.img"
+            image.write_bytes(disk)
+            with self.assertRaisesRegex(ValueError, "boot sector"):
+                validate_sd_image(image)
+
     def test_rejects_marker_without_boot_signature(self):
         with TemporaryDirectory() as temp:
             image = self.make_sd(temp, "FAT16")

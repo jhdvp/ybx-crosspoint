@@ -12,6 +12,7 @@ class GT911ProbeTests(unittest.TestCase):
         self.assertIn("clock_step 60000000", p.commands)
         self.assertIn("touch.product.byte0", p.read_names)
         self.assertIn("touch.alternate_address.byte2", p.read_names)
+        self.assertIn("touch.master_rail_dropped.write_status", p.read_names)
 
     def test_reject_premature_ack(self):
         p = make_protocol()

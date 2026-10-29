@@ -78,14 +78,14 @@ with a ROM-only boot log.
 | ESP32-C3 CPU | ROM/boot/app machine code execute | firmware loop + watchdog/recovery |
 | ESP32-S3 CPU | ROM/boot/app machine code execute | both cores/PSRAM, runtime health |
 | SPI Flash | real boot from merged image | NVS read/write, OTA image selection and rollback |
-| I²C | default errors; basic register-file stubs available | actual GT911 touch/status/IRQ, RTC, fuel-gauge models |
+| I²C | opt-in BM8563/CW2017/GT911 model and synthetic touch over QMP verified in compiled QEMU | real GPIO interrupt-matrix routing and touch-to-UI response |
 | SPI e-ink | peripheral controller exists, **no panel model** | implement SSD1677 + UC8253/UC8179/UC8279 command/data state machine, busy/reset GPIO, 1bpp frame extraction |
 | SD (X3/X4) | no verified virtual SPI card | SD SPI command/state and FAT file image |
-| SD (X4 Pro) | stock firmware logs `sdmmc_host_reset returned 0x107` | 1-bit SDMMC electrical protocol/block device + FAT |
+| SD (X4 Pro) | **PROVEN:** native SDMMC DMA read/write, GPIO1/5 power cycle, factory firmware creates FAT16 Screenshots directory and 1-bit BMP on MBR-partitioned test image | SPI2 e-paper output, guest lifecycle and input integration |
 | Wi-Fi | emulated AP/NAT implemented by ESP-EMU, **firmware not provisioned/connected** | controlled AP provisioning, DHCP, timeout and Wi-Fi fallback tests |
 | TLS | crypto CPU/peripheral may be emulated, **zero YBX TLS handshakes verified** | isolated HTTPS test server with trust roots, failure cases, cert expiry, redirect/auth isolation |
-| Buttons/touch | GPIO support, **Xteink external state not driven** | GPIO input injection and GT911 event simulator |
-| End-to-end YBX | **NOT PASSED** | virtual SD, functional e-paper and end-to-end account test harness |
+| Buttons/touch | synthetic GT911 touch and Home events, GPIO10 input-level feedback, QTest verified | GPIO interrupt-matrix and guest UI interaction |
+| End-to-end YBX | SD/FAT file creation proven; full device **NOT PASSED** | SPI2 e-paper output, interaction, guest lifecycle, account tests |
 
 **Why this is not a minor configuration task:** The current distributed
 `esp-emu` CLI provides `--i2c-dev` for register files but exposes no

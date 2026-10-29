@@ -101,22 +101,36 @@ def main():
     parser.add_argument("--qemu-root",type=Path,required=True)
     parser.add_argument("--rom",type=Path,required=True)
     parser.add_argument("--out",type=Path,required=True)
+    parser.add_argument("--sd-power",action="store_true",
+                        help="also enable X4 Pro SD slot GPIO1/5 power model")
+    parser.add_argument("--sd-image",type=Path,
+                        help="required with --sd-power, disposable test FAT image")
     parser.add_argument("--docker-image",default="ybx-qemu-builder:20261029")
     a=parser.parse_args()
     qemu=(a.qemu_root/"build-ybx/qemu-system-xtensa").resolve(strict=True)
+    if a.sd_power and a.sd_image is None:
+        parser.error("--sd-power requires --sd-image")
     p=make_protocol()
     with TemporaryDirectory(prefix="ybx-gt911-qtest-") as temp:
         shutil.copyfile(a.rom,Path(temp)/"esp32s3_rev0_rom.bin")
+        if a.sd_power:
+            shutil.copyfile(a.sd_image,Path(temp)/"sd.img")
+        machine = "esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on"
+        if a.sd_power:
+            machine += ",ybx-x4pro-sd-power=on"
         cmd=["docker","run","--rm","-i","--network","none",
              "--platform","linux/arm64",
              "-v",f"{qemu.parent.parent}:/qemu:ro",
-             "-v",f"{temp}:/bios:ro",a.docker_image,
+             "-v",f"{temp}:/bios"+("" if a.sd_power else ":ro"),
+             a.docker_image,
              "timeout","-k","2s","7s",
              "/qemu/build-ybx/qemu-system-xtensa",
-             "-machine","esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on",
+             "-machine",machine,
              "-accel","qtest",
              "-nographic","-monitor","none","-serial","null",
              "-qtest","stdio","-L","/bios"]
+        if a.sd_power:
+            cmd += ["-drive","file=/bios/sd.img,if=sd,format=raw"]
         result=subprocess.run(cmd,input=p.text(),text=True,
                               capture_output=True,timeout=25)
         if result.returncode not in (0,124):
@@ -125,6 +139,8 @@ def main():
     report["qemu_sha256"]=hashlib.sha256(qemu.read_bytes()).hexdigest()
     report["rom_sha256"]=hashlib.sha256(a.rom.read_bytes()).hexdigest()
     report["qtest_only"]=True
+    report["combined_sd_power_enabled"]=a.sd_power
+    report["sd_card_fat_mounted_by_guest"]=False
     a.out.parent.mkdir(parents=True,exist_ok=True)
     a.out.write_text(json.dumps(report,indent=2)+"\n")
     print(json.dumps(report,indent=2))

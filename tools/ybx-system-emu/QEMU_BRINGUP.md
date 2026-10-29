@@ -954,3 +954,60 @@ QEMU's existing SDMMC engine is not a stub at the command/block
 level; remaining effort should target firmware integration and
 real board GPIO5/card-power behavior instead of replacing this
 working host-controller model.
+
+### 29 October: SD GPIO1/5 and real factory FAT16 file creation — VERIFIED
+
+Supersedes earlier historical statements that X4 Pro FAT is unverified.
+Experimental opt-in patch `0014-x4pro-sdmmc-board-power-gate.patch`
+exposes `-machine esp32s3,ybx-x4pro-sd-power=on`. It actually
+disables/enables the existing SDCardClass when GPIO1 (master) is
+HIGH and GPIO5 (SD slot active-low) is LOW, resetting card state
+after repower. GPIO1 is fanned out to GT911 and SD without competing
+connections. Default generic S3 SD behavior is unchanged.
+The real compiled QEMU power probe verified card CMD8 RTO
+with either rail OFF, 0x1AA with both ON, and reinit after
+both power-cycle sequences. Combined GT911+SD GPIO1 probe
+also passes. QA: `s3-x4pro-sd-power-qtest.json` and
+`s3-x4pro-combined-gt911-sd-power-qtest.json`.
+
+Critical SD discovery: FreeInk SdFat `FsVolume::begin(dev)` defaults
+to partition `part=1`, while old 64MiB FAT16 image was a
+*superfloppy* (FAT boot sector at LBA0). It cannot be mounted as
+partition #1. New `make_sd_mbr_image.py` creates a disposable
+MBR type 0x06 FAT16 partition starting LBA 2048, fixes BPB
+hidden-sectors, pads the physical card to 128MiB (QEMU requires
+power-of-two card sizes), leaves original volume unchanged,
+and refuses to overwrite existing disk images.
+
+With REAL original X4 Pro factory firmware 092c2be5, direct
+12s QEMU SD trace on this MBR image observed 12 CMD17 reads,
+110 CMD24 writes, 124 CMD13 status requests, including
+reading physical LBA0 and FAT partition boot LBA2048.
+Source image `ybx-test-sd-fat16.img` SHA256:
+`af721e7fca28c19c05099f8a0049cb40a2d5ac6e9ccde50b2e09c1575d100ed3`.
+Pristine MBR SD image 128MiB SHA256:
+`6c4c1bf4e6102e5963944dcf26572ab695c2259270e3aa9d0d0667787d8a7468`.
+
+Post-run FAT forensic comparison by `analyze_guest_fat_image.py`
+shows a genuine new `Screenshots` root directory (`SCREEN~1`),
+FAT16 allocation over 24 clusters and a **48,062 byte,
+480x800, 1bpp BMP** written by guest app code. Guest BMP SHA256:
+`fe07522c141ebc580883cf51ad880b89bbcb23dcb687db47d7b18ef57a1dbede`;
+the bitmap is not blank (5.97% dark pixels). Evidence
+`s3-x4pro-guest-fat-file-evidence.json`,
+`s3-x4pro-factory-guest-screenshot.bmp`, and
+`s3-x4pro-sd-mbr-guest-trace.log` under QA.
+
+Formal runner accepts `--x4pro-sd-power --s3-realtime
+--sd-original-fat-image <ORIGINAL_SUPERFLOPPY>`
+and `--sd-image <PRISTINE_MBR_CARD>`.
+It copies the SD image for a sandboxed guest run, analyzes
+guest FAT file changes, extracts `guest-screenshot.bmp`,
+saves `guest-fat-evidence.json` and only then sets
+`sd_mount_verified=true`. The 14s real firmware run confirmed
+`guest_driver_messages=true`, `sd_mount_verified=true`,
+`guest_fat_file_created=true`, and no panic. Full process
+readiness still fails due to bounded QEMU timeout (exit 124);
+e-paper SPI output, actual touch-to-UI feedback, network/TLS
+and lifecycle acceptance remain separate. Source tree for
+firmware and physical media were not modified.

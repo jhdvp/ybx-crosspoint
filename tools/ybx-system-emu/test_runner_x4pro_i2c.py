@@ -70,3 +70,92 @@ class X4ProRunnerTests(TestCase):
             with self.assertRaisesRegex(ValueError, "requires"):
                 run_one("s3", image, qemu, root / "logs", 2,
                         None, "test-builder", x4pro_gt911=True)
+
+
+    def test_sd_power_gate_optin_and_strict_status(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image, qemu = self.make_flash_rom(root, "s3")
+            with patch("run_open_qemu.subprocess.run",
+                       return_value=SimpleNamespace(
+                           stdout="", stderr="", returncode=124)) as proc:
+                report = run_one("s3", image, qemu, root / "logs", 2,
+                                 None, "test-builder", x4pro_sd_power=True)
+            command = proc.call_args.args[0]
+            self.assertEqual(command[command.index("-machine") + 1],
+                             "esp32s3,ybx-x4pro-sd-power=on")
+            self.assertTrue(report["virtual_x4pro_sd_power_gate"])
+            self.assertFalse(report["guest_sd_power_cycle_verified"])
+            self.assertFalse(report["sd_mount_verified"])
+
+    def test_sd_power_gate_c3_rejected(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image, qemu = self.make_flash_rom(root, "c3")
+            with self.assertRaisesRegex(ValueError, "ESP32-S3"):
+                run_one("c3", image, qemu, root / "logs", 2,
+                        None, "test-builder", x4pro_sd_power=True)
+
+
+    def make_fat(self, root):
+        sd = root / "test-sd.img"
+        content = bytearray(512)
+        content[54:62] = b"FAT16   "
+        content[11:13] = (512).to_bytes(2, "little")
+        content[13] = 4
+        content[510:512] = b"\x55\xaa"
+        sd.write_bytes(content)
+        return sd
+
+    def test_realtime_s3_guest_fat_evidence_must_come_from_analysis(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image, qemu = self.make_flash_rom(root, "s3")
+            sd = self.make_fat(root)
+            with (patch("run_open_qemu.subprocess.run",
+                        return_value=SimpleNamespace(
+                            stdout="ESP-ROM:esp32s3-20210327\n"
+                                   "boot:0x4 (SPI_FLASH_BOOT)\n"
+                                   "entry 0x403c8898\nPreferences.cpp:47",
+                            stderr="", returncode=124)) as proc,
+                  patch("analyze_guest_fat_image.analyze",
+                        return_value={
+                            "guest_sd_fat_file_creation_verified": True,
+                            "guest_written_fat_structure_verified": True
+                        }) as analyzer):
+                report = run_one("s3", image, qemu, root / "logs", 2,
+                                 sd, "test-builder", s3_realtime=True,
+                                 sd_original_fat=sd)
+            command = proc.call_args.args[0]
+            self.assertNotIn("-icount", command)
+            self.assertTrue(report["guest_driver_messages"])
+            self.assertTrue(report["sd_mount_verified"])
+            self.assertTrue(report["guest_fat_file_created"])
+            self.assertFalse(report["epaper_verified"])
+            analyzer.assert_called_once()
+
+    def test_realtime_s3_rejects_missing_guest_fat_artifacts(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image, qemu = self.make_flash_rom(root, "s3")
+            sd = self.make_fat(root)
+            with (patch("run_open_qemu.subprocess.run",
+                        return_value=SimpleNamespace(
+                            stdout="", stderr="", returncode=124)),
+                  patch("analyze_guest_fat_image.analyze",
+                        side_effect=ValueError("no guest FAT file"))):
+                report = run_one("s3", image, qemu, root / "logs", 2,
+                                 sd, "test-builder", s3_realtime=True,
+                                 sd_original_fat=sd)
+            self.assertFalse(report["sd_mount_verified"])
+            self.assertFalse(report["guest_fat_file_created"])
+            self.assertIn("no guest FAT file", report["guest_fat_evidence_error"])
+
+    def test_guest_fat_baseline_cannot_be_used_on_c3(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image, qemu = self.make_flash_rom(root, "c3")
+            sd = self.make_fat(root)
+            with self.assertRaisesRegex(ValueError, "requires S3"):
+                run_one("c3", image, qemu, root / "logs", 2,
+                        sd, "test-builder", sd_original_fat=sd)
