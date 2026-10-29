@@ -29,3 +29,65 @@ Source: espressif/qemu commit febae18 (GPL), inspected separately from binary-on
 5. GT911 touch, PMIC/gauge, buttons, power, SD-SPI, Wi-Fi provisioning and isolated TLS handshake/failure cases.
 
 Never report a host-driver trace replay as a complete ESP32 + peripheral integration. Never make production network calls or modify real devices during emulator bring-up.
+
+## Reproducible Linux/ARM64 QEMU build on Mac
+
+QEMU fork revision tested: `espressif/qemu` at `febae18`; use that revision
+for reproducibility. The production binary-only `esp-emu` remains independent.
+
+Build environment is pinned in `tools/ybx-system-emu/Dockerfile.qemu`.
+
+```sh
+docker build -f tools/ybx-system-emu/Dockerfile.qemu -t ybx-qemu-builder:20261029 tools/ybx-system-emu
+qemu_src="$HOME/.local/state/ybx-emulator-upstream/qemu"
+docker run --rm --platform linux/arm64 -v "$qemu_src:/src" -w /src ybx-qemu-builder:20261029 sh -lc '
+  mkdir -p build-ybx && cd build-ybx
+  ../configure --target-list=xtensa-softmmu,riscv32-softmmu --enable-gcrypt --disable-nettle --disable-docs --disable-gtk --disable-sdl --disable-vnc --disable-curses --disable-tools --disable-werror
+  ninja -j3 qemu-system-xtensa qemu-system-riscv32
+'
+```
+
+**Important:** The automatic crypto option preferred GNUTLS and omitted
+`esp32c3.aes` and `esp32s3.aes` QOM devices, causing startup errors.
+`--enable-gcrypt --disable-nettle` is essential for these QEMU machines.
+
+Use the **local** Espressif ROM ELFs installed by PlatformIO; generated
+ROM binaries must remain local and must never be committed:
+
+```sh
+r="$HOME/.platformio/tools/tool-esp-rom-elfs"
+out="$HOME/.local/state/ybx-emulator-upstream/qemu/build-ybx"
+python3 tools/ybx-system-emu/extract_rom_elf.py --elf "$r/esp32c3_rev3_rom.elf" --out "$out/esp32c3-rom.bin"
+python3 tools/ybx-system-emu/extract_rom_elf.py --elf "$r/esp32s3_rev0_rom.elf" --out "$out/esp32s3_rev0_rom.bin"
+```
+
+Keep ROM revision in sync with the emulated silicon. The helper extracts
+ELF32 PT_LOAD segments located within 0x40000000..0x40060000, preserving
+offsets; does not dump or rewrite actual silicon ROM.
+
+Attach a **disposable** FAT16 image (not real SD data). Example:
+
+```sh
+# In the Linux builder container: mkfs.fat -C -F16 -n YBXTEST /src/build-ybx/ybx-test-sd-64m.img 65536
+python3 tools/ybx-system-emu/run_open_qemu.py --chip both \
+  --c3-image /path/to/c3-factory.bin --s3-image /path/to/s3-factory.bin \
+  --sd-image "$out/ybx-test-sd-64m.img" --duration 9 --out /tmp/ybx-qemu-evidence
+```
+
+### Actual startup evidence, 29 Oct 2026
+
+- Both QEMU binaries were **successfully built**, with `libgcrypt 1.10.3` enabled.
+- **C3** from YBX merged image `092c2be5`: QEMU process exits 134 on
+  `esp32c3_gdma.c:107: Assertion word < DIM(assoc) failed` before application
+  UART evidence. Boot gate **FAILED**; needs a QEMU GDMA bug investigation.
+- **S3** from YBX merged image with the 64 MiB FAT16 test SD attached:
+  emulator runs until timeout 124, but emits no YBX firmware UART.
+  Boot gate **NOT VERIFIED**; SDMMC mount/read is **NOT VERIFIED**.
+- The QEMU report is recorded at
+  `~/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qemu-real-boot-v2/report.json`.
+- The binary-only Espressif `esp-emu` remains the only engine with proven
+  actual YBX application startup on C3 and S3. Do not confuse those proofs.
+
+No CPU-to-SPI e-paper framebuffer, SD card file IO, Wi-Fi, TLS, or device
+interaction was proven in this QEMU fork. A successfully compiled QEMU does
+not mean a successfully emulated Xteink board.
