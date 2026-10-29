@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YBX Reader · интерактивная визуализация</title>
+<style>
+:root{--paper:#e7e8e3;--ink:#14161a;--soft:#5d625d;--line:#b5b8af;--plate:#dddfd8}
+*{box-sizing:border-box}body{margin:0;background:#f2f3ef;color:var(--ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}button,select{font:inherit}button{cursor:pointer}
+button:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #7b8475;outline-offset:2px}
+.header{padding:14px 20px;background:#191b18;color:white;display:flex;gap:20px;align-items:center;justify-content:space-between}.header strong{font:800 19px ui-monospace,monospace;letter-spacing:.08em}.header small{font-size:12px;color:#cdd2ca}
+.tools{padding:10px 20px;display:flex;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:1px solid #c4c8c0;align-items:end}
+.tools label{display:flex;flex-direction:column;font-size:11px;font-weight:700;gap:4px}.tools select,.tools button{background:#fff;border:1px solid #a7aca4;padding:9px;border-radius:3px}
+.workspace{display:grid;grid-template-columns:172px minmax(310px,1fr) minmax(220px,340px);gap:17px;max-width:1560px;margin:auto;padding:19px}
+.side,.ref{background:#fafbf7;border:1px solid #d4d8d0;border-radius:8px;padding:13px;height:fit-content}.side h2,.ref h2{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.11em}
+.nav{display:grid;gap:3px}.nav button{border:0;text-align:left;padding:10px 7px;background:transparent;font-size:13px;border-radius:3px}.nav button.current{color:white;background:var(--ink)}
+.nav small{opacity:.6;margin-right:7px;font-family:monospace}.muted{color:var(--soft)}.info{font-size:12px;color:var(--soft);line-height:1.5;margin:13px 0 0;border-top:1px solid #c5c9c1;padding-top:12px}
+.main{min-width:0;display:flex;flex-direction:column;align-items:center}.above{width:100%;display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:11px}.above b{font-size:17px}.above span{font:12px monospace;color:var(--soft)}
+.viewport{width:100%;min-height:410px;overflow:auto;display:flex;justify-content:center;align-items:flex-start}
+.device{flex-shrink:0;background:#272a26;border:11px solid #272a26;box-sizing:content-box;border-radius:12px;box-shadow:0 16px 32px #0002;position:relative}
+.device:before{content:"";position:absolute;background:#454944;width:4px;height:57px;right:-14px;top:100px}
+.screen{background:var(--paper);height:100%;width:100%;overflow:hidden;display:flex;flex-direction:column;padding:13px 20px 9px}
+.screen .sys{height:42px;border-bottom:2px solid var(--ink);display:flex;gap:10px;align-items:flex-start;flex-shrink:0}
+.logo{height:24px;width:24px;background:var(--ink);border-radius:4px;padding:5px;flex:none}.logo i{display:block;height:2px;background:var(--paper);width:13px;margin-bottom:4px}.logo i:last-child{width:8px}
+.sys b{font-size:23px;line-height:1.05;letter-spacing:-.06em}.sys span{margin-left:auto;font:12px monospace;padding-top:3px}
+.title{font-size:30px;font-weight:800;letter-spacing:-.055em;margin:13px 0 12px;line-height:1.13;flex-shrink:0}
+.content{overflow:auto;flex:1;min-height:0;scrollbar-width:thin}
+.subtitle{margin:0 0 16px;color:var(--soft);font-size:16px;line-height:1.4}
+.footer{display:flex;gap:4px;justify-content:space-between;align-items:center;flex-shrink:0;height:36px;margin-top:9px;border-top:1px solid var(--line)}
+.footer button{background:transparent;border:0;font-size:12px;font-weight:700;padding:7px 3px;max-width:38%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.provider{border:2px solid var(--ink);min-height:132px;margin-bottom:13px;display:flex;flex-direction:column}
+.providerHead{display:flex;gap:16px;padding:14px;flex:1}.providerBadge{display:grid;place-items:center;flex:none;background:var(--ink);color:var(--paper);font-weight:800;width:46px;height:46px}
+.provider.off .providerBadge{border:1px solid var(--ink);background:transparent;color:var(--ink)}
+.providerName{font-size:22px;font-weight:750;margin:0 0 8px}.providerStatus{font-size:15px;color:var(--soft)}
+.providerActions{display:flex;border-top:1px solid var(--ink);min-height:38px}.providerActions button{background:transparent;border:0;padding:9px 13px;flex:1;text-align:left;font-weight:650;font-size:13px}.providerActions button+button{border-left:1px solid var(--line)}
+.pair{display:flex;align-items:center;flex-direction:column;gap:10px}.pair h3{font-size:23px;align-self:flex-start;margin:0 0 3px}
+.qr{width:248px;height:248px;flex-shrink:0;max-width:100%;border:1px solid var(--ink);padding:8px;background:#fff;display:grid;place-items:center}.qr img{width:100%;height:100%;image-rendering:pixelated}
+.caption{font:12px monospace;color:var(--soft);text-transform:uppercase;letter-spacing:.1em}
+.code{font:800 36px monospace;letter-spacing:.08em}.pair p{text-align:center;font-size:17px;line-height:1.35;margin:3px 0}.pair time{font-size:13px;color:var(--soft)}
+.btn{border:2px solid var(--ink);background:transparent;padding:9px 14px;font-weight:700;min-height:40px}.btn.dark{background:var(--ink);color:var(--paper)}
+.pairbuttons{display:flex;gap:9px}
+.setting{border:0;border-bottom:1px solid var(--line);background:transparent;display:flex;width:100%;gap:8px;align-items:center;padding:16px 0;min-height:60px;text-align:left;font-size:19px}
+.setting b{flex:1}.setting span{font-size:13px;color:var(--soft);max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.setting i{font-style:normal;font-size:24px}
+.ref img{width:100%;max-height:570px;object-fit:contain;background:var(--paper);border:1px solid var(--line)}.ref p{font-size:12px;color:var(--soft);line-height:1.55}.ref a{font-size:12px}
+.mock{width:100%;height:100%;object-fit:contain;background:var(--paper)}
+.dialogShade{position:absolute;inset:0;background:#14161aa9;display:grid;place-items:center;padding:18px}
+.dialog{max-width:390px;background:var(--paper);border:3px solid var(--ink);padding:18px;max-height:95%;overflow:auto}
+.dialog h3{margin:0 0 10px;font-size:22px}.dialog p{line-height:1.5;font-size:14px}.dialogbuttons{display:flex;gap:8px}
+.dialogbuttons button{flex:1;min-width:0}
+.landscape .screen{padding:9px 17px 7px}.landscape .sys{height:36px}.landscape .title{font-size:26px;margin:8px 0}.landscape .footer{height:27px;margin-top:5px}
+.landscape .subtitle{margin:0 0 8px;font-size:13px}.landscape .provider{min-height:63px;margin-bottom:5px;flex-direction:row}.landscape .providerHead{align-items:center;padding:7px 9px}
+.landscape .providerBadge{width:34px;height:34px;font-size:12px}.landscape .providerName{font-size:16px;margin:0 0 1px}.landscape .providerStatus{font-size:12px}
+.landscape .providerActions{border:0;border-left:1px solid var(--line);width:138px;flex-shrink:0;flex-direction:column}
+.landscape .providerActions button{padding:3px 7px;font-size:11px}.landscape .providerActions button+button{border:0;border-top:1px solid var(--line)}
+.landscape .pair{display:grid;grid-template-columns:200px 1fr;gap:8px 15px}.landscape .pair h3{grid-column:1/-1;font-size:17px}
+.landscape .pair .qr{width:198px;height:198px;grid-row:2/8;grid-column:1}
+.landscape .pair :is(.caption,.code,p,time,.pairbuttons){grid-column:2;justify-self:start;text-align:left;margin:0}
+.landscape .pair .code{font-size:25px}.landscape .pair p{font-size:12px}
+.landscape .setting{padding:9px 0;min-height:43px;font-size:16px}
+@media(max-width:1140px){.workspace{grid-template-columns:150px minmax(310px,1fr)}.ref{grid-column:2}.side{padding:9px}}
+@media(max-width:690px){.workspace{display:block;padding:10px}.side{margin-bottom:12px}.nav{display:flex;overflow:auto}.nav button{min-width:106px;white-space:nowrap}.main{margin-bottom:15px}.ref{margin-top:13px}.header small{display:none}}
+
+/* Shared full-viewport content system for ALL 10 screens.  No nested PNG
+   object-fit:contain, which previously letterboxed seven pages. */
+.content{width:100%;min-width:0}
+.content :is(button,a){touch-action:manipulation}
+.content :is(h2,h3,p){max-width:100%}
+.cover{background:#303532;color:var(--paper);border:1px solid var(--ink);min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:6px;overflow:hidden;padding:9px;font-weight:700;font-size:13px;line-height:1.15;overflow-wrap:anywhere}
+.cover .coverAuthor{font-size:10px;font-weight:400;opacity:.8}.cover.light{background:#c2c7bf;color:var(--ink)}.cover.gray{background:#626b65;color:var(--paper)}.cover.white{background:transparent;color:var(--ink)}
+.cover .providerMark{align-self:flex-end;background:var(--ink);color:var(--paper);font-size:9px;padding:3px 5px;min-width:19px;text-align:center;margin-top:auto}
+.bookHero{display:grid;grid-template-columns:146px minmax(0,1fr);gap:17px;margin-bottom:20px;min-height:196px}
+.bookHero .cover{min-height:193px}.bookHero h2{font-size:26px;line-height:1.14;margin:0 0 17px}.bookHero p{font-size:15px;margin:0 0 10px}
+.infoLabel{color:var(--soft);font-size:13px}.bold{font-weight:750}
+.thinline{height:1px;background:var(--line);width:100%;margin:12px 0}
+.underlinedHeader{display:flex;gap:8px;align-items:baseline;justify-content:space-between;margin:10px 0}
+.underlinedHeader strong{font-size:19px}.underlinedHeader button{border:0;background:none;font-size:13px;text-decoration:underline;padding:4px}
+.metricGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+.metricGrid small{display:block;font-size:10px;font-weight:750;letter-spacing:.05em;color:var(--soft);margin-bottom:4px}
+.metricGrid strong{display:block;font-size:29px;letter-spacing:-.05em;line-height:1.1}
+.metricGrid span{font-size:12px;color:var(--soft)}
+.weekGraph{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;align-items:end;min-height:105px;margin:6px 0 18px}
+.weekGraph button{border:0;border-bottom:1px solid var(--line);padding:0;background:transparent;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;height:105px}
+.weekGraph i{background:var(--ink);width:100%;min-height:1px}.weekGraph small{text-align:center;color:var(--soft);font-size:10px;padding-top:5px}
+.tabBar{display:flex;gap:8px;margin-bottom:11px}
+.tabBar button{min-height:35px;flex:1;border:1px solid var(--ink);padding:6px 8px;background:transparent;font-weight:700;font-size:13px}
+.tabBar button[aria-pressed=true]{color:var(--paper);background:var(--ink)}
+.bookGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 18px}
+.gridBook{background:transparent;border:0;min-width:0;text-align:left;padding:0}
+.gridBook .cover{height:190px}.gridBook small{display:block;font-size:13px;font-weight:700;text-align:center;margin-top:5px}
+.readProgress{height:8px;border:1px solid var(--ink);background:var(--plate);margin:8px 0 17px}
+.readProgress span{background:var(--ink);height:100%;display:block}
+.fullAction{width:100%;background:var(--ink);color:var(--paper);border:1px solid var(--ink);min-height:43px;font-weight:750;padding:9px}
+.bookText{line-height:1.5;font-size:15px;margin:8px 0}
+.bookFooterActions{display:flex;gap:12px;justify-content:space-between;border-top:1px solid var(--line);padding:12px 0;margin-top:17px}
+.bookFooterActions button{background:none;border:0;padding:8px 0;font-weight:700;text-align:left}
+.calendarTitle{display:flex;justify-content:space-between;align-items:center;margin:3px 0 6px}
+.calendarTitle h2{margin:0;font-size:25px}
+.calendarTitle button{border:0;background:transparent;font-size:18px;min-width:44px}
+.calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin:16px 0 20px}
+.weekday{text-align:center;color:var(--soft);font-size:11px}
+.calendar button{min-width:0;width:100%;height:46px;max-height:46px;border:1px solid var(--line);background:transparent}
+.calendar button.medium{background:#afb5ab}.calendar button.strong{background:var(--ink);color:var(--paper)}
+.calendar button.current{outline:2px solid var(--ink);outline-offset:1px}
+.goalStats{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding-top:14px;border-top:1px solid var(--line)}
+.goalStats label{font-size:13px;color:var(--soft);display:block;margin:0 0 6px}
+.goalStats strong{font-size:26px;line-height:1.2}
+.eyebrow{font-size:11px;color:var(--soft);letter-spacing:.09em;text-transform:uppercase;margin:15px 0 10px}
+.achievement{display:grid;grid-template-columns:52px minmax(0,1fr);gap:13px;align-items:start;padding:12px 0 18px;border-bottom:1px solid var(--line)}
+.awardMark{height:50px;width:50px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-size:25px;font-weight:700}
+.awardMark.wait{background:transparent;border:1px solid var(--ink);color:var(--ink);font-size:16px}
+.achievement strong{font-size:19px}.achievement p{margin:5px 0 0;font-size:13px;color:var(--soft)}
+.localRow{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);width:100%;background:transparent;border-top:0;border-left:0;border-right:0;text-align:left}
+.localRow .cover{height:77px;font-size:9px;padding:6px}
+.localRow strong{display:block;font-size:18px;line-height:1.2}.localRow p{color:var(--soft);margin:5px 0 0;font-size:13px}.localRow .right{font-size:13px;font-weight:700}
+.dayRow{display:grid;grid-template-columns:102px minmax(0,1fr);gap:16px;padding:14px 0;border-bottom:1px solid var(--line);align-items:center}
+.dayRow .cover{height:135px;font-size:12px}.dayRow h3{font-size:22px;margin:0 0 12px;line-height:1.2}.dayRow p{color:var(--soft);margin:7px 0}
+.localBar{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px}
+.localBar button{background:none;border:0;font-weight:650}
+.landscape .bookHero{grid-template-columns:95px minmax(0,1fr);min-height:115px;gap:12px;margin-bottom:9px}
+.landscape .bookHero .cover{min-height:118px;height:118px;font-size:10px}.landscape .bookHero h2{font-size:19px;margin:0 0 7px}.landscape .bookHero p{font-size:12px;margin:0 0 5px}
+.landscape .metricGrid{margin:5px 0}.landscape .metricGrid strong{font-size:21px}
+.landscape .weekGraph{min-height:60px;margin:4px 0 9px}.landscape .weekGraph button{height:60px}
+.landscape .gridBook .cover{height:120px}.landscape .bookGrid{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.landscape .tabBar{margin-bottom:7px}.landscape .tabBar button{min-height:29px}
+.landscape .calendar{gap:4px;margin:7px 0 10px}.landscape .calendar button{height:29px}
+.landscape .goalStats{padding-top:5px}.landscape .goalStats strong{font-size:20px}
+.landscape .achievement{padding:7px 0 8px}.landscape .awardMark{height:35px;width:35px;font-size:17px}.landscape .achievement{grid-template-columns:35px 1fr}
+.landscape .achievement strong{font-size:16px}.landscape .achievement p{font-size:11px;margin:0}
+.localRow .cover>div{display:none}
+.localRow .cover .providerMark{display:none}
+.landscape .localRow{grid-template-columns:34px minmax(0,1fr) auto;gap:9px;padding:4px 0}.landscape .localRow .cover{height:46px}.landscape .localRow strong{font-size:14px}.landscape .localRow p{font-size:11px;margin:2px 0}
+.landscape .dayRow{grid-template-columns:58px 1fr;padding:7px 0;gap:10px}.landscape .dayRow .cover{height:77px;font-size:9px}.landscape .dayRow h3{font-size:16px;margin:0 0 3px}.landscape .dayRow p{font-size:12px;margin:3px 0}
+.landscape .bookText{font-size:12px}.landscape .bookFooterActions{margin:5px 0}
+@media(max-width:700px){.calendar{gap:4px}}
+
+</style></head><body>
+<div class="header"><strong>▰ YBX READER</strong><small>Интерактивная визуализация · оригинальные PNG от 28.10.2026 · тестовые данные</small></div>
+<div class="tools">
+<label>Устройство<select id="model"><option value="x3">X3 · 480×800</option><option value="x4">X4 · 480×800</option><option value="pro" selected>X4 Pro · 528×792</option></select></label>
+<label>Ориентация<select id="rotate"><option value="portrait">Портретная</option><option value="landscape">Альбомная</option></select></label>
+<label>Сценарий<select id="scenario">
+<option value="linked">2 сервиса</option><option value="all">3 сервиса</option><option value="empty">Каталог пуст</option>
+<option value="unpaired">Нет привязки</option><option value="expired">Токен истёк</option><option value="removed">Устройство отозвано</option>
+<option value="provider">Ошибка провайдера</option><option value="offline">Нет сети</option><option value="codeExpired">Код истёк</option><option value="denied">Вход отклонён</option><option value="approved">Успешный вход</option></select></label>
+<button id="reset">Сбросить</button>
+</div>
+<div class="workspace">
+<aside class="side"><h2>Все экраны · 10</h2><nav class="nav" id="nav"></nav><div class="info">Все 10 экранов адаптивные и интерактивные. Исходные PNG показаны справа. Кнопки «внутри» позволяют проверить маршруты без реального аккаунта.<br><br>←/→ — переключение экранов, Esc — назад.</div></aside>
+<main class="main"><div class="above"><b id="heading">Источники</b><span id="size">528×792</span></div><div class="viewport" id="viewport"><div class="device" id="device"><div class="screen" id="screen"></div></div></div>
+<p class="info" style="border:0;text-align:center">Это демонстрационный HTML-прототип, не эмулятор FreeInk и не скриншот устройства. Никаких настоящих сетевых действий.</p></main>
+<aside class="ref"><h2>Сравнение с оригиналом</h2><img id="original" alt="Исходный экран YBX Reader"><p id="refinfo">Эталонный PNG, 528×792, тестовые данные. Совпадение размеров проверяется на физическом устройстве.</p><a id="raw" target="_blank" rel="noopener">Открыть PNG в полном размере</a></aside>
+</div>
+<script>
+const items=[["01-home","Главная"],["02-library","Библиотека"],["03-book","О книге"],["04-history","История"],["05-awards","Достижения"],["06-sources","Источники"],["07-pair","Подключение"],["08-settings","Настройки"],["09-on-reader","На ридере"],["10-day","День чтения"]];
+const valid=id=>items.some(x=>x[0]===id),q=id=>document.getElementById(id),p=new URLSearchParams(location.search);
+const st={page:valid(p.get("screen"))?p.get("screen"):"06-sources",model:"pro",rotation:"portrait",scenario:"linked",dialog:"",shelf:"Читаю"};
+const btn=(text,action,primary=false)=>'<button type="button" data-action="'+action+'" class="btn'+(primary?' dark':'')+'">'+text+"</button>";
+function issue(){return ({linked:"Каталог содержит 2 сервиса; их сессии могут требовать отдельной проверки.",all:"Каталог содержит 3 сервиса.",empty:"Сервисы ещё не добавлены.",unpaired:"Ридер не подключён к аккаунту.",expired:"Токен ридера истёк.",removed:"Устройство удалено из YBX.",provider:"Требуется повторный вход в сервис через кабинет YBX.",offline:"Нет связи. Состояние не проверено.",codeExpired:"Код привязки истёк.",denied:"Вход отклонён.",approved:"Привязка подтверждена (только демонстрация)."})[st.scenario]}
+function bar(){return '<div class="sys"><div class="logo"><i></i><i></i><i></i></div><b>YBX</b><span>13:42　▰ 80%</span></div>'}
+function foot(){let list=st.page==="01-home"?[["Библиотека","02-library"],["Источники","06-sources"],["Ещё","08-settings"]]:
+st.page==="04-history"?[["Дни","10-day"],["Книги","02-library"],["Ачивки","05-awards"]]:
+st.page==="05-awards"?[["История","04-history"],["Все награды","05-awards"],["Ещё","08-settings"]]:
+st.page==="09-on-reader"?[["Библиотека","02-library"],["Открыть","03-book"],["Действия","options"]]:
+st.page==="06-sources"?[["Назад","01-home"],["Обновить","refresh"],["Ещё","options"]]:st.page==="07-pair"?[["Отмена","06-sources"],["Новый код","newcode"],["QR","fullqr"]]:[["Назад","01-home"],["Выбрать","06-sources"],["Ещё","08-settings"]];
+return '<div class="footer">'+list.map(x=>'<button data-action="'+x[1]+'">'+x[0]+"</button>").join("")+"</div>"}
+function card(name,badge,connected){
+const status=st.scenario==="offline"?"Не проверено":st.scenario==="provider"?"Проверьте вход":connected?"В каталоге":"Нет в каталоге";
+return '<div class="provider '+(connected?"":"off")+'"><div class="providerHead"><div class="providerBadge">'+badge+'</div><div><div class="providerName">'+name+'</div><div class="providerStatus">'+status+'</div></div></div><div class="providerActions"><button data-action="refresh">Обновить все</button><button data-action="cabinet">Управление ↗</button></div></div>';
+}
+function sources(){let selected=st.scenario==="linked"||st.scenario==="approved"?[true,true,false]:st.scenario==="all"?[true,true,true]:st.scenario==="provider"?[true,false,true]:[false,false,false];
+return '<p class="subtitle">Книги из ваших подключённых сервисов</p>'+card("Яндекс Книги","Я",selected[0])+card("WB Книги","WB",selected[1])+card("ЛитРес","Л",selected[2])+'<p class="subtitle" style="font-size:12px">'+issue()+'</p>'}
+function pair(){return '<div class="pair"><h3>Откройте YBX на телефоне</h3><div class="qr"><img src="assets/demo-pair-qr.png" alt="Демо QR — общий адрес привязки, без одноразового токена"></div><div class="caption">Код подключения · демонстрация</div><div class="code">ABCD 1234</div><p>Или откройте my.ybx.app/pair и введите код с экрана ридера.</p><time>'+(st.scenario==="codeExpired"?"Код истёк":st.scenario==="denied"?"Вход отклонён":st.scenario==="approved"?"Подключено":"Ждём подтверждения · ещё 9 минут")+'</time><div class="pairbuttons">'+btn("Обновить код","newcode")+btn("QR крупнее","fullqr")+"</div></div>"}
+function settings(){const values=[["Аккаунт YBX",st.scenario==="unpaired"?"Не подключён":"Настроен","06-sources"],["Источники",st.scenario==="linked"?"2 сервиса":"Просмотреть","06-sources"],["Синхронизация","Включена","info"],["Оформление","Стандартная тема","info"],["Язык","Русский","info"],["Экран сна","Настроить","info"],["Обновления","Проверить","info"],["Поддержка","Об устройстве","info"],["Системные настройки","Все разделы","info"]];
+return values.map(x=>'<button type="button" class="setting" data-action="'+x[2]+'"><b>'+x[0]+'</b><span>'+x[1]+'</span><i>›</i></button>').join("")}
+
+const sampleBooks=[
+ ["Мастер и Маргарита","М. Булгаков","42%","Я","dark"],
+ ["Пикник на обочине","Стругацкие","71%","Я","light"],
+ ["Укрытие. Иллюзия","Хью Хауи","18%","WB","gray"],
+ ["Двенадцать стульев","Ильф и Петров","5%","Я","white"]
+];
+function cover(b){return '<div class="cover '+b[4]+'"><div>'+b[0]+'</div><div class="coverAuthor">'+b[1]+'</div><span class="providerMark">'+b[3]+'</span></div>';}
+function progress(p){return '<div class="readProgress"><span style="width:'+p+'%"></span></div>';}
+function home(){
+ const days=[34,64,20,0,0,0,0], names=["пн","вт","ср","чт","пт","сб","вс"];
+ return '<div class="infoLabel" style="margin:3px 0 11px">Продолжить чтение</div>'+
+ '<div class="bookHero">'+cover(sampleBooks[0])+
+ '<div><h2>Мастер и Маргарита</h2><p>Михаил Булгаков</p><p class="infoLabel">Яндекс Книги</p>'+
+ progress(42)+'<button class="fullAction" data-action="03-book">Продолжить</button></div></div>'+
+ '<div class="thinline"></div><div class="underlinedHeader"><strong>Ваше чтение</strong>'+
+ '<button data-action="04-history">Подробнее ›</button></div>'+
+ '<div class="metricGrid"><div><small>СЕГОДНЯ</small><strong>38</strong><span>мин</span></div>'+
+ '<div><small>ЗА НЕДЕЛЮ</small><strong>4:24</strong><span>ч</span></div>'+
+ '<div><small>СЕРИЯ</small><strong>5</strong><span>дней</span></div></div>'+
+ '<div class="weekGraph">'+days.map((n,i)=>'<button data-action="10-day" aria-label="'+names[i]+'"><i style="height:'+n+'px"></i><small>'+names[i]+'</small></button>').join("")+'</div>'+
+ '<div class="underlinedHeader" style="border-top:1px solid var(--line);padding-top:8px"><strong>Достижения</strong>'+
+ '<button data-action="05-awards">8 из 24 ›</button></div>';
+}
+function library(){
+ const shelves=["Читаю","Хочу","Прочитано"];
+ return '<div class="tabBar">'+shelves.map((x,i)=>'<button data-action="shelf:'+x+'" aria-pressed="'+(st.shelf===x)+'">'+x+' · '+[6,14,12][i]+'</button>').join("")+'</div>'+
+ '<div class="localBar"><span class="infoLabel">Все источники ﹀</span><button data-action="info">Поиск ›</button></div>'+
+ '<div class="bookGrid">'+sampleBooks.map((b,i)=>'<button class="gridBook" data-action="03-book">'+cover(b)+'<small>'+b[2]+'</small></button>').join("")+'</div>'+
+ '<p class="infoLabel" style="margin-top:15px">Страница 1 из 2</p>';
+}
+function book(){
+ const b=sampleBooks[0];
+ return '<div class="bookHero">'+cover(b)+'<div><h2>Мастер и Маргарита</h2><p>Михаил Булгаков</p>'+
+ '<p class="infoLabel">Яндекс Книги</p><p>На ридере · EPUB</p></div></div>'+
+ '<strong>Прочитано 42%</strong>'+progress(42)+
+ '<button class="fullAction" data-action="09-on-reader">Продолжить чтение</button>'+
+ '<h3 style="font-size:19px;margin:20px 0 8px">Описание</h3>'+
+ '<p class="bookText">Москва тридцатых годов. Необычный гость меняет жизнь города, а история Мастера и Маргариты связывает несколько миров.</p>'+
+ '<div class="bookFooterActions"><button data-action="10-day">Статистика книги ›</button><button data-action="options">Действия ›</button></div>';
+}
+function historyPage(){
+ const active=new Set([2,3,5,7,8,11,13,16,21,24,25,26,27,28]);
+ const strong=new Set([16,26,27]); const weekdays=["пн","вт","ср","чт","пт","сб","вс"];
+ // October 1, 2026 is Thursday (index 3 in Monday-first week).
+ const lead=3, slots=[...Array(lead).fill(""),...Array.from({length:31},(_,i)=>i+1)];
+ return '<div class="calendarTitle"><h2>Октябрь 2026</h2><button data-action="info">‹　›</button></div>'+
+ '<div class="infoLabel">12 ч 40 мин · 14 активных дней</div>'+
+ '<div class="calendar">'+weekdays.map(x=>'<div class="weekday">'+x+'</div>').join("")+
+ slots.map(x=>x?'<button data-action="10-day" class="'+(strong.has(x)?"strong":active.has(x)?"medium":"")+
+ (x===28?" current":"")+'">'+x+'</button>':'<div></div>').join("")+'</div>'+
+ '<div class="goalStats"><div><label>Серия</label><strong>5 дней</strong></div>'+
+ '<div><label>Книг за год</label><strong>12 из 24</strong>'+progress(50)+'</div></div>'+
+ '<div class="bookFooterActions"><button data-action="10-day">Дни ›</button><button data-action="05-awards">Ачивки ›</button></div>';
+}
+function awards(){
+ const award=(badge,name,descr,progressPct)=>'<div class="achievement"><span class="awardMark'+(progressPct!=null?' wait':'')+'">'+badge+'</span><div><strong>'+name+'</strong><p>'+descr+'</p>'+
+ (progressPct!=null?progress(progressPct):'')+'</div></div>';
+ return '<p class="subtitle">Получено 8 из 24</p><div class="eyebrow">Получены</div>'+
+ award("✓","Первый шаг","Первая прочитанная книга · 12 окт.")+
+ award("✓","Час с книгой","Час чтения за один день · 21 окт.")+
+ '<div class="eyebrow">В процессе</div>'+award("70%","Десять книг","7 из 10 книг",70)+
+ '<div class="infoLabel" style="margin-top:15px">Следующая цель</div><p><b>Месяц чтения · 18 из 30 дней</b></p>';
+}
+function onReader(){
+ const list=sampleBooks.concat([["Белая гвардия","М. Булгаков","Новая","Я","light"]]);
+ return '<div class="localBar"><span class="infoLabel">5 книг · /YBX</span><button data-action="info">Поиск ›</button></div>'+
+ list.map(b=>'<button class="localRow" data-action="03-book">'+cover(b)+'<div><strong>'+b[0]+'</strong><p>'+b[1]+'</p></div><span class="right">'+b[2]+'</span></button>').join("");
+}
+function day(){
+ const rows=[
+ [["Мастер и Маргарита","Михаил Булгаков","42%","Я","dark"],"26 мин · 30% → 42%"],
+ [["Двенадцать стульев","Ильф и Петров","5%","Я","light"],"12 мин · 0% → 5%"]];
+ return '<h2 style="font-size:34px;margin:0 0 7px">38 минут</h2>'+
+ '<div class="subtitle">2 книги · серия 5 дней</div>'+
+ rows.map(([b,activity])=>'<div class="dayRow">'+cover(b)+'<div><h3>'+b[0]+'</h3><p>'+b[1]+'</p><strong>'+activity+'</strong></div></div>').join("")+
+ '<div class="goalStats" style="margin-top:20px"><div><label>Цель года</label><strong>12 из 24 книг</strong></div><div>'+progress(50)+'</div></div>';
+}
+const renderPages={
+ "01-home":home,"02-library":library,"03-book":book,"04-history":historyPage,
+ "05-awards":awards,"06-sources":sources,"07-pair":pair,"08-settings":settings,
+ "09-on-reader":onReader,"10-day":day
+};
+
+function dialog(){if(!st.dialog)return "";
+const descriptions={options:["Действия","Здесь можно открыть кабинет управления источниками или сменить аккаунт.","Источники","06-sources","Сменить аккаунт","switch"],
+cabinet:["Кабинет YBX","Управление провайдерами доступно через авторизованный веб-кабинет. Одноразовый токен ридера сюда не передаётся.","Закрыть","close","Аккаунт","06-sources"],
+switch:["Сменить аккаунт?","Прежний токен сохраняется до успешного подтверждения новой привязки. Книги и позиции чтения не удаляются.","Отмена","close","Продолжить","07-pair"],
+fullqr:["QR привязки",'<div class="qr" style="margin:auto"><img src="assets/demo-pair-qr.png" alt="Демо QR"></div><p>Это общий адрес /pair, а не действующая привязка.</p>',"Назад","close","Новый код","newcode"],
+info:["Демонстрация","Здесь в прошивке открывается соответствующий системный экран FreeInk. Это только визуализация перехода.","Закрыть","close","Настройки","08-settings"]};
+const a=descriptions[st.dialog];return '<div class="dialogShade" role="dialog"><div class="dialog"><h3>'+a[0]+'</h3><p>'+a[1]+'</p><div class="dialogbuttons">'+btn(a[2],a[3])+btn(a[4],a[5],true)+'</div></div></div>'}
+function render(){
+q("model").value=st.model;q("rotate").value=st.rotation;q("scenario").value=st.scenario;
+const portrait=st.model==="pro"?[528,792]:[480,800],landscape=st.rotation==="landscape",w=portrait[landscape?1:0],h=portrait[landscape?0:1];
+const device=q("device");device.style.width=w+"px";device.style.height=h+"px";device.classList.toggle("landscape",landscape);
+q("size").textContent=w+" × "+h;const selected=items.find(x=>x[0]===st.page);
+q("heading").textContent=selected[1];
+q("nav").innerHTML=items.map((x,i)=>'<button class="'+(x[0]===st.page?"current":"")+'" data-action="'+x[0]+'"><small>'+String(i+1).padStart(2,"0")+'</small>'+x[1]+"</button>").join("");
+q("original").src="assets/"+st.page+".png";q("raw").href=q("original").src;
+const content=renderPages[st.page]();
+q("screen").innerHTML=bar()+(st.page==="01-home"?"":'<div class="title">‹ '+(st.page==="10-day"?"28 октября":selected[1])+'</div>')+
+ '<div class="content">'+content+'</div>'+foot()+dialog();
+window.history.replaceState(null,"",location.pathname+"?screen="+st.page);
+const maxScale=Math.min(1,(q("viewport").clientWidth-14)/(w+22));device.style.transform="scale("+maxScale+")";device.style.transformOrigin="top center";device.style.marginBottom=(-(h+22)*(1-maxScale))+"px";
+}
+function go(id){st.page=id;st.dialog="";render()}
+function act(a){
+if(valid(a)){go(a);return}
+if(a.startsWith("shelf:")){st.shelf=a.slice(6);render();return}
+if(a==="close"){st.dialog="";render();return}
+if(["options","cabinet","switch","fullqr","info"].includes(a)){st.dialog=a;render();return}
+if(a==="refresh"){st.scenario="linked";render();return}
+if(a==="newcode"){st.scenario="unpaired";go("07-pair")}
+}
+document.addEventListener("click",e=>{const t=e.target.closest("[data-action]");if(t)act(t.dataset.action)});
+q("model").onchange=e=>{st.model=e.target.value;render()};
+q("rotate").onchange=e=>{st.rotation=e.target.value;render()};
+q("scenario").onchange=e=>{st.scenario=e.target.value;if(["codeExpired","denied"].includes(st.scenario))st.page="07-pair";render()};
+q("reset").onclick=()=>{Object.assign(st,{page:"06-sources",model:"pro",rotation:"portrait",scenario:"linked",dialog:""});render()};
+document.addEventListener("keydown",e=>{
+if(["SELECT","INPUT","TEXTAREA"].includes(document.activeElement?.tagName))return;
+if(e.key==="Escape"){e.preventDefault();st.dialog?act("close"):go("01-home")}
+else if(e.key==="ArrowRight"||e.key==="ArrowLeft"){e.preventDefault();let i=items.findIndex(x=>x[0]===st.page);go(items[(i+items.length+(e.key==="ArrowRight"?1:-1))%items.length][0])}
+});
+window.addEventListener("resize",render);render();
+</script></body></html>
