@@ -71,5 +71,7 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
   int pending_ = -1;
   ButtonNavigator navigator_;
   freeink::ui::ButtonProps props_;
-  std::array<std::array<char, 96>, 3> rows_{};
+  std::array<char, 100> pairTimeText_{};
+  bool pairingQrInline_ = false;
+  freeink::ui::Rect pairingQrBounds_{};
 };
