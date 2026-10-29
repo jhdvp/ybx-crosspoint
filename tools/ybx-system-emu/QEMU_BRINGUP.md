@@ -739,3 +739,48 @@ No synthetic battery or RTC result is presented as real hardware data.
 
 Host regression: **63/63 Python tests passed** after including the
 new runner and QTest contract tests.
+
+### 29 October: S3 opt-in GPIO output/register groundwork — experiment 0010
+
+The Espressif fork's original `hw/gpio/esp32_gpio.c` ignored all GPIO MMIO writes.
+Experiment `0010-s3-optin-gpio-output-registers.patch`, after 0009,
+adds the ESP-IDF S3 `GPIO_OUT/OUT1`, `OUT_W1TS/W1TC`,
+`ENABLE/ENABLE1`, `ENABLE_W1TS/W1TC` and output-related
+input register readback. It introduces 54 named QEMU output lines
+`ybx.gpio-pin` to support future GPIO2/4/10 connections.
+The legacy behavior remains unchanged unless
+`-machine esp32s3,ybx-x4pro-i2c=on` is explicitly selected.
+The basic virtual pull-high policy for *unconfigured connected
+outputs* is only a board-wiring approximation; this is not full
+IO_MUX, pad pull, edge interrupt, or real touch input emulation.
+
+Built Xtensa QEMU successfully. `probe_x4pro_gpio_qtest.py` used
+the actual compiled binary, with positive/negative QTest runs,
+testing low/high bank bit writes, W1TC, enable masks, readback and
+boot strap preservation. Real evidence is in
+`qa-20261029/s3-x4pro-gpio-qtest.json`, with binary/ROM SHA256 hashes.
+This verifies GPIO **register behavior**, NOT a GPIO-to-GT911
+connection. It must not be considered proof of a working touchscreen.
+
+### 29 October: GT911 experiment 0011 — compiled, NOT accepted
+
+`0011-s3-optin-gt911-power-gating.patch` is a draft:
+virtual GT911 device with separate S3 machine flag
+`-machine esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on`.
+Its GPIO2 active-low power, GPIO4 reset and GPIO10 address selection
+connect to named output levels implemented in 0010; the intended
+I2C behavior is NACK while unpowered/reset, 50 ms power-on
+settling delay, GT911 product ID at 0x8140, status 0x814e and no
+fabricated touches. It does not model real contact events, HOME key
+interrupt, GPIO input IRQ, full configuration, or physical hardware.
+
+The draft compiles, but **QTest acceptance is BLOCKED**:
+`probe_x4pro_gt911_qtest.py` calls `clock_step`, which this
+configured QEMU QTest endpoint rejects with
+`FAIL Unknown command 'clock_step'`. It has therefore **not**
+verified NACK/ACK transitions, readiness timing or alternate address,
+and must not be included in the standard `apply_qemu_patches.sh`.
+Do not set runner evidence `virtual_x4pro_gt911_attached=true`
+or close Kaneo #36 until a usable clock/timing test and real
+guest firmware checks are completed. The reliable 0009 runner
+continues to show GT911 as absent.

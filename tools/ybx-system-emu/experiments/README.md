@@ -128,3 +128,28 @@ QTest evidence, I2C device limitations and boot/acceptance status.
 QEMU's current `esp32_gpio.c` write handler is a stub; proper
 GT911 simulation requires GPIO2 (active-low power), GPIO4 (reset),
 GPIO10 (interrupt) behavior first.
+
+## 0010 — opt-in GPIO2/4/10 output and enable MMIO
+
+`0010-s3-optin-gpio-output-registers.patch` (after 0009) adds
+S3 pin output callbacks and basic GPIO_OUT/ENABLE/W1TS/W1TC MMIO
+to the otherwise no-op Espressif GPIO parent model.
+Only enabled with `-machine esp32s3,ybx-x4pro-i2c=on`.
+Tested against compiled QEMU with `probe_x4pro_gpio_qtest.py`:
+normal S3 still ignores writes, opt-in S3 updates both GPIO
+register banks, preserves boot strap and toggles GPIO2/4/10
+direction/output correctly. This is GPIO MMIO groundwork only.
+
+## 0011 — draft, unaccepted GT911 power-gated slave
+
+`0011-s3-optin-gt911-power-gating.patch` (after 0010)
+compiles an optional GT911 with active-low GPIO2 power,
+GPIO4 reset and GPIO10 address select, plus synthetic idle
+product/status reads. No touch events are invented. It is **NOT
+ACCEPTED**: this QEMU QTest endpoint returns
+`FAIL Unknown command 'clock_step'` and thus cannot verify
+the 2 ms reset/50 ms ready delays via its existing test
+`probe_x4pro_gt911_qtest.py`. Do not include 0011 in the
+default patch application pipeline, do not claim functional
+touch input, and leave Kaneo #36 open. Add proper timing
+tests or a different deterministic test clock first.
