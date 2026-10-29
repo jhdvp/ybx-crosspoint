@@ -11,10 +11,10 @@ class SyntheticTouchProbeTests(unittest.TestCase):
         p = SimpleNamespace(
             stdin=io.StringIO(), stdout=io.StringIO(responses))
         q = QTest(p)
-        q.wr(GPIO + 0x24, 0x414)
+        q.wr(GPIO + 0x24, 0x416)
         self.assertEqual(q.rd(I2C + 0x20), 0x80)
         self.assertEqual(q.tick(3000000), 3000000)
-        self.assertIn("writel 0x60004024 0x414", p.stdin.getvalue())
+        self.assertIn("writel 0x60004024 0x416", p.stdin.getvalue())
         self.assertIn("clock_step 3000000", p.stdin.getvalue())
         self.assertEqual(q.commands, 3)
 

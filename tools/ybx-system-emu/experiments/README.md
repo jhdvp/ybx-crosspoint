@@ -179,3 +179,15 @@ passed 235 MMIO commands in the same QEMU instance, with product
 data/clock/status readback and output hashes in the QA directory.
 Does not prove GPIO edge interrupt-matrix dispatch, GUI response,
 EPD pixels or SD mount. Leave those tasks open.
+
+## 0013 — actual X4 Pro GPIO1 master-power prerequisite for GT911
+
+`0013-x4pro-gt911-master-rail-gpio1.patch` (after 0012)
+makes GT911 power dependent on both GPIO1 HIGH (board master
+peripheral rail) and GPIO2 LOW (touch enable). It handles
+reset held low across power-up and resets device state when
+either rail drops. Live compiled QEMU confirms NACK without
+GPIO1 and after dropping it, plus normal touch/QMP injection.
+It does not emulate full board PMIC behavior. See the
+timestamped 22-read QTest and 247-command injection reports
+in `QEMU_BRINGUP.md`.

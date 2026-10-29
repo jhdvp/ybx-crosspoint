@@ -137,7 +137,9 @@ def main():
                     observed=bool(q.rd(GPIO+0x3c)&(1<<10))
                     assert observed==expected,(observed,expected)
                 # Same genuine power-on + reset sequence as FreeInk SDK.
-                q.wr(GPIO+0x24,0x414)
+                q.wr(GPIO+0x24,0x416)
+                assert q.i2c_send(ADDR,[0x81,0x40]) == 0x400
+                q.wr(GPIO+0x08,1<<1)  # master rail GPIO1 HIGH
                 q.tick(3000000)
                 q.wr(GPIO+0x08,0x10)
                 q.tick(60000000)
@@ -195,6 +197,7 @@ def main():
                     "status_clear_deasserts_gpio10":True,
                     "power_off_rejects_touch_injection":True,
                     "power_off_i2c_nack":True,
+                    "gpio1_master_rail_required":True,
                     "real_hardware_or_ui_verified":False,
                     "qemu_sha256":hashlib.sha256(args.qemu_bin.read_bytes()).hexdigest(),
                     "rom_sha256":hashlib.sha256(args.rom.read_bytes()).hexdigest(),

@@ -36,7 +36,9 @@ def make_protocol() -> Protocol:
             p.read(0x1c, name + f".byte{idx}")
     p.send(GT911, [0x81, 0x40], "touch.unpowered")
     # GPIO2 active-LOW power; GPIO4 reset LOW; GPIO10 INT LOW => 0x5d.
-    gpio(0x24, (1 << 2) | (1 << 4) | (1 << 10))
+    gpio(0x24, (1 << 1) | (1 << 2) | (1 << 4) | (1 << 10))
+    p.send(GT911, [0x81, 0x40], "touch.master_rail_off")
+    gpio(0x08, 1 << 1)       # GPIO1 HIGH enables master rail
     p.send(GT911, [0x81, 0x40], "touch.reset_low")
     tick(3000000)             # minimum 2ms reset low satisfied
     gpio(0x08, 1 << 4)       # release GPIO4 reset HIGH
@@ -56,6 +58,8 @@ def make_protocol() -> Protocol:
     tick(60000000)
     p.send(GT911, [0x81, 0x40], "touch.old_address_nack")
     read_register(0x14, 0x8140, 3, "touch.alternate_address")
+    gpio(0x0c, 1 << 1)       # drop master rail while GPIO2 remains LOW
+    p.send(0x14, [0x81, 0x40], "touch.master_rail_dropped")
     return p
 
 def validate(p: Protocol, stdout: str):
@@ -66,7 +70,8 @@ def validate(p: Protocol, stdout: str):
     if len(values) != len(p.read_names):
         raise AssertionError(f"expected {len(p.read_names)} hex reads, got {len(values)}")
     m=dict(zip(p.read_names,values))
-    for name in ["touch.unpowered", "touch.reset_low", "touch.not_ready",
+    for name in ["touch.unpowered", "touch.master_rail_off",
+                 "touch.master_rail_dropped", "touch.reset_low", "touch.not_ready",
                  "touch.powered_off", "touch.requires_reset",
                  "touch.old_address_nack"]:
         if m[name + ".write_status"] != 0x400:
@@ -80,7 +85,8 @@ def validate(p: Protocol, stdout: str):
     for i,value in enumerate([ord('9'),ord('1'),ord('1')]):
         assert m[f"touch.alternate_address.byte{i}"]==value
     return {
-        "power_off_nack":True, "hold_reset_nack":True,
+        "power_off_nack":True, "master_rail_gpio1_off_nack":True,
+        "master_rail_gpio1_drop_nack":True, "hold_reset_nack":True,
         "reset_delay_required":True, "gt911_product_id":"911",
         "idle_touch_count":0, "power_cycle_requires_new_reset":True,
         "alternate_address_0x14":True, "touch_event_injection":False,

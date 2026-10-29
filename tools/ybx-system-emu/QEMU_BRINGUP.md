@@ -884,3 +884,27 @@ docker run --rm --network none --platform linux/arm64 \
   --rom /work/s3-full-rom-generator-test.bin \
   --out /work/s3-x4pro-touch-injection-qtest.json
 ```
+
+### 29 October: X4 Pro shared peripheral-rail GPIO1 gate (0013)
+
+The pinned X4 Pro FreeInk `BoardConfig.h` confirms the touch
+device only has power when BOTH master peripheral rail **GPIO1
+HIGH** and dedicated touch-enable **GPIO2 LOW** are driven by
+the guest. The initial model only checked GPIO2; experiment
+`0013-x4pro-gt911-master-rail-gpio1.patch` adds the missing
+GPIO1 master-rail prerequisite. The model also correctly counts
+RESET=LOW held through the moment power is applied as the start
+of the minimum reset pulse, without accepting a slave address
+until a subsequent reset release and readiness delay.
+
+Rebuilt compiled QEMU; deterministic live tests passed with:
+- master-rail missing => NACK even when GPIO2 LOW;
+- GPIO1 HIGH + GPIO2 LOW + GPIO4 timed reset => ACK and ID;
+- GPIO1 subsequently LOW => NACK without changing GPIO2;
+- synthetic events via QMP still pass (247 MMIO commands);
+- error handling, no fabricated touch when unpowered.
+Evidence: `qa-20261029/s3-x4pro-master-rail-gt911-qtest.json`
+(22 readbacks) and
+`qa-20261029/s3-x4pro-master-rail-touch-qtest.json`
+(247 MMIO commands). **Still no guest UI acceptance, SD mount,
+EPD pixel output or full interrupt-matrix proof**.

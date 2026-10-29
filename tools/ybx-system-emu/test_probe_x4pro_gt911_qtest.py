@@ -7,7 +7,7 @@ from probe_x4pro_gt911_qtest import make_protocol, validate
 class GT911ProbeTests(unittest.TestCase):
     def test_explicit_power_reset_and_virtual_clock(self):
         p = make_protocol()
-        self.assertIn("writel 0x60004024 0x414", p.commands)
+        self.assertIn("writel 0x60004024 0x416", p.commands)
         self.assertIn("clock_step 3000000", p.commands)
         self.assertIn("clock_step 60000000", p.commands)
         self.assertIn("touch.product.byte0", p.read_names)
