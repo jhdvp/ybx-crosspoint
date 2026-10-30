@@ -15,7 +15,7 @@ Properties, device path /machine/soc/intmatrix:
   ybx-last-map-addr, ybx-last-map-value
   ybx-cpu<0|1>-asserted                asserted source pulses delivered to a CPU interrupt
   ybx-cpu<0|1>-unrouted                asserted pulses whose map value matches no extint
-  ybx-cpu<0|1>-from-cpu-asserted       same, restricted to sources 79..82 (FROM_CPU)
+  ybx-cpu<0|1>-from-cpu-asserted       asserted FROM_CPU sources, including those unrouted
   ybx-cpu<0|1>-from-cpu-default-route  FROM_CPU pulses dropped while still at reset value 6
   ybx-cpu<0|1>-from-cpu-int            last FROM_CPU map value (CPU interrupt number)
 
@@ -24,7 +24,7 @@ Reading the result (see experiments/0037-agent-crosscore-ipi.md):
   map-writes == 0 and unrouted > 0            matrix never programmed; QEMU resets the map to 6,
                                               which is not a valid dc232b external interrupt, so
                                               the pulse is dropped silently (real HW default is 16)
-  from-cpu-asserted > 0, delivered            IPI reached the CPU; inspect INTSET/INTENABLE and the
+  from-cpu-asserted > 0, unrouted == 0       routed IPI reached the CPU; inspect INTSET/INTENABLE and the
                                               tick drain of xPendingReadyList instead
 
 Status: diagnostic only. Verified with "patch -p1 --dry-run" and "git apply --check" against the
