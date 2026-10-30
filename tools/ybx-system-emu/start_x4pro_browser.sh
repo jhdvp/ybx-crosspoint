@@ -4,7 +4,9 @@
 # with YBX_BROWSER_BIND_ADDRESS=192.168.x.y (NO AUTH; trusted LAN ONLY).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-QEMU_ROOT="${YBX_QEMU_ROOT:-$HOME/.local/state/ybx-emulator-upstream/qemu-rominit-20261029}"
+# Verified X4 Pro build with GPIO6/PCPU_INT fix plus optional IPI + EPD BUSY telemetry.
+# Rollback: YBX_QEMU_ROOT=$HOME/.local/state/ybx-emulator-upstream/qemu-rominit-20261029
+QEMU_ROOT="${YBX_QEMU_ROOT:-$HOME/.local/state/ybx-emulator-upstream/qemu-0043-agent-audit-20261030}"
 QA_ROOT="${YBX_QA_DIR:-$HOME/Projects/YBX/artifacts/ybx-esp32-system-emulation-20261029/qa-20261029}"
 PORT="${YBX_BROWSER_PORT:-8784}"
 BIND_IP="${YBX_BROWSER_BIND_ADDRESS:-127.0.0.1}"
