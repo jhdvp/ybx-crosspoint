@@ -378,3 +378,23 @@ and SSD1677 displayed frame SHA change verified. QA:
 Host tests and patch reverse-apply acceptance required for promotion.
 No physical e-paper timing guarantee. Kaneo #38 remains open for
 full panel/UI and adjacent platform support.
+
+## 0048 — Wi-Fi radio capability inventory: silent zero-fill, no radio model
+
+Host-only measurement, no guest boot. `wifi_radio_inventory.py` reads the factory
+X4 Pro ELF's own `l32r` literal pools (816 radio symbols; WIFI_MAC page
+0x60033000 154 accesses/90 words, WDEV 0x60035000 125/32, FE 0x60006000 125/62,
+MODEM_COEX 0x60031000 35/16, crypto key entries 0x60034400) and classifies the
+same windows against `info mtree`. `probe_x4pro_wifi_radio_qtest.py` then reads
+those registers in the prebuilt S3 machine: every radio word returns 0x0, while
+controls `esp32s3.apbctrl` date, `open_eth` and the WDEV RNG page answer non-zero.
+
+Cause: `esp32s3_io_read()` zero-fills 0x60000000..0x600D0FFF and its warning is
+compiled out (`esp32s3.c:118,532-549,750-753`), so the driver waits forever on
+clear status bits instead of faulting. Radio IRQ source 0 is already claimed by
+the EMAC (`esp32s3_intc.h:26,150`), the S3 "modem" precedent in upstream is a
+clock stub (`hw/misc/esp32c6_modem.c`), and `-device help` has no radio type.
+`wired_eth` is 1 symbol, so the working `open_eth`+slirp path is not usable by
+this image. Staged roadmap (tap → scan → auth/wdev crypto → DHCP → TLS → TSF)
+and the 802.11-versus-bridge analysis are in `0048-batch2-wifi-radio.md`.
+No scan, association, IP address or frame was produced or claimed.
