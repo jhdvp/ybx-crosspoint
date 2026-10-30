@@ -38,14 +38,21 @@ class BrowserTouchTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     check_touch(data)
 
-    def test_reboot_sends_real_qmp_reset_and_invalidates_cached_frame(self):
+    def test_reboot_clears_gt911_session_before_real_qmp_reset(self):
         guest = FactoryX4Pro.__new__(FactoryX4Pro)
         guest.lock = threading.RLock()
         guest.tap_lock = threading.Lock()
         guest.qmp = Mock(return_value={"return": {}})
         guest.frame = 42
         guest.reboot()
-        guest.qmp.assert_called_once_with("system_reset")
+        calls = guest.qmp.call_args_list
+        cleared = [c for c in calls if c.args[0] == "qom-set"
+                   and c.args[1]["property"].startswith("ybx-touch-")]
+        self.assertEqual(len(cleared), 3)
+        self.assertEqual({c.args[1]["property"] for c in cleared},
+                         {"ybx-touch-state", "ybx-touch-x", "ybx-touch-y"})
+        self.assertTrue(all(c.args[1]["value"] == 0 for c in cleared))
+        self.assertEqual(calls[-1].args[0], "system_reset")
         self.assertEqual(guest.frame, -1)
         self.assertFalse(guest.tap_lock.locked())
 
@@ -53,10 +60,23 @@ class BrowserTouchTests(unittest.TestCase):
         guest = FactoryX4Pro.__new__(FactoryX4Pro)
         guest.lock = threading.RLock()
         guest.tap_lock = threading.Lock()
-        guest.qmp = Mock(return_value={"error": {"desc": "reset unavailable"}})
+        guest.qmp = Mock(side_effect=[{"return": None}] * 3
+                        + [{"error": {"desc": "reset unavailable"}}])
         guest.frame = 42
         with self.assertRaises(RuntimeError):
             guest.reboot()
+        self.assertEqual(guest.frame, 42)
+        self.assertFalse(guest.tap_lock.locked())
+
+    def test_reboot_touch_clear_failure_skips_reset(self):
+        guest = FactoryX4Pro.__new__(FactoryX4Pro)
+        guest.lock = threading.RLock()
+        guest.tap_lock = threading.Lock()
+        guest.qmp = Mock(return_value={"error": {"desc": "no property"}})
+        guest.frame = 42
+        with self.assertRaises(RuntimeError):
+            guest.reboot()
+        self.assertEqual(guest.qmp.call_count, 1)
         self.assertEqual(guest.frame, 42)
         self.assertFalse(guest.tap_lock.locked())
 

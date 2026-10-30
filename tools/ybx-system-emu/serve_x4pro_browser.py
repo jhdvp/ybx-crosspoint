@@ -214,11 +214,7 @@ class FactoryX4Pro:
                 raise RuntimeError("Guest display has not completed its initial refreshes")
             with self.lock:
                 for prop, value in (("x",x),("y",y),("state",1)):
-                    result=self.qmp("qom-set",{"path":"/machine/soc",
-                                                "property":"ybx-touch-"+prop,
-                                                "value":value})
-                    if "return" not in result:
-                        raise RuntimeError(str(result))
+                    self._set_touch(prop, value)
                     if prop=="state":
                         pressed=True
             time.sleep(duration_ms/1000)
@@ -226,20 +222,30 @@ class FactoryX4Pro:
             try:
                 if pressed:
                     with self.lock:
-                        result=self.qmp("qom-set",{"path":"/machine/soc",
-                                                   "property":"ybx-touch-state",
-                                                   "value":0})
-                        if "return" not in result:
-                            raise RuntimeError(str(result))
+                        self._set_touch("state", 0)
             finally:
                 self.tap_lock.release()
 
+    def _set_touch(self, prop, value):
+        result = self.qmp("qom-set", {"path": "/machine/soc",
+                                      "property": "ybx-touch-" + prop,
+                                      "value": value})
+        if "return" not in result:
+            raise RuntimeError(str(result))
+
     def reboot(self):
-        """Request a real QEMU system reset; no fabricated UI or firmware edits."""
+        """QEMU system reset plus a clean GT911 session.
+
+        Clear the injected contact BEFORE system_reset: a latched press
+        survives the reset otherwise and the rebooted guest re-reads the
+        previous user's tap as a fresh touch.
+        """
         if not self.tap_lock.acquire(blocking=False):
             raise RuntimeError("Previous touch still in progress")
         try:
             with self.lock:
+                for prop in ("state", "x", "y"):
+                    self._set_touch(prop, 0)
                 result = self.qmp("system_reset")
                 if "return" not in result:
                     raise RuntimeError(str(result.get("error", result)))

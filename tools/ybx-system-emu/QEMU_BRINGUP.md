@@ -1403,3 +1403,57 @@ bridge, repeated menu selection acceptance, other X4 variants,
 DMA/GDMA, physical E-Ink waveform accuracy, network and lifecycle
 verification. Keep Kaneo #38 IN PROGRESS; mark only GUI touch →
 More screen milestone complete.
+
+## 30 October: offline patch-composition audit and reproducibility gate
+
+The accepted `apply_qemu_patches.sh` still installs only 0001/0003/0005.
+The X4 Pro guest that renders More in ≤2s needs the full opt-in chain
+`0001,0003,0005,0006..0019,0023,0024,0042` (20 patches) applied in order
+to the bare Espressif base `febae182…`. That chain was assembled by hand
+in the isolated `qemu-rominit-20261029` checkout, so nothing proved a fresh
+clone reproduces it or that the on-disk patch bytes are still the ones that
+produced the accepted SHA `8b81cec4…`.
+
+`check_qemu_patch_composition.py` is a **host-only, fail-closed auditor**.
+It never rebuilds QEMU, never writes to a live checkout, and never attaches
+to the running browser emulator; it only *reads* Git objects and files.
+
+- `record --qemu-src <checkout>` clones base `febae182…` into a throwaway
+  temp repo, applies the normalized chain (`normalize_patch` re-adds the
+  `new file mode` line that hand-stripped `--- /dev/null` blocks lost),
+  asserts `GPIO_PCPU_INT` is present in the composed `hw/gpio/esp32_gpio.c`
+  and `ybx-x4pro-epd` in `hw/xtensa/esp32s3.c`, then signs every touched
+  source and every patch file into `patches/composition-manifest.sha256`.
+- `verify [--live-qemu-root <checkout>] [--skip-compose]` re-checks chain
+  definitions (0042 last; 0020–0022/0002/0004/0043 forbidden), patch-file
+  SHAs against the manifest, and — because 0042 legitimately rewrites
+  0023/0024 context, so linear per-patch undo is undefined — proves
+  reproducibility by **double composition**: two independent composes must
+  yield byte-identical sources (`deterministic_recompose`). With
+  `--live-qemu-root` it also compares the throwaway tree to the shared
+  checkout (status signature + per-file SHA).
+- `guardrails --qemu-root … --flash … --rom … [--qemu-bin …]
+  [--require-artifacts]` runs **pre-spawn** read-only checks before any
+  guest acceptance run: base HEAD match, PCPU_INT present in the live tree,
+  ESP-image/partition/app magic in the flash, exact factory flash SHA
+  `206ed966…` (named rejection of the superseded `268c62e0…` settings/
+  packaging), optional pinned-artifact SHA audit, and shared-emulator
+  detection (browser port 8784 open / `qemu-system-xtensa` running) so an
+  added run knows it must use its own temp QEMU and media copies.
+- `sha256sums` prints the pinned provenance block.
+
+Current results (isolated worktree, host-only): 182 unit tests pass;
+`verify --live-qemu-root` → `ok=true`, `deterministic_recompose=true`,
+live==composed; `guardrails --require-artifacts` → `ok=true` with all 5
+pinned media `state=ok`, `browser_port_open`/`xtensa_processes_running`
+reported. Full reasoning, line references and risks are in
+`experiments/0048-batch2-repro-build.md`.
+
+### Session reset for the browser bridge
+
+`FactoryX4Pro.reboot()` now clears the synthetic GT911 QMP properties
+(`state`, `x`, `y` → 0) *before* `system_reset`, via the shared
+`_set_touch` helper also used by `tap()`. A latched press otherwise
+survives reset and the rebooted guest re-reads the previous user's tap as
+a fresh touch. If any clear or the reset fails, the cached frame is left
+untouched and `tap_lock` is released (`test_serve_x4pro_browser.py`).
