@@ -25,9 +25,17 @@ for file in "$QEMU_ROOT/build-ybx/qemu-system-xtensa" \
   [[ -f "$file" ]] || { echo "Missing required experimental file: $file" >&2; exit 2; }
 done
 if docker container inspect "$CONTAINER" >/dev/null 2>&1; then
-  echo "Existing container: $CONTAINER"
-  docker ps --filter "name=^/$CONTAINER$" --format '{{.Status}}'
-else
+  if [[ "$(docker inspect --format '{{.State.Running}}' "$CONTAINER")" == "true" ]]; then
+    echo "Existing running container: $CONTAINER"
+    docker ps --filter "name=^/$CONTAINER$" --format '{{.Status}}'
+  else
+    # A stopped container can retain the name even after `docker stop`.
+    # Remove only this emulator container so a fresh guest can start.
+    echo "Removing stopped container: $CONTAINER"
+    docker rm "$CONTAINER" >/dev/null
+  fi
+fi
+if ! docker container inspect "$CONTAINER" >/dev/null 2>&1; then
   docker run --rm -d --name "$CONTAINER" \
     --platform linux/arm64 --network bridge \
     -p "$BIND_IP:$PORT:$PORT" \
