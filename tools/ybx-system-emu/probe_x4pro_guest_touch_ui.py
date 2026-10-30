@@ -3,6 +3,8 @@
 
 No QTest CPU, no UI substitutions. Drive synthetic GT911 coordinate/state
 through existing QMP sensor properties, read actual SSD1677 RAM via QMP.
+Optional --rtos-diagnostics collects factory SHA-gated FreeRTOS evidence
+around the native GT911 input without replacing framebuffer acceptance.
 """
 import argparse
 import hashlib
@@ -17,6 +19,7 @@ from tempfile import TemporaryDirectory
 from probe_x4pro_touch_injection_qtest import qmp_connect
 from epd_frame_io import save_mono_png, ssd1677_landscape_to_portrait
 from probe_x4pro_epd_qtest import SIZE
+import freertos_guest_probe as rtos
 
 
 def sensor(qmp, prop, value):
@@ -170,7 +173,27 @@ def assess_touch_to_ui(before,after,before_touch,after_touch,injections):
     )
 
 
+def assess_navigation_claim(touch_gate, wake):
+    """Panel changes are mandatory, and measurable blocked tasks veto a claim."""
+    if not touch_gate:
+        return False
+    if wake.get("available") and not wake.get("render_task_woken"):
+        return False
+    return True
+
+
+def rtos_snapshot(qmp, enabled, task_name):
+    if not enabled:
+        return {"available": False,
+                "reason": "not requested; use --rtos-diagnostics"}
+    return rtos.snapshot(qmp, task_name)
+
+
 def run(a):
+    factory_build=(hashlib.sha256(a.flash.read_bytes()).hexdigest() ==
+                   rtos.FACTORY_092C2BE5_FLASH_SHA256)
+    if getattr(a, "rtos_diagnostics", False) and not factory_build:
+        raise ValueError("--rtos-diagnostics requires matching original factory flash")
     with TemporaryDirectory(prefix="ybx-gt911-guest-ui-") as tmp:
         t=Path(tmp)
         bios=t/"rom";bios.mkdir()
@@ -209,6 +232,8 @@ def run(a):
                 epd_irq_before=(read_guest_epd_semaphore(qmp)
                                 if a.epd_sem_diagnostics else {})
                 cpu_before=cpu_sample(qmp)
+                rtos_before=rtos_snapshot(qmp,getattr(a,"rtos_diagnostics",False),
+                                          getattr(a,"render_task_name","ActivityManagerRender"))
                 if a.debug_hold_seconds:
                     print("GDB_READY_FOR_ATTACH",flush=True)
                     time.sleep(a.debug_hold_seconds)
@@ -233,6 +258,15 @@ def run(a):
                 epd_irq_after=(read_guest_epd_semaphore(qmp)
                                if a.epd_sem_diagnostics else {})
                 cpu_after=cpu_sample(qmp)
+                rtos_after=rtos_snapshot(qmp,getattr(a,"rtos_diagnostics",False),
+                                         getattr(a,"render_task_name","ActivityManagerRender"))
+                late=None
+                rtos_late=None
+                if getattr(a,"rtos_late_seconds",0):
+                    time.sleep(a.rtos_late_seconds)
+                    late=sample(qmp,"late",a.out)
+                    rtos_late=rtos_snapshot(qmp,getattr(a,"rtos_diagnostics",False),
+                                            getattr(a,"render_task_name","ActivityManagerRender"))
                 # A point can be injected while firmware unavailable; compare
                 # the actual SSD1677 image and refresh counts, NOT QMP success.
             finally:
@@ -244,6 +278,12 @@ def run(a):
         host_error=(t/"err.log").read_text(errors="replace")
     changed=(before.get("frame_sha256") and after.get("frame_sha256") and
              before["frame_sha256"]!=after["frame_sha256"])
+    wake=rtos.assess_render_wake(rtos_before,rtos_after)
+    touch_gate=assess_touch_to_ui(before,after,before_touch,after_touch,injections)
+    wake_late=(rtos.assess_render_wake(rtos_before,rtos_late)
+               if rtos_late is not None else None)
+    late_gate=(assess_touch_to_ui(before,late,before_touch,after_touch,injections)
+               if late is not None else False)
     result={
         "factory_flash_sha256":hashlib.sha256(a.flash.read_bytes()).hexdigest(),
         "qemu_sha256":hashlib.sha256(a.qemu_bin.read_bytes()).hexdigest(),
@@ -256,7 +296,13 @@ def run(a):
                 else "custom"),
             "expected_portrait_xy":x4pro_raw_to_portrait(a.raw_x,a.raw_y)},
         "before":before,"injection_results":injections,
-        "during":during,"after":after,
+        "during":during,"after":after,"late":late,
+        "rtos_before":rtos_before,
+        "rtos_after":rtos_after,
+        "rtos_late":rtos_late,
+        "rtos_render_wake_assessment":wake,
+        "rtos_render_wake_assessment_late":wake_late,
+        "factory_build_sha_gate_matched":factory_build,
         "home_ready_before_injection":baseline_home_ready,
         "cpu_before":cpu_before,"cpu_during":cpu_during,"cpu_after":cpu_after,
         "epd_irq_before":epd_irq_before,
@@ -274,8 +320,13 @@ def run(a):
         "gt911_injection_qmp_accepted":all(i["ok"] for i in injections.values()),
         "guest_epd_frame_sha_changed_after_contact":bool(changed),
         "guest_epd_frame_count_increased":after["frames"]>before["frames"],
-        "true_guest_touch_to_ui_verified":assess_touch_to_ui(
-            before,after,before_touch,after_touch,injections),
+        "true_guest_touch_to_ui_verified":touch_gate,
+        "guest_render_task_woken_after_contact":bool(wake["render_task_woken"]),
+        "guest_ui_navigation_claim_allowed":assess_navigation_claim(touch_gate,wake),
+        "guest_ui_navigation_claim_allowed_late":(
+            assess_navigation_claim(late_gate,wake_late)
+            if wake_late is not None else None),
+        "kernel_counters_are_not_screen_proof":True,
         "guest_rom_uart": "ESP-ROM:" in guest_uart,
         "guest_app_uart": "Preferences.cpp" in guest_uart,
         "uart_tail":guest_uart[-900:],
@@ -303,6 +354,10 @@ def main():
                    help="guest continued before injection for external debugger attach")
     p.add_argument("--epd-sem-diagnostics",action="store_true",
                    help="read-only EpdBus ISR semaphore & GPIO6, factory 092c2be5")
+    p.add_argument("--rtos-diagnostics",action="store_true",
+                   help="read-only FreeRTOS TCB/BUSY-semaphore decode, exact factory SHA")
+    p.add_argument("--render-task-name",default="ActivityManagerRender")
+    p.add_argument("--rtos-late-seconds",type=float,default=0)
     p.add_argument("--raw-x",type=int,default=130)
     p.add_argument("--raw-y",type=int,default=760)
     a=p.parse_args()
