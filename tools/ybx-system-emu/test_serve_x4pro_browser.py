@@ -62,10 +62,15 @@ class BrowserTouchTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     check_touch(data)
 
-    def test_reboot_sends_real_qmp_reset_and_invalidates_cached_frame(self):
+    def test_reboot_clears_gt911_session_before_real_qmp_reset(self):
         guest = browser_guest()
         guest.reboot()
-        guest.qmp.assert_called_once_with("system_reset")
+        calls = guest.qmp.call_args_list
+        self.assertEqual([c.args[0] for c in calls],
+                         ["qom-set", "qom-set", "qom-set", "system_reset"])
+        self.assertEqual([c.args[1]["property"] for c in calls[:3]],
+                         ["ybx-touch-state", "ybx-touch-x", "ybx-touch-y"])
+        self.assertTrue(all(c.args[1]["value"] == 0 for c in calls[:3]))
         guest._launch.assert_not_called()
         self.assertEqual(guest.frame, -1)
         self.assertEqual(guest.sha, "")
@@ -73,12 +78,22 @@ class BrowserTouchTests(unittest.TestCase):
         self.assertFalse(guest.tap_lock.locked())
 
     def test_reboot_qmp_error_preserves_guest_frame(self):
-        guest = browser_guest(qmp=Mock(return_value={"error": {"desc": "reset unavailable"}}))
+        guest = browser_guest(qmp=Mock(side_effect=[{"return": {}}] * 3
+                                    + [{"error": {"desc": "reset unavailable"}}]))
         with self.assertRaises(RuntimeError):
             guest.reboot()
         self.assertEqual(guest.frame, 42)
         self.assertEqual(guest.png, b"old-frame")
         guest._launch.assert_not_called()
+        self.assertFalse(guest.tap_lock.locked())
+
+    def test_reboot_touch_clear_failure_skips_reset(self):
+        guest = browser_guest(qmp=Mock(return_value={"error": {"desc": "invalid"}}))
+        with self.assertRaises(RuntimeError):
+            guest.reboot()
+        self.assertEqual(guest.qmp.call_count, 1)
+        self.assertEqual(guest.frame, 42)
+        self.assertEqual(guest.png, b"old-frame")
         self.assertFalse(guest.tap_lock.locked())
 
     def test_reboot_of_terminated_guest_relaunches_process(self):
@@ -152,6 +167,18 @@ class BrowserTouchTests(unittest.TestCase):
         guest.state = Mock(return_value={"ready": True})
         with self.assertRaises(OSError):
             guest.tap(1, 2, 60)
+        self.assertFalse(guest.tap_lock.locked())
+
+    def test_reboot_touch_clear_failure_skips_reset(self):
+        guest = FactoryX4Pro.__new__(FactoryX4Pro)
+        guest.lock = threading.RLock()
+        guest.tap_lock = threading.Lock()
+        guest.qmp = Mock(return_value={"error": {"desc": "no property"}})
+        guest.frame = 42
+        with self.assertRaises(RuntimeError):
+            guest.reboot()
+        self.assertEqual(guest.qmp.call_count, 1)
+        self.assertEqual(guest.frame, 42)
         self.assertFalse(guest.tap_lock.locked())
 
     def test_browser_explains_unsupported_wifi_and_offers_reboot(self):

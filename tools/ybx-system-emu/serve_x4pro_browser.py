@@ -252,11 +252,7 @@ class FactoryX4Pro:
                 raise RuntimeError("Guest display has not completed its initial refreshes")
             with self.lock:
                 for prop, value in (("x",x),("y",y),("state",1)):
-                    result=self.qmp("qom-set",{"path":"/machine/soc",
-                                                "property":"ybx-touch-"+prop,
-                                                "value":value})
-                    if "return" not in result:
-                        raise RuntimeError(str(result))
+                    self._set_touch(prop, value)
                     if prop=="state":
                         pressed=True
             time.sleep(duration_ms/1000)
@@ -264,20 +260,38 @@ class FactoryX4Pro:
             try:
                 if pressed:
                     with self.lock:
-                        result=self.qmp("qom-set",{"path":"/machine/soc",
-                                                   "property":"ybx-touch-state",
-                                                   "value":0})
-                        if "return" not in result:
-                            raise RuntimeError(str(result))
+                        self._set_touch("state", 0)
             finally:
                 self.tap_lock.release()
 
+    def _set_touch(self, prop, value):
+        result = self.qmp("qom-set", {"path": "/machine/soc",
+                                      "property": "ybx-touch-" + prop,
+                                      "value": value})
+        if "return" not in result:
+            raise RuntimeError(str(result))
+
     def reboot(self):
-        """Real QMP system_reset; relaunches the guest if it already died."""
+        """Clear GT911 session before a QEMU reset; relaunch on dead QMP.
+
+        A rejected touch-property update is a device error, not necessarily a
+        disconnected transport. Do not reset on that error silently.
+        """
         self._begin_action()
         try:
             with self.lock:
                 if self.process.poll() is not None:
+                    self._relaunch()
+                    return
+                try:
+                    for prop in ("state", "x", "y"):
+                        self._set_touch(prop, 0)
+                except OSError:
+                    self._relaunch()
+                    return
+                except RuntimeError as exc:
+                    if "QMP closed" not in str(exc):
+                        raise
                     self._relaunch()
                     return
                 try:
