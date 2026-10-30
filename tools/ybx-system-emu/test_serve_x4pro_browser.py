@@ -170,11 +170,7 @@ class BrowserTouchTests(unittest.TestCase):
         self.assertFalse(guest.tap_lock.locked())
 
     def test_reboot_touch_clear_failure_skips_reset(self):
-        guest = FactoryX4Pro.__new__(FactoryX4Pro)
-        guest.lock = threading.RLock()
-        guest.tap_lock = threading.Lock()
-        guest.qmp = Mock(return_value={"error": {"desc": "no property"}})
-        guest.frame = 42
+        guest = browser_guest(qmp=Mock(return_value={"error": {"desc": "no property"}}))
         with self.assertRaises(RuntimeError):
             guest.reboot()
         self.assertEqual(guest.qmp.call_count, 1)
