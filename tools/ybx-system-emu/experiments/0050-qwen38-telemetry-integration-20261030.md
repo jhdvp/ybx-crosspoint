@@ -83,3 +83,16 @@ SSD1677 RAM and actual firmware UI.
 
 The second LAN endpoint is for local development, currently unauthenticated;
 neither endpoint should be exposed to the internet.
+
+### Further real guest Settings navigation
+
+A third authentic GT911 tap (210,679) advanced the instrumented guest
+from YBX Settings (frame 7, SHA 5d19930cf416a60c755aec341aaa2749d994998d241def31cbc36a2a9b6b9ba2) into the factory
+System settings page (frame 8, SHA a8c871b0ea932bd80018b9d8a2bc1efcbf5562ebe173fff3d7732f5377fe0585). The rendered page
+contains System, Display, Reader, Controls, Library, Connectivity.
+A native Back touch at (35,61) advanced to frame 9 and
+**restored the exact earlier YBX Settings SHA** (5d19930cf416a60c755aec341aaa2749d994998d241def31cbc36a2a9b6b9ba2).
+Local evidence: `s3-batch2-0043-browser-multistep.json`,
+`s3-batch2-0043-browser-system-settings.png` and
+`s3-batch2-0043-browser-back-from-system-settings.png`.
+These results only apply to the isolated instrumented 8785 guest.
