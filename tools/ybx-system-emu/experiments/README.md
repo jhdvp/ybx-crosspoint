@@ -398,3 +398,16 @@ clock stub (`hw/misc/esp32c6_modem.c`), and `-device help` has no radio type.
 this image. Staged roadmap (tap → scan → auth/wdev crypto → DHCP → TLS → TSF)
 and the 802.11-versus-bridge analysis are in `0048-batch2-wifi-radio.md`.
 No scan, association, IP address or frame was produced or claimed.
+
+## 0048 — multi-step navigation acceptance (host tooling only)
+
+`0048-batch2-gui-navigation.md` extends the accepted single Home → More
+tap into an ordered chain (More → YBX Settings → System settings → back)
+with per-step SSD1677 image evidence. Pure host side:
+`../x4pro_guest_navigation.py` (measured screen predicates and per-step
+gates), `../run_x4pro_guest_navigation.py` (one boot, N taps, per-step
+PNGs and SHAs) and `../test_x4pro_guest_navigation.py`. Tap coordinates are
+measured from genuine guest captures, never from a web mock. The live
+multi-step guest run was NOT executed here; More → Settings and the back
+tap remain proven only through the shared browser `/api/tap` artifacts of
+0043, which lack per-step I2C and refresh counters.

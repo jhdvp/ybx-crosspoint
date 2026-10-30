@@ -96,6 +96,31 @@ FACTORY_0025_FLASH_SHA256 = (
     "206ed9661bd71477d1a54397c5a2cfe490179a3f59ab094f1e7421745c609523"
 )
 
+X4PRO_MACHINE = ("esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on,"
+                 "ybx-x4pro-sd-power=on,ybx-x4pro-spi2=on,ybx-x4pro-epd=on")
+
+
+def qemu_command(qemu_bin, work, socket, bios, gdb_port=0, gdb_start_paused=False):
+    """Original-factory guest argv. `work` must hold factory-flash.bin, sd.img
+    and a rom/ directory with esp32s3_rev0_rom.bin."""
+    cmd=[str(qemu_bin),"-machine",X4PRO_MACHINE,
+         "-m","8M","-global","ssi_psram.is_octal=on",
+         "-nographic","-monitor","none",
+         "-serial","null","-serial","null","-serial","null",
+         "-serial","stdio",
+         "-qmp",f"unix:{socket},server=on,wait=off",
+         "-L",str(bios),
+         "-drive",f"file={Path(work)/'factory-flash.bin'},if=mtd,format=raw",
+         "-drive",f"file={Path(work)/'sd.img'},if=sd,format=raw"]
+    if gdb_port:
+        if not 1024<=gdb_port<=65535:
+            raise ValueError("GDB port must be 1024..65535")
+        cmd+=["-gdb",f"tcp:0.0.0.0:{gdb_port}"]
+    if gdb_start_paused:
+        if not gdb_port:raise ValueError("--gdb-start-paused requires --gdb-port")
+        cmd+=["-S"]
+    return cmd
+
 
 def read_guest_epd_semaphore(qmp):
     """Read-only runtime EpdBus ISR semaphore and GPIO6 regs (exact ELF)."""
@@ -201,25 +226,8 @@ def run(a):
         shutil.copyfile(a.flash,t/"factory-flash.bin")
         shutil.copyfile(a.sd_image,t/"sd.img")
         socket=t/"qmp.sock"
-        cmd=[str(a.qemu_bin),"-machine",
-             "esp32s3,ybx-x4pro-i2c=on,ybx-x4pro-gt911=on,"
-             "ybx-x4pro-sd-power=on,ybx-x4pro-spi2=on,"
-             "ybx-x4pro-epd=on",
-             "-m","8M","-global","ssi_psram.is_octal=on",
-             "-nographic","-monitor","none",
-             "-serial","null","-serial","null","-serial","null",
-             "-serial","stdio",
-             "-qmp",f"unix:{socket},server=on,wait=off",
-             "-L",str(bios),
-             "-drive",f"file={t/'factory-flash.bin'},if=mtd,format=raw",
-             "-drive",f"file={t/'sd.img'},if=sd,format=raw"]
-        if a.gdb_port:
-            if not 1024<=a.gdb_port<=65535:
-                raise ValueError("GDB port must be 1024..65535")
-            cmd+=["-gdb",f"tcp:0.0.0.0:{a.gdb_port}"]
-        if a.gdb_start_paused:
-            if not a.gdb_port:raise ValueError("--gdb-start-paused requires --gdb-port")
-            cmd+=["-S"]
+        cmd=qemu_command(a.qemu_bin,t,socket,bios,gdb_port=a.gdb_port,
+                         gdb_start_paused=a.gdb_start_paused)
         with (t/"out.log").open("w") as stdout,(t/"err.log").open("w") as stderr:
             process=subprocess.Popen(cmd,stdin=subprocess.DEVNULL,stdout=stdout,
                                      stderr=stderr)
