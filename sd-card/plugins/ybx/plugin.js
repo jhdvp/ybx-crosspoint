@@ -186,16 +186,27 @@ CrossPoint.registerPlugin(async (container, api) => {
   };
   const readPluginToken = async () => {
     const current = await readJson(TOKEN_PATH);
+    // An explicit local logout must win over a stale legacy credential,
+    // even if firmware no longer permits writes into the legacy directory.
+    if (current?.disconnected === true) return null;
     if (current?.access_token) return current;
     const legacy = await readJson(LEGACY_TOKEN_PATH);
     return legacy?.access_token ? legacy : current;
   };
   const writeJson = (path, value) => api.writeFile(path, b64(JSON.stringify(value)));
-  const readSettings = async () => {
+  const readSettings = async ({ required = false } = {}) => {
     try {
-      const res = await fetch('/api/settings');
-      return res.ok ? await res.json() : [];
-    } catch { return []; }
+      const res = await fetch('/api/settings', { cache: 'no-store' });
+      if (!res.ok) throw new Error('settings HTTP ' + res.status);
+      const settings = await res.json();
+      if (!Array.isArray(settings)) throw new Error('некорректный ответ настроек');
+      return settings;
+    } catch (error) {
+      // Rendering may fall back to "not configured"; a button that changes
+      // the reader's settings must instead refuse to overwrite unknown state.
+      if (required) throw error;
+      return [];
+    }
   };
   const writeSettings = async (value) => {
     const res = await fetch('/api/settings', {
@@ -225,14 +236,18 @@ CrossPoint.registerPlugin(async (container, api) => {
 
   // Same-origin листинг карты: нужен только чтобы не затирать файл молча.
   async function fileExists(dir, name) {
-    try {
-      const res = await fetch('/api/files?path=' + encodeURIComponent(dir), { cache: 'no-store' });
-      if (!res.ok) return false;
-      const entries = await res.json();
-      return Array.isArray(entries) && entries.some((entry) => entry && entry.name === name && !entry.isDirectory);
-    } catch {
-      return false;
+    // Never treat a failed SD listing as absence: doing so would bypass the
+    // confirmation before overwriting a user's exported reading statistics.
+    const res = await fetch('/api/files?path=' + encodeURIComponent(dir), { cache: 'no-store' });
+    if (!res.ok) throw new Error('не удалось проверить файлы на SD (HTTP ' + res.status + ')');
+    const entries = await res.json();
+    if (!Array.isArray(entries) || entries.some((entry) =>
+      !entry || typeof entry.name !== 'string' || typeof entry.isDirectory !== 'boolean')) {
+      throw new Error('некорректный список файлов на SD');
     }
+    // FAT can resolve upper-case and trailing-dot aliases to the same file.
+    const fatName = (value) => value.replace(/^ +/, '').replace(/[. ]+$/, '').toLowerCase();
+    return entries.some((entry) => !entry.isDirectory && fatName(entry.name) === fatName(name));
   }
 
   // Проверяем саму прошивку, а не только плагин: страница Import Statistics
@@ -295,6 +310,7 @@ CrossPoint.registerPlugin(async (container, api) => {
     if (!res || res.status < 200 || res.status >= 300) {
       const error = new Error('HTTP ' + (res && res.status));
       error.status = res && res.status;
+      try { error.detail = JSON.parse(res.body).detail; } catch (ignored) {}
       throw error;
     }
     return JSON.parse(res.body);
@@ -667,6 +683,12 @@ CrossPoint.registerPlugin(async (container, api) => {
     syncValue.textContent = synced ? 'включён' : 'выключен';
     syncRow.append(syncLabel, syncValue);
     rows.appendChild(sleepRow);
+    // Shown only while the mode that also draws the card is selected: it is the
+    // answer to "выключил, а карточка всё равно появляется".
+    const sleepHint = document.createElement('p');
+    sleepHint.className = 'ybx-hint';
+    sleepHint.hidden = true;
+    rows.appendChild(sleepHint);
     const sleepHelp = document.createElement('details');
     const sleepHelpTitle = document.createElement('summary');
     sleepHelpTitle.textContent = 'Как обновляется экран сна';
@@ -682,16 +704,25 @@ CrossPoint.registerPlugin(async (container, api) => {
     const syncButton = document.createElement('button');
     syncButton.type = 'button';
     syncButton.className = 'primary';
-    syncButton.textContent = synced ? 'KOReader Sync настроен' : 'Настроить KOReader Sync';
-    syncButton.disabled = !token || synced;
+    syncButton.textContent = synced ? 'Обновить ключ KOReader Sync' : 'Настроить KOReader Sync';
+    syncButton.disabled = !token;
     syncButton.onclick = async () => {
       syncButton.disabled = true;
       try {
-        const latest = await readSettings();
+        const latest = await readSettings({ required: true });
         if (pointsToYbx(latest)) {
+          // Firmware intentionally masks koPassword in GET /api/settings.
+          // After a new QR login the old KOSync key may have expired or been
+          // revoked even though koServerUrl still points to YBX.
+          if (!window.confirm('Обновить ключ KOReader Sync для текущего входа YBX?\n\n'
+              + 'Будет изменён только пароль синхронизации. Прогресс чтения, сервер и другие настройки останутся без изменений.')) {
+            message('Обновление ключа отменено. Настройки не изменены.');
+            return;
+          }
+          await writeSettings({ koPassword: token.access_token });
           syncValue.textContent = 'включён';
-          syncButton.textContent = 'KOReader Sync настроен';
-          message('Синхронизация с YBX уже настроена. Настройки не изменены.', 'ok');
+          syncButton.textContent = 'Обновить ключ KOReader Sync';
+          message('Ключ KOReader Sync обновлён для текущего входа YBX.', 'ok');
           return;
         }
         let server = 'не указан';
@@ -720,31 +751,48 @@ CrossPoint.registerPlugin(async (container, api) => {
           koSendMetadata: 1,
         });
         syncValue.textContent = 'включён';
-        syncButton.textContent = 'KOReader Sync настроен';
+        syncButton.textContent = 'Обновить ключ KOReader Sync';
         message('Готово: позиция синхронизируется через YBX.', 'ok');
       } catch (error) {
         message('Не удалось настроить синхронизацию: ' + error.message, 'err');
-        syncButton.disabled = false;
+      } finally {
+        // After confirmation or cancellation, this action remains available
+        // for future QR re-logins and key rotations.
+        syncButton.disabled = !token;
       }
     };
-    const sleepMode = Number(settingValue(current, 'sleepScreen'));
-    sleepValue.textContent = sleepMode === 2 ? 'статистика YBX' : 'другой режим';
+    // The card is the firmware's own «Свой» mode showing /sleep.bmp, so the
+    // switch works in both directions: on writes «Свой», off writes «Обложка»
+    // (the mode a person expects to see back). The neighbouring «Обложка + Свой»
+    // draws the card whenever sleep is not taken from a book — that is the mode
+    // behind «выключил, а оно всё равно включается», so it is named and explained
+    // here instead of being reported as an anonymous "другой режим".
+    const SLEEP_MODES = ['Тёмный', 'Светлый', 'Свой', 'Обложка', 'Обложка + Свой',
+                         'Нет', 'Быстрое возобновление', 'Прозрачный'];
+    const CARD_MODE = 2;         // CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM
+    const COVER_MODE = 3;        // CrossPointSettings::SLEEP_SCREEN_MODE::COVER
+    const COVER_CUSTOM_MODE = 4; // ...::COVER_CUSTOM — the card when sleep is not from a book
+    let sleepMode = Number(settingValue(current, 'sleepScreen'));
+    // «Обложка + Свой» counts as on: the card does appear there, and a person who
+    // believes it is off needs the switch to turn it off, not to reinforce it.
+    const sleepShowsCard = () => sleepMode === CARD_MODE || sleepMode === COVER_CUSTOM_MODE;
     const sleepButton = document.createElement('button');
     sleepButton.type = 'button';
     sleepButton.className = 'primary';
-    sleepButton.textContent = sleepMode === 2 ? 'Экран сна включён' : 'Показывать статистику на сне';
-    sleepButton.disabled = sleepMode === 2;
     sleepButton.onclick = async () => {
+      const turningOn = !sleepShowsCard();
       sleepButton.disabled = true;
-      message('Включаем экран сна…');
+      message(turningOn ? 'Включаем экран сна…' : 'Выключаем экран сна…');
       try {
-        await writeSettings({ sleepScreen: 2 });
-        sleepValue.textContent = 'статистика YBX';
-        sleepButton.textContent = 'Экран сна включён';
-        message('Экран сна включён. Перед засыпанием ридер попробует загрузить свежую статистику через Wi-Fi.', 'ok');
+        await writeSettings({ sleepScreen: turningOn ? CARD_MODE : COVER_MODE });
+        sleepMode = turningOn ? CARD_MODE : COVER_MODE;
+        paintSleepState();
+        message(turningOn
+          ? 'Экран сна включён. Перед засыпанием ридер попробует загрузить свежую статистику через Wi-Fi.'
+          : 'Статистика на сне выключена: ридер снова покажет обложку книги.', 'ok');
       } catch (error) {
-        message('Не удалось включить экран сна: ' + error.message, 'err');
-        sleepButton.disabled = false;
+        message('Не удалось изменить экран сна: ' + error.message, 'err');
+        paintSleepState();
       }
     };
 
@@ -752,7 +800,6 @@ CrossPoint.registerPlugin(async (container, api) => {
     sleepCardButton.type = 'button';
     sleepCardButton.className = 'primary';
     sleepCardButton.textContent = 'Обновить карточку сна';
-    sleepCardButton.disabled = !token || sleepMode !== 2;
     sleepCardButton.onclick = async () => {
       sleepCardButton.disabled = true;
       message('Загружаем карточку сна…');
@@ -762,9 +809,23 @@ CrossPoint.registerPlugin(async (container, api) => {
       } catch (error) {
         message('Не удалось обновить карточку: ' + error.message, 'err');
       } finally {
-        sleepCardButton.disabled = !token || sleepMode !== 2;
+        paintSleepState();
       }
     };
+
+    const paintSleepState = () => {
+      const on = sleepShowsCard();
+      sleepValue.textContent = SLEEP_MODES[sleepMode] || 'не выбран';
+      sleepButton.textContent = on ? 'Выключить статистику на сне' : 'Включать статистику на сне';
+      sleepButton.disabled = false;
+      sleepCardButton.disabled = !token || !on;
+      sleepHint.hidden = sleepMode !== 4;
+      sleepHint.textContent = sleepHint.hidden
+        ? ''
+        : 'Сейчас «Обложка + Свой»: карточка появится, когда сон не из книги. '
+          + 'Выключите статистику, чтобы всегда видеть обложку.';
+    };
+    paintSleepState();
 
     const statsHint = document.createElement('details');
     statsHint.hidden = true;
@@ -909,13 +970,93 @@ CrossPoint.registerPlugin(async (container, api) => {
       });
       return window.JSZip;
     };
+    // Every writable file must be present and backed up before the first
+    // mutation. Plugin Hub may still overwrite config.json independently;
+    // this in-page updater deliberately preserves it and token.json.
+    const applyUpdateArchive = async (archive, expectedVersion) => {
+      const filenames = ['manifest.json', 'device.json', 'plugin.json', 'plugin.js',
+        'config.json', 'README.md', 'icon.png'];
+      const allowed = new Set(filenames);
+      const zipFiles = Object.values(archive.files).filter((entry) => !entry.dir);
+      if (zipFiles.length !== filenames.length || zipFiles.some((entry) =>
+        !entry.name.startsWith('ybx/') || !allowed.has(entry.name.slice(4)))) {
+        throw new Error('архив содержит неожиданные или отсутствующие файлы');
+      }
+      const bytes = new Map();
+      for (const entry of zipFiles) {
+        const name = entry.name.slice(4);
+        if (bytes.has(name)) throw new Error('дублирование файла ' + name);
+        const content = await entry.async('uint8array');
+        if (!content.length || content.length > 256 * 1024) {
+          throw new Error('недопустимый размер файла ' + name);
+        }
+        bytes.set(name, content);
+      }
+      if (filenames.some((name) => !bytes.has(name))) throw new Error('неполный архив');
+      const decode = (name) => JSON.parse(new TextDecoder().decode(bytes.get(name)));
+      const manifest = decode('manifest.json');
+      const pluginMeta = decode('plugin.json');
+      if (manifest.name !== 'ybx' || manifest.version !== expectedVersion ||
+          pluginMeta.id !== 'ybx' || pluginMeta.version !== expectedVersion ||
+          JSON.stringify(manifest.files) !== JSON.stringify(filenames) ||
+          JSON.stringify(pluginMeta.files) !== JSON.stringify(filenames) ||
+          manifest.compatibility?.requires?.length) {
+        throw new Error('несовместимая версия или структура плагина');
+      }
+      // A reader must never run a 1.7.x connected-source manifest on stock
+      // CrossPoint firmware, even if a release endpoint is misconfigured.
+      const device = decode('device.json');
+      if (device.browse?.lists_url || !device.browse?.lists?.length ||
+          device.auth?.type !== 'device_code') {
+        throw new Error('архив рассчитан на другую прошивку');
+      }
+      const writable = filenames.filter((name) => name !== 'config.json');
+      const backup = new Map();
+      for (const name of writable) {
+        const old = await fetch('/download?path=' + encodeURIComponent(DIR + '/' + name));
+        if (!old.ok) throw new Error('резервная копия ' + name + ': HTTP ' + old.status);
+        backup.set(name, new Uint8Array(await old.arrayBuffer()));
+      }
+      const encode = (data) => {
+        let binary = '';
+        for (let i = 0; i < data.length; i += 8192) {
+          binary += String.fromCharCode(...data.subarray(i, i + 8192));
+        }
+        return btoa(binary);
+      };
+      // Metadata is replaced last. Any failed write is also rolled back:
+      // the host might have written some bytes before returning an error.
+      const order = writable.filter((name) => name !== 'manifest.json' && name !== 'plugin.json');
+      order.push('plugin.json', 'manifest.json');
+      const touched = [];
+      try {
+        for (const name of order) {
+          touched.push(name);
+          await api.writeFile(DIR + '/' + name, encode(bytes.get(name)));
+        }
+      } catch (error) {
+        const failures = [];
+        for (const name of touched.reverse()) {
+          try { await api.writeFile(DIR + '/' + name, encode(backup.get(name))); }
+          catch (rollbackError) { failures.push(name); }
+        }
+        throw new Error('запись обновления: ' + error.message +
+          (failures.length ? '; восстановление не удалось: ' + failures.join(', ') : '; старые файлы восстановлены'));
+      }
+    };
     updateButton.onclick = async () => {
       if (!latest) return;
       updateButton.disabled = true;
       message('Скачиваем обновление…');
       const zipPath = DIR + '/update.zip';
       try {
-        const download = await api.fetchToSd(latest.url, zipPath);
+        const url = new URL(latest.url);
+        if (url.protocol !== 'https:' || !['ybx.app', 'my.ybx.app'].includes(url.hostname) ||
+            url.pathname !== '/crosspoint-plugin/ybx-plugin.zip' ||
+            url.username || url.password || url.search || url.hash) {
+          throw new Error('источник обновления не принадлежит YBX');
+        }
+        const download = await api.fetchToSd(url.href, zipPath);
         if (download.error || (download.status && (download.status < 200 || download.status >= 300))) {
           throw new Error('скачивание: HTTP ' + (download.status || download.error));
         }
@@ -923,38 +1064,77 @@ CrossPoint.registerPlugin(async (container, api) => {
         const res = await fetch('/download?path=' + encodeURIComponent(zipPath));
         if (!res.ok) throw new Error('чтение архива: HTTP ' + res.status);
         const archive = await JSZip.loadAsync(await res.arrayBuffer());
-        const allowed = /^(manifest\.json|device\.json|plugin\.json|plugin\.js|README\.md|icon\.png)$/;
-        const entries = Object.values(archive.files)
-          .filter((entry) => !entry.dir && allowed.test(entry.name.replace(/^ybx\//, '')));
-        if (!entries.length) throw new Error('пустой архив');
-        for (const entry of entries) {
-          const name = entry.name.replace(/^ybx\//, '');
-          const bytes = await entry.async('uint8array');
-          let binary = '';
-          for (const byte of bytes) binary += String.fromCharCode(byte);
-          await api.writeFile(DIR + '/' + name, btoa(binary));
-        }
-        await fetch('/delete', { method: 'POST', body: new URLSearchParams({ path: zipPath }) });
+        await applyUpdateArchive(archive, latest.version);
         showUpdate(false);
         updateChecked = false;
         message('Обновлено до ' + latest.version + '. Перезагрузите страницу.', 'ok');
       } catch (error) {
         message('Не удалось обновить: ' + error.message, 'err');
       } finally {
+        await fetch('/delete', { method: 'POST', body: new URLSearchParams({ path: zipPath }) })
+          .catch(() => {});
         updateButton.disabled = false;
       }
     };
     signOutButton.onclick = async () => {
       signOutButton.disabled = true;
+      let revoked = false;
       try {
-        await writeJson(TOKEN_PATH, {});
-        await writeJson(LEGACY_TOKEN_PATH, {}).catch(() => {});
-        if (pointsToYbx(await readSettings())) await writeSettings(SYNC_OFF);
+        // Revocation is server-side and covers *all* cp_ credentials for the
+        // current reader, including other tokens previously issued for it.
+        // Never claim a remote logout based on merely clearing SD files.
+        const result = await api.relay('POST', API + '/api/v1/crosspoint/auth/revoke',
+          { Authorization: 'Bearer ' + token.access_token }, '');
+        // A 401 is NOT proof that other previously issued keys were revoked.
+        // Treat it exactly like a network failure: ask before local-only logout.
+        if (!result || result.status !== 204) {
+          throw new Error('сервер не подтвердил отзыв ключа (HTTP ' + (result && result.status) + ')');
+        }
+        revoked = true;
+      } catch (error) {
+        if (!window.confirm('Не удалось отозвать ключ на сервере: ' + error.message
+          + '\n\nУдалить локальную привязку всё равно? Ранее выданные ключи могут остаться активными. '
+          + 'Для полного отключения удалите устройство в кабинете YBX.')) {
+          message('Отвязка отменена: для отзыва ключа необходимо подключение к YBX.', 'err');
+          signOutButton.disabled = false;
+          return;
+        }
+      }
+      try {
+        const cleanupWarnings = [];
+        // Reading settings must not silently turn a network/SD error into
+        // "KOSync not configured". Clear its credentials when possible.
+        try {
+          const response = await fetch('/api/settings', { cache: 'no-store' });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const settings = await response.json();
+          if (!Array.isArray(settings)) throw new Error('некорректный ответ');
+          if (pointsToYbx(settings)) await writeSettings(SYNC_OFF);
+        } catch (error) {
+          cleanupWarnings.push('не удалось очистить настройки KOReader Sync: ' + error.message);
+        }
+
+        // Mark explicit logout. The legacy fallback MUST NOT reactivate an
+        // old token if this device cannot write into legacy plugin-data.
+        await writeJson(TOKEN_PATH, { disconnected: true });
+        const legacy = await readJson(LEGACY_TOKEN_PATH);
+        if (legacy?.access_token) {
+          try {
+            await writeJson(LEGACY_TOKEN_PATH, { disconnected: true });
+          } catch (error) {
+            cleanupWarnings.push('не удалось очистить старый файл токена');
+          }
+        }
         token = null;
         renderSignedOut();
-        message('Устройство отвязано. Чтобы подключить заново — войдите на ридере по QR-коду.', 'ok');
+        const resultMessage = revoked
+          ? 'Доступ на сервере отозван, локальная привязка удалена. Для нового входа используйте QR-код.'
+          : 'Локальная привязка удалена. Полный отзыв доступа не подтверждён — удалите устройство в кабинете YBX.';
+        message(resultMessage + (cleanupWarnings.length ? ' ' + cleanupWarnings.join('; ') + '.' : ''),
+          revoked && !cleanupWarnings.length ? 'ok' : 'err');
       } catch (error) {
-        message('Не удалось отвязать: ' + error.message, 'err');
+        message('Ключ на сервере ' + (revoked ? 'отозван' : 'не подтверждён') +
+          ', но очистить локальные настройки не удалось: ' + error.message, 'err');
       } finally {
         signOutButton.disabled = false;
       }
@@ -1010,7 +1190,14 @@ CrossPoint.registerPlugin(async (container, api) => {
       await loadProfile();
       message('Ридер подключён к YBX. Каталог — Home → Plugins → YBX.', 'ok');
     } catch (error) {
-      if (error.status === 401 || error.status === 409) {
+      if (error.status === 409) {
+        // The plugin token is fine: only the books consent is missing, so the
+        // reader must not be told to sign in again.
+        const detail = error.detail || {};
+        message(typeof detail.message === 'string' && detail.message
+          ? detail.message + ' Затем обновите эту страницу.'
+          : 'Подключите книги в кабинете YBX и обновите эту страницу.', 'err');
+      } else if (error.status === 401) {
         message('Сессия плагина недействительна. Откройте Home → Plugins → YBX и войдите заново.', 'err');
         renderSignedOut();
       } else {
