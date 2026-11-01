@@ -57,6 +57,9 @@ class CatalogActivity : public UiListActivity {
   }
   static bool wifiConnected();
   void fail(StrId message);
+  // Shows the certificate/clock explanation when the last request failed on
+  // transport trust; false (nothing shown) for ordinary failures.
+  bool failTlsIfAny();
   void beginLoading();
   void checkAndConnectWifi();
   void launchWifiSelection();

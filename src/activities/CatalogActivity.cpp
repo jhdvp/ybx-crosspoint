@@ -13,6 +13,8 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/CatalogScreens.h"
 #include "components/icons/search32.h"
+#include "network/TlsTransport.h"
+#include "util/TlsFailureText.h"
 
 void CatalogActivity::onEnter() {
   UiListActivity::onEnter();
@@ -37,6 +39,13 @@ void CatalogActivity::fail(const StrId message) {
   state = State::ERROR;
   errorMessage = I18N.get(message);
   requestUpdate();
+}
+
+bool CatalogActivity::failTlsIfAny() {
+  StrId message;
+  if (!tlsui::failureMessage(tlspolicy::lastFailure(), message)) return false;
+  fail(message);
+  return true;
 }
 
 void CatalogActivity::beginLoading() {
@@ -204,7 +213,7 @@ void CatalogActivity::finishDownload(const HttpDownloader::DownloadError result)
     downloadFinished(result == HttpDownloader::ABORTED);
   } else {
     LOG_ERR("CAT", "Download failed: %d", static_cast<int>(result));
-    fail(StrId::STR_DOWNLOAD_FAILED);
+    if (!failTlsIfAny()) fail(StrId::STR_DOWNLOAD_FAILED);
   }
 }
 

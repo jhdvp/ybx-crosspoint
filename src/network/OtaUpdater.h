@@ -22,6 +22,7 @@ class OtaUpdater {
     INTERNAL_UPDATE_ERROR,
     OOM_ERROR,
     WRONG_DEVICE_ERROR,
+    TLS_ERROR,  // certificate/clock/redirect policy refused the transfer
   };
 
   size_t getOtaSize() const { return otaSize; }

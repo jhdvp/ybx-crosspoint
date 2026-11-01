@@ -50,9 +50,10 @@ provider permissions; this project does not bypass DRM.
 | Sleep-card design and statistics | Rendered by the YBX server; successful firmware build does not prove automatic delivery |
 | Cover thumbnails in the native catalog | Not implemented; EPUB library covers are separate |
 | Extended YBX book actions | Planned |
-| HTTPS certificate verification | **Open blocker:** inherited transport uses `setInsecure()`; encrypted traffic does not verify the server identity |
+| HTTPS certificate verification | Implemented on this branch (built-in CA bundle, host name check, clock gate, no downgrade redirects); device acceptance pending |
 
-The build passed **52 CTest checks and 14 Python unittest cases**. These results
+The build passed **918 CTest cases**, including the Python checks and the TLS
+policy suite. These results
 apply to this preview; they do not establish hardware rendering, battery use,
 runtime memory or OTA recovery. See [fork details](YBX_FORK.md) for the limits
 and the device acceptance checklist.

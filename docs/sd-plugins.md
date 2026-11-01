@@ -420,7 +420,9 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
   containing only the declared field paths, so a page parses into a few KB
   no matter the body size.
 - One TLS session is kept alive across browse requests: repeated handshakes
-  permanently fragment the heap.
+  permanently fragment the heap. Plugin endpoints must use https; the
+  certificate chain and host name are verified against the firmware CA bundle,
+  so a server whose chain is not covered fails instead of downgrading.
 - The book download streams to SD via `HttpDownloader`; file size is
   unconstrained.
 - An XML list is parsed from the temp file in 2KB chunks; the engine stops

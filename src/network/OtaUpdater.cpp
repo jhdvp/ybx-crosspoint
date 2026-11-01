@@ -17,6 +17,7 @@
 
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
+#include "TlsTransport.h"
 
 namespace {
 constexpr char latestReleaseUrl[] = "https://api.github.com/repos/jhdvp/ybx-crosspoint/releases/latest";
@@ -63,6 +64,10 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
     return true;
   });
   if (!ok) {
+    if (tlspolicy::isTrustFailure(tlspolicy::lastFailure())) {
+      LOG_ERR("OTA", "Release check refused: TLS trust failure");
+      return TLS_ERROR;
+    }
     if (HttpDownloader::lastStatus() == 404) return NO_UPDATE;
     LOG_ERR("OTA", "Release check fetch failed");
     return HTTP_ERROR;
@@ -226,8 +231,12 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   }
 
   if (!fetchOk || !flashOk) {
-    LOG_ERR("OTA", "Firmware install failed (%s)", flashOk ? "download" : "flash write");
     esp_ota_abort(otaHandle);
+    if (flashOk && tlspolicy::isTrustFailure(tlspolicy::lastFailure())) {
+      LOG_ERR("OTA", "Firmware install aborted: TLS trust failure");
+      return TLS_ERROR;
+    }
+    LOG_ERR("OTA", "Firmware install failed (%s)", flashOk ? "download" : "flash write");
     return flashOk ? HTTP_ERROR : INTERNAL_UPDATE_ERROR;
   }
 
