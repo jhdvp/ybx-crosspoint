@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 class GfxRenderer;
 
@@ -97,5 +98,9 @@ void emit(Event e, const Var* vars, size_t varCount);
 // maxMillis=0 preserves the normal online drain. A nonzero budget stops new
 // requests and cooperatively aborts SDK waits; synchronous DNS can overrun it.
 void drain(GfxRenderer* renderer, size_t maxEvents = 4, uint32_t maxMillis = 0);
+
+// Drops the plugin's queued-event outbox. Signing out of an account must not
+// replay events queued under its key to whoever signs in next.
+void clearOutbox(const std::string& pluginDir);
 
 }  // namespace pluginevents

@@ -15,6 +15,7 @@
 #include "CrossPointSettings.h"
 #include "HapticFeedback.h"
 #include "OpdsServerStore.h"
+#include "YbxAccountActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -322,6 +323,10 @@ void ActivityManager::goToBrowser() {
 
 void ActivityManager::goToPlugins(bool showOpds) {
   replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, showOpds, /*rootMode=*/true));
+}
+
+void ActivityManager::goToYbxAccount() {
+  replaceActivity(std::make_unique<YbxAccountActivity>(renderer, mappedInput));
 }
 
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {

@@ -76,6 +76,7 @@ class HomeActivity final : public Activity {
   void onOpdsBrowserOpen();
   void onPluginsOpen();
   void onMoreOpen();
+  void onYbxAccountOpen();
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image

@@ -71,6 +71,9 @@ TEST(YbxHomeNavigation, AllBooksAndLegacyActionsAreReachableExactlyOnce) {
       }
       EXPECT_EQ(current, first);
       for (int i = 0; i < 3; ++i) EXPECT_TRUE(visited.insert(ybxhome::moreChoiceAction(books, catalogs, i)).second);
+      // The fourth popup entry leaves the home menu table for the account screen.
+      EXPECT_EQ(ybxhome::moreChoiceAction(books, catalogs, 3), ybxhome::ACCOUNT);
+      EXPECT_EQ(ybxhome::moreChoiceAction(books, catalogs, 4), -1);
       for (int id = 0; id <= ybxhome::moreAction(books, catalogs); ++id) EXPECT_EQ(visited.count(id), 1u);
       for (int i = 0; i < 3; ++i)
         EXPECT_EQ(ybxhome::visibleSelection(ybxhome::moreChoiceAction(books, catalogs, i), books, catalogs),

@@ -548,4 +548,9 @@ void drain(GfxRenderer* renderer, const size_t maxEvents, const uint32_t maxMill
   }
 }
 
+void clearOutbox(const std::string& pluginDir) {
+  if (pluginDir.empty()) return;
+  Storage.remove((pluginDir + OUTBOX_NAME).c_str());
+}
+
 }  // namespace pluginevents

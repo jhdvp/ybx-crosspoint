@@ -365,7 +365,9 @@ void HomeActivity::loop() {
     ybxMore->handleInput(mappedInput, [this] { requestUpdate(); });
     const int choice = std::exchange(ybxMoreChoice, -1);
     const int destination = ybxhome::moreChoiceAction(recentBooks.size(), hasLibrarySlot(), choice);
-    if (destination >= 0) {
+    if (destination == ybxhome::ACCOUNT) {
+      onYbxAccountOpen();
+    } else if (destination >= 0) {
       selectorIndex = destination;
       activateSelection();
     }
@@ -668,8 +670,11 @@ void HomeActivity::onPluginsOpen() { activityManager.goToPlugins(hasOpdsServers)
 
 void HomeActivity::onMoreOpen() {
   if (!ybxMore) return;
-  static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE};
+  static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
+                                      StrId::STR_YBX_ACCOUNT};
   ybxMoreChoice = -1;
-  ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 3, 0, [this](int choice) { ybxMoreChoice = choice; });
+  ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 4, 0, [this](int choice) { ybxMoreChoice = choice; });
   requestUpdate();
 }
+
+void HomeActivity::onYbxAccountOpen() { activityManager.goToYbxAccount(); }

@@ -93,6 +93,7 @@ class ActivityManager {
   void goToLibrary();
   void goToBrowser();
   void goToPlugins(bool showOpds);
+  void goToYbxAccount();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);
   void goToBoot();

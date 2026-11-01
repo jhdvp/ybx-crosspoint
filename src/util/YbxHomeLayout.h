@@ -15,12 +15,16 @@ struct Layout {
 };
 
 // Preserve legacy IDs for destinations; More is the one extra action.
+// ACCOUNT is the sentinel destination for the "YBX Account" popup entry,
+// which opens its own activity instead of a home menu slot.
+constexpr int ACCOUNT = -2;
 inline int moreAction(int books, bool catalogs) { return books + (catalogs ? 5 : 4); }
 inline int visibleCount(int books, bool catalogs) { return books + (catalogs ? 3 : 2); }
 inline int moreChoiceAction(int books, bool catalogs, int choice) {
   if (choice == 0) return books;
   if (choice == 1) return books + (catalogs ? 3 : 2);
   if (choice == 2) return books + (catalogs ? 4 : 3);
+  if (choice == 3) return ACCOUNT;
   return -1;
 }
 inline int actionForPosition(int books, bool catalogs, int position) {
