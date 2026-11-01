@@ -48,13 +48,13 @@ struct BookScan {
   readingstats::Book match;
 };
 
-// Reads the header and records of the live books file. Returns false when the
-// file is missing or unusable, leaving count at 0 so the caller rebuilds it.
-bool scanBooks(const std::string& wantedPath, BookScan& scan) {
+// Reads the header and records of one books file. Returns false when the file
+// is missing or unusable, leaving count at 0 so the caller rebuilds it.
+bool scanBooks(const char* path, const std::string& wantedPath, BookScan& scan) {
   char wanted[readingstats::MAX_BOOK_PATH];
   readingstats::copyText(wanted, sizeof(wanted), wantedPath.c_str());
   HalFile file;
-  if (!Storage.openFileForRead("RSTA", BOOKS_PATH, file)) return false;
+  if (!Storage.openFileForRead("RSTA", path, file)) return false;
   uint8_t header[readingstats::BOOKS_HEADER_BYTES];
   if (file.read(header, sizeof(header)) != sizeof(header)) return false;
   if (std::memcmp(header, "CPB1", 4) != 0 || header[4] != 1) return false;
@@ -86,7 +86,12 @@ bool updateBooks(const std::string& path, const uint32_t seconds, const uint16_t
   if (!Storage.ensureDirectoryExists(STATS_DIR)) return false;
 
   BookScan scan;
-  const bool scanned = scanBooks(path, scan);
+  // replaceFile() removes the live table before it renames the temp copy onto
+  // it, so a power cut in that window leaves the newest table in the temp file
+  // alone. Finish that replace first: rebuilding without it would drop every
+  // book but this one.
+  if (!Storage.exists(BOOKS_PATH) && Storage.exists(BOOKS_PENDING)) Storage.rename(BOOKS_PENDING, BOOKS_PATH);
+  const bool scanned = scanBooks(BOOKS_PATH, path, scan);
 
   readingstats::Book updated;
   int writeIndex = scan.matchIndex;

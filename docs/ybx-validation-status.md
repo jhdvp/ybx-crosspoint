@@ -181,7 +181,11 @@ journal. Account/cloud statistics are not part of it.
 - The `test/reading_stats` gtest suite runs in the CMake/CTest host-test build:
   it covers numbering, midnight and DST splitting, ring eviction, dedupe by
   session id, streaks, UTF-8 truncation, CPS1/CPB1 round-trips, corruption and
-  buffer-too-small handling.
+  buffer-too-small handling. The file-level half of the suite drives
+  `src/util/ReadingStats.cpp` against an in-memory `Storage` stub, so the first
+  table creation, a replayed session id, an unset clock, a midnight-split
+  session and a books table left by an interrupted replace are checked without
+  an SD card.
 - Device rendering, touch, rotation and real storage timing are not covered by
   these tests; see the checklist below.
 
@@ -194,6 +198,10 @@ journal. Account/cloud statistics are not part of it.
   finished normally (exit, sleep, restart) are recorded locally.
 - The ring keeps 64 days and 32 books; older days still count in the totals and
   the active-day count but are not shown in the calendar or book list.
+- The recovery above only applies while the live table is missing. A live table
+  that is present but unreadable is rebuilt from the current session: a temp
+  copy sitting beside a damaged file cannot be dated, so guessing would risk
+  keeping the older table.
 - The calendar is the fixed 28-day `heatmap_28` widget. Month navigation,
   per-day detail and page-turn metrics (`qualified_turns`,
   `seconds_per_turn`) are not implemented and render as "—" or are absent.
@@ -234,3 +242,9 @@ No hardware result is claimed here; these steps are the owner's.
    «Ещё».
 9. Rotation and both devices: repeat 1-2 in portrait/landscape on X3 and X4;
    the layout must stay inside the safe area with button hints visible.
+10. Interrupted table write: read at least two books so «Книги» has two rows.
+    With the card in a PC, delete `/.crosspoint/reading-books.bin` and rename a
+    copy of it to `/.crosspoint/reading-books.tmp` — that is the state a power
+    cut leaves between the removal and the rename. Put the card back, read a
+    book and reopen «Книги»: the two earlier books must still be listed with
+    their old minutes, not only the current one.
