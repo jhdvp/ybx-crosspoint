@@ -13,6 +13,17 @@ TEST(ProtectedPaths, CredentialStoresAreSensitive) {
   EXPECT_TRUE(isSensitivePath("/.CrossPoint/WIFI.json"));
 }
 
+// The catalog shelf's provenance records decide which files removal may delete,
+// so no manifest-chosen download/sidecar/bundle write may create one.
+TEST(ProtectedPaths, ShelfProvenanceRecordsAreSensitive) {
+  EXPECT_TRUE(isSensitivePath("/.crosspoint/shelf/d41d8cd98f00b204e9800998ecf8427e"));
+  EXPECT_TRUE(isSensitivePath("/.crosspoint/shelf.json"));
+  EXPECT_TRUE(isSensitivePath("/.CrossPoint/SHELF/abc.tmp"));
+  EXPECT_TRUE(isSensitivePath("//.crosspoint//shelf/./abc"));
+  EXPECT_FALSE(isSensitivePath("/.crosspoint/plugins/shelf-helper/device.json"));
+  EXPECT_FALSE(isPluginPath("/.crosspoint/shelf/forged.epub"));
+}
+
 TEST(ProtectedPaths, SpellingVariantsCannotDodgeTheMatch) {
   EXPECT_TRUE(isSensitivePath("/.crosspoint/./wifi.json"));
   EXPECT_TRUE(isSensitivePath("//.crosspoint//wifi.json"));

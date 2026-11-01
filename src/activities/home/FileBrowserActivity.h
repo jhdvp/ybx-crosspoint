@@ -24,11 +24,14 @@ class FileBrowserActivity final : public UiListActivity {
   Mode mode = Mode::Books;
 
   // Files state
+  // Current folder, kept without a trailing slash so it compares equal to
+  // lockedRoot for the same folder.
   std::string basepath = "/";
   // Highest folder the user may navigate from: short Back, long-press Back and
   // a missing initial path stop here instead of climbing to the SD root.
   // Defaults to "/" (the whole card). The home "On Reader" shelf passes its
-  // book folder so the browser cannot walk above it.
+  // book folder so the browser cannot walk above it. Canonicalized like
+  // basepath, so a manifest "dest_dir" spelling cannot dodge the lock.
   std::string lockedRoot = "/";
   std::vector<std::string> files;
   std::unique_ptr<char[]> fileNameBuffer;

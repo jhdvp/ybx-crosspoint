@@ -89,8 +89,9 @@ Hidden dotfiles are omitted unless the device setting `showHiddenFiles` is
 enabled. `System Volume Information` and `XTCache` are always hidden/protected.
 
 The saved-credential stores (`/.crosspoint/wifi.json`, `opds.json`,
-`koreader.json`) can never be downloaded, uploaded, renamed, moved, deleted or
-written by a plugin over the network, however the path is spelled.
+`koreader.json`) and the catalog shelf's provenance records
+(`/.crosspoint/shelf/...`) can never be downloaded, uploaded, renamed, moved,
+deleted or written by a plugin over the network, however the path is spelled.
 
 ### `GET /download`
 

@@ -323,8 +323,15 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
                                             // so the plugin's web card can offer the setting
                                             // (the "On Reader" shelf planning/removal always
                                             // follows this manifest value, never the override)
+                                            // trailing slashes are dropped: one folder has
+                                            // one spelling for the shelf, the download and
+                                            // the locked file browser
     "filename": "{title}.epub",             // rendered filename is sanitized to 100 bytes;
-                                            // a conventional extension is preserved
+                                            // a conventional extension is preserved. No
+                                            // download, sidecar, or bundle name may end in
+                                            // ".downloaded" — that is the shelf's marker
+                                            // namespace, and provenance lives in the
+                                            // firmware's own protected folder instead.
     "sidecar": {                            // optional per-book metadata file
       "path": "{dest}.meta.json",             // the book metadata sidecar convention (see plugin-events.md)
       "body": "{\"book_id\":{id}}"

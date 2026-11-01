@@ -151,6 +151,10 @@ class PluginCatalogActivity final : public CatalogActivity {
   // passed verification, instead of from downloadBook before it.
   std::string lastDownloadPath;
   std::string lastDownloadTitle;
+  // Sidecar this download wrote ("" when the manifest has none or the write
+  // failed); becomes the body of the provenance record, and is the only
+  // sidecar shelf removal may delete.
+  std::string lastDownloadSidecar;
   bool showOpds = false;
   bool rootMode = false;
   std::string pickerReturnName;  // plugin identity to reselect after leaving a catalog
@@ -242,16 +246,20 @@ class PluginCatalogActivity final : public CatalogActivity {
   HttpDownloader::DownloadError downloadBundle(const Item& item);
   HttpDownloader::DownloadError downloadBook(const Item& item);
   // On-reader shelf state: single-file book catalogs whose planned destination
-  // exists on SD with the firmware download marker.
+  // is a regular file with this firmware's provenance record.
   bool bookShelfEligible() const;
   std::string plannedFilename(const Item& item) const;
   // Shelf path under pluginshelf::plannedPath rules: the manifest's own
   // dest_dir, one safe book-extension component. "" = row has no shelf state.
   std::string plannedBookPath(const Item& item) const;
-  // Resolved "{dest}.meta.json"-style sidecar for removal; "" when absent or
-  // unsafe. Shares the downloadBook substitution.
+  // Resolved "{dest}.meta.json"-style sidecar a download would write; "" when
+  // absent or unsafe. Shares the downloadBook substitution.
   std::string sidecarPathFor(const Item& item, const std::string& dest) const;
-  // On-shelf = planned path exists and carries the firmware download marker.
+  // The sidecar the provenance record of a shelf book says was written for it,
+  // filtered by pluginshelf::safeSidecarPath; "" = nothing to delete.
+  std::string recordedSidecarFor(const std::string& record) const;
+  // On-shelf = planned path is a regular file with this firmware's provenance
+  // record (a name-only marker could be planted by a manifest).
   bool shelfBookPresent(const std::string& path) const;
   void computeOnReaderStatus();
   // Reboot into the reader on this file (the catalog's onExit restarts to Home,
