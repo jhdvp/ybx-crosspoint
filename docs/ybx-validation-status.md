@@ -28,11 +28,14 @@ acceptance or waive the remaining release checks.
 - Host suite: **918/918 passed**, including 22 queue, storage and deadline cases.
   Storage tests cover short writes, failed renames/rollback, interrupted
   transaction boundaries and all 511 partial-append positions.
-- Formatting and `git diff --check`: passed.
+- Formatting and `git diff --check`: passed (the embedded diffs in
+  `scripts/securenet_patches/*.patch` contain space-only context lines by
+  design; they are excluded from the check).
 - Final `gh_release_rc` build: passed; static RAM 66,696/327,680 bytes,
   flash 5,493,963/6,553,600 bytes.
-- Final `x4pro-gh_release_rc` build: passed; static RAM 111,756/327,680 bytes,
-  flash 5,350,302/6,553,600 bytes.
+- Final `x4pro-gh_release_rc` build: passed with the TLS series; static RAM
+  111,788/327,680 bytes (+32 over the pre-TLS build), flash 5,362,974/6,553,600
+  bytes (+12,672).
 - FreeInk SDK remains pinned at
   `44427f8d51866848b26bea01197f499f9fee5c4b`; the build applies the reviewed
   patch series (`scripts/patch_securenet.py`) to the submodule working tree,
