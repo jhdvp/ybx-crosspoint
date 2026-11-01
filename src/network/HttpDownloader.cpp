@@ -315,7 +315,6 @@ HttpDownloader::DownloadError HttpDownloader::postToFile(const std::string& url,
   LOG_DBG("HTTP", "Downloaded %zu bytes", downloaded);
   return OK;
 }
-
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
                                                              ProgressCallback progress, const bool* cancelFlag,
                                                              const std::string& username, const std::string& password,

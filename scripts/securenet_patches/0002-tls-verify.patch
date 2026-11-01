@@ -1,5 +1,5 @@
 diff --git a/libs/network/SecureNet/include/ResumableFetch.h b/libs/network/SecureNet/include/ResumableFetch.h
-index 76bc6b8..ead826e 100644
+index 76bc6b8590113cd409889d291ddb1cd47383dc5a..ead826e8201fb6dbef1bd75ec8f2383120775250 100644
 --- a/libs/network/SecureNet/include/ResumableFetch.h
 +++ b/libs/network/SecureNet/include/ResumableFetch.h
 @@ -25,9 +25,10 @@ struct FetchOptions {
@@ -57,7 +57,7 @@ index 76bc6b8..ead826e 100644
        continue;
      }
 diff --git a/libs/network/SecureNet/include/SecureClient.h b/libs/network/SecureNet/include/SecureClient.h
-index a9a895c..c0883a7 100644
+index 6a6ec5d02c1bb59f26bf2117769b96c99d062902..0402a7bcd7465bf9a448916add15b68a4ddce558 100644
 --- a/libs/network/SecureNet/include/SecureClient.h
 +++ b/libs/network/SecureNet/include/SecureClient.h
 @@ -35,10 +35,30 @@ class SecureClient : public Client {
@@ -88,7 +88,7 @@ index a9a895c..c0883a7 100644
  
 +  ConnectFailure connectFailure() const { return _failure; }
 +
-   // Polled during connect(): between the TCP connect and the handshake, on
+   // Polled while DNS resolves, between the TCP connect and the handshake, on
    // every handshake round-trip, and between the two handshake attempts. A
    // caller that drives its own input loop can use this both to cancel and to
 @@ -90,6 +110,7 @@ class SecureClient : public Client {
@@ -100,10 +100,10 @@ index a9a895c..c0883a7 100644
    const char* _rootCA = nullptr;
    bool _insecure = false;
 diff --git a/libs/network/SecureNet/include/SecureHttpClient.h b/libs/network/SecureNet/include/SecureHttpClient.h
-index 9e9687b..6c2963c 100644
+index 5df9154a58c3093b1b47603fc52d46b906397484..a8c64112350a648ddccef793abf48c4cc3f9fe50 100644
 --- a/libs/network/SecureNet/include/SecureHttpClient.h
 +++ b/libs/network/SecureNet/include/SecureHttpClient.h
-@@ -63,8 +63,9 @@ class SecureHttpClient {
+@@ -64,8 +64,9 @@ class SecureHttpClient {
    SecureHttpClient(const SecureHttpClient&) = delete;
    SecureHttpClient& operator=(const SecureHttpClient&) = delete;
  
@@ -115,7 +115,7 @@ index 9e9687b..6c2963c 100644
    void setInsecure() { _insecure = true; }
    // Bulk download: lend wolfSSL a full-record buffer once the request is sent
    // (see SecureClient::reserveFullRecord()). Applies to https connections.
-@@ -184,6 +185,10 @@ class SecureHttpClient {
+@@ -185,6 +186,10 @@ class SecureHttpClient {
        // Refuse to silently drop transport security: a https -> http redirect
        // stops here (the caller sees the 3xx) unless explicitly allowed.
        if (_scheme == "https" && scheme == "http" && !_allowRedirectDowngrade) return status;
@@ -126,7 +126,7 @@ index 9e9687b..6c2963c 100644
        _scheme = scheme;
        _host = host;
        _path = path;
-@@ -315,6 +320,10 @@ class SecureHttpClient {
+@@ -316,6 +321,10 @@ class SecureHttpClient {
    bool responseComplete() const { return _bodyComplete; }
    bool callbackAborted() const { return _callbackAborted; }
    bool aborted() const { return _aborted; }
@@ -137,7 +137,7 @@ index 9e9687b..6c2963c 100644
    bool hasContentLength() const { return _haveContentLength; }
    size_t getContentLength() const { return _contentLength; }
  
-@@ -387,6 +396,28 @@ class SecureHttpClient {
+@@ -388,6 +397,28 @@ class SecureHttpClient {
      return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
    }
  
@@ -167,10 +167,10 @@ index 9e9687b..6c2963c 100644
                         uint16_t& port) {
      const size_t schemeEnd = url.find("://");
 diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNet/src/SecureClient.cpp
-index ab34587..b360d4e 100644
+index c6fca27ebec6fb4942da990725c4008491e91425..cd0ec140de2e8b2ff5c42e364359988b00ca932d 100644
 --- a/libs/network/SecureNet/src/SecureClient.cpp
 +++ b/libs/network/SecureNet/src/SecureClient.cpp
-@@ -7,6 +7,8 @@
+@@ -9,6 +9,8 @@
  #include <freertos/FreeRTOS.h>
  #include <freertos/task.h>
  #include <wolfssl/ssl.h>
@@ -179,7 +179,7 @@ index ab34587..b360d4e 100644
  #include <wolfssl/wolfcrypt/memory.h>
  // ssl->max_fragment, to skip the full-record buffer when small records were agreed.
  #include <wolfssl/internal.h>
-@@ -103,6 +105,33 @@ bool isWantIo(const int err) {
+@@ -105,6 +107,33 @@ bool isWantIo(const int err) {
    // an out-of-memory handshake spin until the deadline instead of failing fast.
    return err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE;
  }
@@ -212,18 +212,24 @@ index ab34587..b360d4e 100644
 +}
  }  // namespace
  
- int SecureClient::connectWithMethod(const char* host, uint16_t port, void* method, const char* label) {
-@@ -118,19 +147,25 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+ int SecureClient::connectWithMethod(const char* host, uint32_t ipv4, uint16_t port, void* method, const char* label,
+@@ -120,24 +149,31 @@ int SecureClient::connectWithMethod(const char* host, uint32_t ipv4, uint16_t po
+ #endif
    const uint32_t started = millis();
    stop();
-   const uint32_t timeoutMs = getTimeout();
 -  if (abortRequested()) return 0;
 +  if (abortRequested()) {
 +    _failure = ConnectFailure::Aborted;
 +    return 0;
 +  }
-   _transport.setConnectionTimeout(timeoutMs);
-   if (!_transport.connect(host, port)) {
+   const uint32_t tcpBudget = remainingUntil(millis(), deadlineMs);
+   if (tcpBudget == 0) {
++    _failure = ConnectFailure::Timeout;
+     if (Serial) Serial.printf("[SecureClient] TCP connect skipped (%s): DNS used the deadline\n", label);
+     return 0;
+   }
+   _transport.setConnectionTimeout(tcpBudget);
+   if (!_transport.connect(IPAddress(ipv4), port)) {
 +    _failure = ConnectFailure::Transport;
      if (Serial) Serial.printf("[SecureClient] TCP connect failed (%s): %s:%u\n", label, host, port);
      return 0;
@@ -240,7 +246,7 @@ index ab34587..b360d4e 100644
      if (Serial) Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
      _transport.stop();
      return 0;
-@@ -139,15 +174,31 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -146,15 +182,31 @@ int SecureClient::connectWithMethod(const char* host, uint32_t ipv4, uint16_t po
  
    if (_insecure) {
      wolfSSL_CTX_set_verify(ctx, WOLFSSL_VERIFY_NONE, nullptr);
@@ -275,7 +281,7 @@ index ab34587..b360d4e 100644
      if (Serial) Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
      stop();
      return 0;
-@@ -156,6 +207,18 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -163,6 +215,18 @@ int SecureClient::connectWithMethod(const char* host, uint32_t ipv4, uint16_t po
    wolfSSL_SetIOReadCtx(ssl, &_transport);
    wolfSSL_SetIOWriteCtx(ssl, &_transport);
    wolfSSL_UseSNI(ssl, WOLFSSL_SNI_HOST_NAME, host, strlen(host));
@@ -294,7 +300,7 @@ index ab34587..b360d4e 100644
  #if defined(WOLFSSL_TLS13) && defined(HAVE_CURVE25519)
    // MEMFIX-PORT: pin the TLS 1.3 key_share to X25519. wolfSSL's default is a
    // P-256 share, generated with fast-math bignums that WOLFSSL_SMALL_STACK
-@@ -184,16 +247,19 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -190,16 +254,19 @@ int SecureClient::connectWithMethod(const char* host, uint32_t ipv4, uint16_t po
    while ((ret = wolfSSL_connect(ssl)) != WOLFSSL_SUCCESS) {
      const int err = wolfSSL_get_error(ssl, ret);
      if (!isWantIo(err)) {
@@ -309,38 +315,56 @@ index ab34587..b360d4e 100644
        stop();
        return 0;
      }
-     if (static_cast<int32_t>(millis() - deadline) >= 0) {
+     if (remainingUntil(millis(), deadlineMs) == 0) {
 +      _failure = ConnectFailure::Timeout;
        if (Serial) {
          Serial.printf("[SecureClient] handshake timeout (%s): last err %d, transport %s, free heap %u\n", label, err,
                        _transport.connected() ? "up" : "down", (unsigned)ESP.getFreeHeap());
-@@ -203,6 +269,7 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -209,6 +276,7 @@ int SecureClient::connectWithMethod(const char* host, uint32_t ipv4, uint16_t po
      }
      delay(5);
    }
 +  _failure = ConnectFailure::None;
    _connected = true;
-   if (Serial) {
-     Serial.printf("[SecureClient] handshake ok (%s): %s / %s in %lu ms\n", label, wolfSSL_get_version(ssl),
-@@ -237,12 +304,17 @@ bool SecureClient::abortRequested() {
+   // The connect budget is a deadline, not the socket's steady-state timeout:
+   // a DNS lookup that used most of it must not make later body reads time out.
+@@ -246,12 +314,24 @@ bool SecureClient::abortRequested() {
  
  int SecureClient::connect(const char* host, uint16_t port) {
    _aborted = false;
 +  _failure = ConnectFailure::None;
-   // Negotiate the highest mutually supported version rather than pinning TLS 1.3:
-   // self-hosted / Let's Encrypt nginx often tops out at TLS 1.2, and a 1.3-only
-   // client fails those handshakes outright. v23 still selects 1.3 when the peer
+   // One budget for DNS, TCP and the whole handshake, including the TLS 1.2
+   // retry below: no step starts a fresh clock after the previous one.
+   const uint32_t deadlineMs = deadlineAfter(millis(), static_cast<uint32_t>(getTimeout()));
+   uint32_t ipv4 = 0;
+   const DeadlineDns::Status dns = DeadlineDns::resolve(host, deadlineMs, ipv4, [this] { return abortRequested(); });
+   if (dns != DeadlineDns::Status::Ok) {
++    switch (dns) {
++      case DeadlineDns::Status::Timeout:
++        _failure = ConnectFailure::Timeout;
++        break;
++      case DeadlineDns::Status::Aborted:
++        _failure = ConnectFailure::Aborted;
++        break;
++      default:
++        _failure = ConnectFailure::Transport;
++        break;
++    }
+     if (Serial) {
+       const char* reason = "failed";
+       if (dns == DeadlineDns::Status::Timeout) reason = "timeout";
+@@ -268,6 +348,10 @@ int SecureClient::connect(const char* host, uint16_t port) {
    // offers it (WOLFSSL_TLS13 is enabled) and falls back to 1.2 otherwise.
-   if (connectWithMethod(host, port, wolfSSLv23_client_method(), "auto")) return 1;
+   if (connectWithMethod(host, ipv4, port, wolfSSLv23_client_method(), "auto", deadlineMs)) return 1;
    if (_aborted) return 0;
 +  // Only an I/O-level failure earns the TLS 1.2 retry. A rejected certificate,
 +  // host-name mismatch, bad clock, or missing CA config was already decided by
 +  // verification and would fail identically (and needlessly) a second time.
 +  if (_failure != ConnectFailure::Transport && _failure != ConnectFailure::Timeout) return 0;
- 
-   // Some TLS 1.2-only servers are intolerant of a TLS 1.3-capable ClientHello
-   // and abort with a fatal handshake_failure alert. Retry with an explicit
-@@ -316,6 +388,7 @@ uint8_t SecureClient::connected() { return _connected && _transport.connected();
+   if (remainingUntil(millis(), deadlineMs) == 0) {
+     if (Serial) Serial.println("[SecureClient] TLS 1.2 retry skipped: deadline exhausted");
+     return 0;
+@@ -345,6 +429,7 @@ uint8_t SecureClient::connected() { return _connected && _transport.connected();
  
  int SecureClient::connect(const char* host, uint16_t port) {
    (void)host; (void)port;

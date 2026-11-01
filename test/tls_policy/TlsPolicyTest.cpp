@@ -18,12 +18,11 @@ TEST(TlsPolicyClock, BelowTheFloorIsNotUsable) {
 
 TEST(TlsPolicyClock, ReadyClockDoesNotSync) {
   int syncs = 0;
-  const bool ok = ensureClock(
-      [] { return kFloor; },
-      [&syncs] {
-        syncs++;
-        return true;
-      });
+  const bool ok = ensureClock([] { return kFloor; },
+                              [&syncs] {
+                                syncs++;
+                                return true;
+                              });
   EXPECT_TRUE(ok);
   EXPECT_EQ(syncs, 0);
 }
@@ -31,25 +30,23 @@ TEST(TlsPolicyClock, ReadyClockDoesNotSync) {
 TEST(TlsPolicyClock, NotSetClockSyncsOnceThenProceeds) {
   int64_t epoch = 0;
   int syncs = 0;
-  const bool ok = ensureClock(
-      [&epoch] { return epoch; },
-      [&] {
-        syncs++;
-        epoch = kFloor;  // SNTP answered
-        return true;
-      });
+  const bool ok = ensureClock([&epoch] { return epoch; },
+                              [&] {
+                                syncs++;
+                                epoch = kFloor;  // SNTP answered
+                                return true;
+                              });
   EXPECT_TRUE(ok);
   EXPECT_EQ(syncs, 1);
 }
 
 TEST(TlsPolicyClock, FailedSyncRefusesTheRequest) {
   int syncs = 0;
-  const bool ok = ensureClock(
-      [] { return 0; },
-      [&syncs] {
-        syncs++;
-        return false;  // no Wi-Fi / SNTP timeout
-      });
+  const bool ok = ensureClock([] { return 0; },
+                              [&syncs] {
+                                syncs++;
+                                return false;  // no Wi-Fi / SNTP timeout
+                              });
   EXPECT_FALSE(ok);
   EXPECT_EQ(syncs, 1);
 }
@@ -125,6 +122,14 @@ TEST(TlsPolicyRedirect, HttpsToHttpIsRefused) {
   EXPECT_FALSE(d.follow);
   EXPECT_TRUE(d.downgrade);
   EXPECT_FALSE(d.sameOrigin);
+}
+
+TEST(TlsPolicyRedirect, UppercaseSchemeCannotBypassTheDowngradeRule) {
+  // The transport parses schemes case-insensitively, so the redirect policy
+  // must too: "HTTPS://" is a secure start, not an unknown scheme.
+  const RedirectDecision d = decideRedirect("HTTPS://ybx.app/a", "HTTP://ybx.app/b");
+  EXPECT_FALSE(d.follow);
+  EXPECT_TRUE(d.downgrade);
 }
 
 TEST(TlsPolicyRedirect, StepUpToHttpsIsFollowed) {

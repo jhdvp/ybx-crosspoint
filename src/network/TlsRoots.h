@@ -21,10 +21,17 @@
 //     4F:F4:60:D5:4B:9C:86:DA:BF:BC:FC:57:12:E0:40:0D:2B:ED:3F:BC:4D:4F:BD:AA:86:E0:6A:DC:D2:A9:AD:7A
 //     Issuer of the cross-signed E46 that GitHub actually puts on the wire;
 //     without it wolfSSL sees an issuer it cannot verify.
+//   GTS Root R4 (valid to 2036-06-22), SHA-256
+//     34:9D:FA:40:58:C5:E2:63:12:3B:39:8A:E7:95:57:3C:4E:13:13:C8:3F:E6:8F:93:55:6C:D5:E8:03:1B:3C:7D
+//     Covers the plugin hub (pluginhub.crosspointreader.com) and the FreeInk
+//     LCP enrollment host (lcp.freeink.org): leaf <- GTS WE1 <- GTS Root R4.
+//     Both send R4 cross-signed by GlobalSign Root CA, so the self-signed root
+//     from https://pki.goog/repo/certs/gtsr4.pem is the anchor that ends the
+//     path without carrying GlobalSign's RSA root as well.
 //
 // The bundle is deliberately minimal: flash and the wolfSSL CA store on the
-// ESP32-C3 stay small, at the cost of not trusting user-added OPDS catalogs
-// that use another CA (they fail with a certificate error, by design).
+// ESP32-C3 stay small, at the cost of not trusting user-added OPDS or KOSync
+// servers that use another CA (they fail with a certificate error, by design).
 //
 // Re-derive the chains when a shipped host rotates its CA:
 //   openssl s_client -connect HOST:443 -servername HOST -showcerts
@@ -110,5 +117,18 @@ A1UdDgQWBBQ64QmG1M8ZwpZ2dEl23OA1xmNjmjAOBgNVHQ8BAf8EBAMCAQYwDwYD
 VR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAwNoADBlAjA2Z6EWCNzklwBBHU6+4WMB
 zzuqQhFkoJ2UOQIReVx7Hfpkue4WQrO/isIJxOzksU0CMQDpKmFHjFJKS04YcPbW
 RNZu9YO6bVi9JNlWSOrvxKJGgYhqOkbRqZtNyWHa0V1Xahg=
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD
+VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG
+A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw
+WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2Vz
+IExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQBgcqhkjOPQIBBgUrgQQAIgNi
+AATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzuhXyi
+QHY7qca4R9gq55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/lxKvR
+HYqjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW
+BBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/g94D
+9J+uHXqnLrmvT/aDHQ4thQEd0dlq7A/Cr8deVl5c1RxYIigL9zC2L7F8AjEA8GE8
+p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD
 -----END CERTIFICATE-----
 )pem";
