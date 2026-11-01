@@ -30,6 +30,11 @@ claim that the gaps are implemented.
 | Support / diagnostics | Existing server support-log API; firmware logs | Native explicit redacted-log submission and receipt, no automatic private-book upload |
 | Offline / expired token / empty / failures | Existing fallback routes and queue | Consistent cached/unknown/stale presentation, bounded network wait, sleep FIFO and TLS fixes |
 
+Settings / Updates / About are reconciled control by control in
+[settings parity](ybx-settings-parity.md), including why the InkView/Qt-only
+controls are not ported and why native support-log submission is still open on the
+server contract.
+
 Use the portable YBX client protocol/model where practical. The current desktop
 history client delegates to core/ybx_reading; that header also pulls in the
 SQLite cache API and allows a96KiB cache/40 awards, so it cannot simply be linked
