@@ -325,9 +325,7 @@ void ActivityManager::goToPlugins(bool showOpds) {
   replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, showOpds, /*rootMode=*/true));
 }
 
-void ActivityManager::goToYbxAccount() {
-  replaceActivity(std::make_unique<YbxAccountActivity>(renderer, mappedInput));
-}
+void ActivityManager::goToYbxAccount() { replaceActivity(std::make_unique<YbxAccountActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {
   if (path.empty()) {

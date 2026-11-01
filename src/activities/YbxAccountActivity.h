@@ -66,9 +66,7 @@ class YbxAccountActivity final : public CatalogActivity {
     std::string authIntervalPath, authExpiresPath, authTokenPath, authErrorPath;
     std::string listsUrl;
     pluginhttp::Headers listsHeaders;
-    bool hasDeviceCode() const {
-      return authType == "device_code" && !authReq.url.empty() && !pollReq.url.empty();
-    }
+    bool hasDeviceCode() const { return authType == "device_code" && !authReq.url.empty() && !pollReq.url.empty(); }
   };
 
   static constexpr int MAX_ROWS = 6;
@@ -97,8 +95,7 @@ class YbxAccountActivity final : public CatalogActivity {
   void goAccount();
   void openSource(ybxaccount::SourceKind kind);
 
-  int apiRequest(const pluginhttp::RequestSpec& req, String& out,
-                 pluginhttp::Headers* responseHeaders = nullptr);
+  int apiRequest(const pluginhttp::RequestSpec& req, String& out, pluginhttp::Headers* responseHeaders = nullptr);
   void runRefresh();
   void beginPairing();
   void pollPairing();

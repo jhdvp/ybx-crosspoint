@@ -49,9 +49,7 @@ struct Summary {
     connectedMask = static_cast<uint8_t>(connectedMask | (1u << index));
   }
 
-  bool connected(SourceKind kind) const {
-    return (connectedMask & (1u << static_cast<uint8_t>(kind))) != 0;
-  }
+  bool connected(SourceKind kind) const { return (connectedMask & (1u << static_cast<uint8_t>(kind))) != 0; }
 
   uint16_t shelfCount(SourceKind kind) const { return sources[static_cast<size_t>(kind)].lists; }
 
@@ -69,45 +67,38 @@ struct Summary {
 // that only the web cabinet can repair.
 enum class ListsOutcome : uint8_t {
   Ok,
-  InvalidToken,    // 401/403 without X-YBX-Device-Removed: token expired/revoked
-  DeviceRemoved,   // 401/403 with X-YBX-Device-Removed: this device was unlinked
-  ProviderSession, // 409 books_consent_required: provider login needs repair
-  Offline,         // transport failure (status < 0)
+  InvalidToken,     // 401/403 without X-YBX-Device-Removed: token expired/revoked
+  DeviceRemoved,    // 401/403 with X-YBX-Device-Removed: this device was unlinked
+  ProviderSession,  // 409 books_consent_required: provider login needs repair
+  Offline,          // transport failure (status < 0)
   Failed,
 };
 
 inline ListsOutcome listsOutcomeFromStatus(const int status, const bool deviceRemoved) {
   if (status >= 200 && status < 300) return ListsOutcome::Ok;
-  if (status == 401 || status == 403)
-    return deviceRemoved ? ListsOutcome::DeviceRemoved : ListsOutcome::InvalidToken;
+  if (status == 401 || status == 403) return deviceRemoved ? ListsOutcome::DeviceRemoved : ListsOutcome::InvalidToken;
   if (status == 409) return ListsOutcome::ProviderSession;
   if (status < 0) return ListsOutcome::Offline;
   return ListsOutcome::Failed;
 }
 
-inline bool isProviderSessionBody(std::string_view code) {
-  return code == "books_consent_required";
-}
+inline bool isProviderSessionBody(std::string_view code) { return code == "books_consent_required"; }
 
-inline bool headerIsTrue(std::string_view value) {
-  return value == "true" || value == "True" || value == "1";
-}
+inline bool headerIsTrue(std::string_view value) { return value == "true" || value == "True" || value == "1"; }
 
 constexpr unsigned long MIN_POLL_INTERVAL_SECONDS = 3;
 constexpr unsigned long MIN_CODE_LIFETIME_SECONDS = 60;
 constexpr unsigned long SLOW_DOWN_STEP_MS = 5000;
 
 inline unsigned long clampPollIntervalMs(const long seconds) {
-  const long clamped = seconds < static_cast<long>(MIN_POLL_INTERVAL_SECONDS)
-                           ? static_cast<long>(MIN_POLL_INTERVAL_SECONDS)
-                           : seconds;
+  const long clamped =
+      seconds < static_cast<long>(MIN_POLL_INTERVAL_SECONDS) ? static_cast<long>(MIN_POLL_INTERVAL_SECONDS) : seconds;
   return static_cast<unsigned long>(clamped) * 1000UL;
 }
 
 inline unsigned long clampCodeLifetimeMs(const long seconds) {
-  const long clamped = seconds < static_cast<long>(MIN_CODE_LIFETIME_SECONDS)
-                           ? static_cast<long>(MIN_CODE_LIFETIME_SECONDS)
-                           : seconds;
+  const long clamped =
+      seconds < static_cast<long>(MIN_CODE_LIFETIME_SECONDS) ? static_cast<long>(MIN_CODE_LIFETIME_SECONDS) : seconds;
   return static_cast<unsigned long>(clamped) * 1000UL;
 }
 
@@ -117,9 +108,7 @@ inline bool deadlineReached(const uint32_t nowMs, const uint32_t deadlineMs) {
   return static_cast<int32_t>(nowMs - deadlineMs) >= 0;
 }
 
-inline unsigned long slowedDownIntervalMs(const unsigned long intervalMs) {
-  return intervalMs + SLOW_DOWN_STEP_MS;
-}
+inline unsigned long slowedDownIntervalMs(const unsigned long intervalMs) { return intervalMs + SLOW_DOWN_STEP_MS; }
 
 enum class PollOutcome : uint8_t { Pending, SlowDown, Expired, Denied };
 

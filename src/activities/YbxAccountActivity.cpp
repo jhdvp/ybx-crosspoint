@@ -134,7 +134,7 @@ int YbxAccountActivity::apiRequest(const pluginhttp::RequestSpec& req, String& o
                                    pluginhttp::Headers* responseHeaders) {
   ensureSession();
   return pluginhttp::request(session_.get(), req.url, req.method, req.body, req.headers, out, MAX_API_RESPONSE,
-                              responseHeaders);
+                             responseHeaders);
 }
 
 void YbxAccountActivity::startBrowse() {
@@ -228,8 +228,7 @@ void YbxAccountActivity::beginPairing() {
 
   copyField(variantToString(resolvePath(doc, manifest_.authCodePath)), authCode_, sizeof(authCode_));
   copyField(variantToString(resolvePath(doc, manifest_.authVerifyPath)), authVerify_, sizeof(authVerify_));
-  copyField(variantToString(resolvePath(doc, manifest_.authDeviceCodePath)), authDeviceCode_,
-            sizeof(authDeviceCode_));
+  copyField(variantToString(resolvePath(doc, manifest_.authDeviceCodePath)), authDeviceCode_, sizeof(authDeviceCode_));
   if (authCode_[0] == '\0' || authDeviceCode_[0] == '\0') {
     pendingPairing_ = false;
     fail(StrId::STR_PLUGIN_AUTH_FAILED);
@@ -357,8 +356,8 @@ void YbxAccountActivity::rebuildRows() {
       statusSubtitle(detailText_, sizeof(detailText_));
       addRow(tr(STR_YBX_ACCOUNT_STATUS), detailText_, statusLabel(), RowAction::Refresh);
       if (!manifestValid_) break;
-      const bool tokenStale = outcome_ == ybxaccount::ListsOutcome::InvalidToken ||
-                              outcome_ == ybxaccount::ListsOutcome::DeviceRemoved;
+      const bool tokenStale =
+          outcome_ == ybxaccount::ListsOutcome::InvalidToken || outcome_ == ybxaccount::ListsOutcome::DeviceRemoved;
       if (token_.empty() || tokenStale) addRow(tr(STR_PLUGIN_SIGN_IN), nullptr, ">", RowAction::SignIn);
       if (!token_.empty()) {
         if (outcome_ != ybxaccount::ListsOutcome::ProviderSession)
@@ -376,13 +375,14 @@ void YbxAccountActivity::rebuildRows() {
         const bool connected = summary_.connected(kinds[i]);
         const char* value;
         if (connected) {
-          std::snprintf(rowNumber_[i], sizeof(rowNumber_[i]), "%u", static_cast<unsigned>(summary_.shelfCount(kinds[i])));
+          std::snprintf(rowNumber_[i], sizeof(rowNumber_[i]), "%u",
+                        static_cast<unsigned>(summary_.shelfCount(kinds[i])));
           value = rowNumber_[i];
         } else {
           value = ">";
         }
-        addRow(sourceName(kinds[i]), connected ? tr(STR_YBX_ACCOUNT_CONNECTED) : tr(STR_YBX_ACCOUNT_NOT_CONNECTED), value,
-               actionsByKind[i]);
+        addRow(sourceName(kinds[i]), connected ? tr(STR_YBX_ACCOUNT_CONNECTED) : tr(STR_YBX_ACCOUNT_NOT_CONNECTED),
+               value, actionsByKind[i]);
       }
       addRow(tr(STR_YBX_ACCOUNT_CABINET), nullptr, ">", RowAction::Cabinet);
       break;
@@ -479,10 +479,9 @@ void YbxAccountActivity::buildScreen(UiScreen& screen) {
     }
     case View::Source: {
       const bool connected = summary_.connected(sourceKind_);
-      catalogCenteredBlock(screen,
-                           {{sourceName(sourceKind_), true},
-                            {connected ? tr(STR_YBX_ACCOUNT_CONNECTED) : tr(STR_YBX_ACCOUNT_NOT_CONNECTED)},
-                            {connected ? detailText_ : tr(STR_YBX_ACCOUNT_CONNECT_HINT)}});
+      catalogCenteredBlock(screen, {{sourceName(sourceKind_), true},
+                                    {connected ? tr(STR_YBX_ACCOUNT_CONNECTED) : tr(STR_YBX_ACCOUNT_NOT_CONNECTED)},
+                                    {connected ? detailText_ : tr(STR_YBX_ACCOUNT_CONNECT_HINT)}});
       return;
     }
     case View::Cabinet: {

@@ -123,9 +123,8 @@ TEST(YbxAccountModel, CabinetUrlDerivesFromListsOriginOnly) {
   // Never offer an http downgrade or an oversized host.
   EXPECT_FALSE(cabinetUrlFromListsUrl("http://ybx.example/catalog/lists", out, sizeof(out)));
   EXPECT_FALSE(cabinetUrlFromListsUrl("https:///catalog/lists", out, sizeof(out)));
-  EXPECT_FALSE(
-      cabinetUrlFromListsUrl("https://abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ01234/catalog",
-                             out, sizeof(out)));
+  EXPECT_FALSE(cabinetUrlFromListsUrl(
+      "https://abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ01234/catalog", out, sizeof(out)));
 
   // "https://ybx.example/#sources" needs exactly 29 bytes.
   char exact[29];
