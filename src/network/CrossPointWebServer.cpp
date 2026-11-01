@@ -2393,7 +2393,6 @@ void CrossPointWebServer::handleFetch() {
     keepBrowserAlive();
     return false;  // never aborts; only feeds
   };
-  tlspolicy::clearFailure();
   if (!tlspolicy::ensureClockFor(url)) {
     if (file.isOpen()) file.close();
     Storage.remove(part.c_str());

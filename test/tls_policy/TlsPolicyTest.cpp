@@ -58,6 +58,28 @@ TEST(TlsPolicyClock, SyncClaimingSuccessWithoutATimeStillRefuses) {
   EXPECT_FALSE(ok);
 }
 
+TEST(TlsPolicyClock, BlockingSyncDisallowedSkipsTheAttempt) {
+  // The sleep-drain gate: with no blocking SNTP allowed, an unusable clock
+  // fails without ever starting a sync (the drain's caller passes
+  // clockSyncAllowed(), false inside a NoBlockingClockSync window).
+  EXPECT_FALSE(clockUsable(0, false));
+  EXPECT_FALSE(clockUsable(kFloor - 1, false));
+  EXPECT_TRUE(clockUsable(kFloor, false));
+  EXPECT_TRUE(clockUsable(0, true));
+  // The wiring ensureClock() uses: with sync refused the gate must not wait
+  // on it for a clock that is already usable.
+  EXPECT_TRUE(ensureClock([] { return kFloor; }, [] { return false; }));
+}
+
+TEST(TlsPolicyLogUrl, StripsQueryAndFragment) {
+  // Query strings carry OPDS search terms and OAuth device/login tokens.
+  EXPECT_EQ(logUrl("https://ybx.app/opds?login=abc123"), "https://ybx.app/opds");
+  EXPECT_EQ(logUrl("https://ybx.app/x#frag"), "https://ybx.app/x");
+  EXPECT_EQ(logUrl("https://ybx.app/path"), "https://ybx.app/path");
+  EXPECT_EQ(logUrl("?query-only"), "");
+  EXPECT_EQ(logUrl(""), "");
+}
+
 TEST(TlsPolicyOrigin, NormalizesSchemeHostAndDefaultPort) {
   EXPECT_EQ(originOf("https://My.YBX.app/path?q=1#frag"), "https://my.ybx.app:443");
   EXPECT_EQ(originOf("http://example.com"), "http://example.com:80");

@@ -219,7 +219,6 @@ int request(freeink::SecureHttpClient* session, const std::string& url, const st
             const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
             Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
   WifiPowerSaveGuard psGuard;
-  tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
   freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
   if (!httpPtr) return -1;
@@ -250,7 +249,7 @@ int request(freeink::SecureHttpClient* session, const std::string& url, const st
   // its state ("authorization_pending") in 4xx response bodies.
   if (overflow || status < 0 || !http.responseComplete()) {
     LOG_ERR("PHTP", "API request failed: status=%d overflow=%d complete=%d %s", status, overflow,
-            http.responseComplete(), url.c_str());
+            http.responseComplete(), tlspolicy::logUrl(url).c_str());
     return -1;
   }
   return status;
@@ -260,7 +259,6 @@ int requestToFile(freeink::SecureHttpClient* session, const std::string& url, co
                   const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
                   const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
   WifiPowerSaveGuard psGuard;
-  tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
   freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
   if (!httpPtr) return -1;
@@ -293,7 +291,7 @@ int requestToFile(freeink::SecureHttpClient* session, const std::string& url, co
   }
   if (!writeOk || status < 0 || !http.responseComplete()) {
     LOG_ERR("PHTP", "API request (to file) failed: status=%d writeOk=%d complete=%d %s", status, writeOk,
-            http.responseComplete(), url.c_str());
+            http.responseComplete(), tlspolicy::logUrl(url).c_str());
     Storage.remove(destPath);
     return -1;
   }

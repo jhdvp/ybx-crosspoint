@@ -96,9 +96,13 @@ request fails with a certificate error and is not retried insecurely.
 Before any https request the firmware checks the TrustedTime floor. If the
 clock is unset it makes one bounded SNTP attempt; when time still cannot be
 established the request is refused with a message asking the user to connect
-Wi-Fi, rather than skipping the certificate-date check. Redirects never step
-down from https to http, and Authorization/cookie headers are withheld when a
-redirect leaves the starting origin.
+Wi-Fi, rather than skipping the certificate-date check. The sleep-event drain
+never starts that attempt: its clock gate uses the clock as it is, so a
+not-yet-synced clock defers the queued events to the next drain instead of
+adding seconds of SNTP to the sleep latency. Redirects never step down from
+https to http, and Authorization/cookie headers are withheld when a redirect
+leaves the starting origin. URLs are logged without their query string or
+fragment: queries carry OPDS search terms and OAuth device/login tokens.
 
 Known exceptions, outside the token/download scope: KOReader sync and clippings
 sync still call `setInsecure()` because they talk to user-supplied servers of

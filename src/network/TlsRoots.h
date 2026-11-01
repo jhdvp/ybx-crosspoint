@@ -3,24 +3,29 @@
 // Trusted roots for every HTTPS request the firmware makes: the reader API,
 // plugin API and events, OTA, and catalog/font downloads.
 //
-// Bundle contents (verify with openssl x509 -noout -fingerprint -sha256):
+// Bundle contents (verify with openssl x509 -noout -fingerprint -sha256).
+// Each anchor is the SELF-SIGNED root; a host is trusted when the chain it
+// puts on the wire ends at one of these:
 //   ISRG Root X1 (valid to 2035-06-04), SHA-256
 //     96:BC:EC:06:26:49:76:F3:74:60:77:9A:CF:28:C5:A7:CF:E8:A3:C0:AA:E1:1A:8F:FC:EE:05:C0:BD:DF:08:C6
-//     Covers release-assets.githubusercontent.com (leaf <- YR1 <- ISRG Root
-//     YR <- X1 cross-sign) and the cross-signed ISRG Root X2.
+//     Covers RSA hosts whose leaf chains up through Let's Encrypt's YR1/
+//     Root YR pair to X1 — release-assets.githubusercontent.com is served
+//     that way (leaf <- YR1 <- Root YR <- X1 cross-sign).
 //   ISRG Root X2 (valid to 2040-09-17), SHA-256
 //     69:72:9B:8E:15:A8:6E:FC:17:7A:57:AF:B7:17:1D:FC:64:AD:D2:8C:2F:CA:8C:F1:50:7E:34:45:3C:CB:14:70
-//     Covers my.ybx.app and ybx.app (leaf <- YE1 <- Root YE <- X2) and
-//     api.github.com's Let's Encrypt chains if GitHub rotates to them.
+//     Covers my.ybx.app and ybx.app (ECDSA: leaf <- YE1 <- Root YE <- X2
+//     cross-sign) and api.github.com's Let's Encrypt chains if GitHub rotates
+//     to them. The bundle holds the self-signed X2, so the server must send
+//     the X1-signed X2 cross as part of its chain for the path to end here.
 //   Sectigo Public Server Authentication Root E46 (valid to 2038-01-18), SHA-256
 //     EA:6B:89:ED:69:07:A2:09:FF:91:88:67:6F:B1:64:E7:AC:ED:89:4B:89:96:DF:BE:5C:E5:BB:CC:22:DE:4D:DD
 //     Covers github.com and api.github.com (leaf <- Sectigo Public Server
-//     Authentication CA DV E36 <- E46). GitHub sends the E46 cross-signed by
-//     USERTrust ECC, so the issuer anchor below is needed as well.
+//     Authentication CA DV E36 <- E46). GitHub does not send E46's
+//     cross-signature by USERTrust ECC, so the anchor below finishes the path.
 //   USERTrust ECC Certification Authority (valid to 2038-01-18), SHA-256
 //     4F:F4:60:D5:4B:9C:86:DA:BF:BC:FC:57:12:E0:40:0D:2B:ED:3F:BC:4D:4F:BD:AA:86:E0:6A:DC:D2:A9:AD:7A
-//     Issuer of the cross-signed E46 that GitHub actually puts on the wire;
-//     without it wolfSSL sees an issuer it cannot verify.
+//     The self-signed issuer of the cross-signed E46 entry above; without it
+//     wolfSSL sees an issuer it cannot verify.
 //   GTS Root R4 (valid to 2036-06-22), SHA-256
 //     34:9D:FA:40:58:C5:E2:63:12:3B:39:8A:E7:95:57:3C:4E:13:13:C8:3F:E6:8F:93:55:6C:D5:E8:03:1B:3C:7D
 //     Covers the plugin hub (pluginhub.crosspointreader.com) and the FreeInk

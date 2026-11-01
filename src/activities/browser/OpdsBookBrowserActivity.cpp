@@ -30,6 +30,7 @@
 #include "components/icons/opdsIcons.h"
 #include "network/HttpDownloader.h"
 #include "network/LcpDevice.h"
+#include "network/TlsTransport.h"
 #include "util/BookCacheUtils.h"
 #include "util/OpdsFeedError.h"
 #include "util/OpdsFilename.h"
@@ -550,7 +551,7 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
     downloadUrl = resolved;
   }
   const std::string filename = downloadDestination(book);
-  LOG_DBG("OPDS", "Downloading: %s -> %s", downloadUrl.c_str(), filename.c_str());
+  LOG_DBG("OPDS", "Downloading: %s -> %s", tlspolicy::logUrl(downloadUrl).c_str(), filename.c_str());
 
   // The selected book data is now copied into the download URL, filename, and
   // status line. Reclaim the catalog while TLS owns its record buffers; reload
@@ -621,7 +622,7 @@ void OpdsBookBrowserActivity::downloadLcpBook(const OpdsEntry& book) {
   // firmware works unchanged when the service gains the production profile.
 
   const std::string filename = downloadDestination(book);
-  LOG_DBG("OPDS", "LCP fulfill: %s -> %s", licenseUrl.c_str(), filename.c_str());
+  LOG_DBG("OPDS", "LCP fulfill: %s -> %s", tlspolicy::logUrl(licenseUrl).c_str(), filename.c_str());
 
   // Reclaim the catalog while TLS owns its record buffers, as for a plain
   // download; downloadFile() gates the heap and pumps cancel input.

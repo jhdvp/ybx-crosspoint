@@ -39,6 +39,13 @@ bool ensureClock(NowFn now, SyncFn sync) {
   return clockReady(now());
 }
 
+// Gate for callers that must not block on SNTP (the sleep-event drain): an
+// unusable clock fails immediately when allowBlockingSync is false and no
+// sync is attempted.
+inline bool clockUsable(const int64_t epochSeconds, const bool allowBlockingSync) {
+  return clockReady(epochSeconds) || allowBlockingSync;
+}
+
 // scheme://host:port, lowercased, with the scheme's default port made explicit
 // and any userinfo dropped. Two URLs with equal origins may share credentials.
 inline std::string originOf(const std::string& url) {
@@ -61,6 +68,14 @@ inline std::string originOf(const std::string& url) {
 }
 
 inline bool isHttpsUrl(const std::string& url) { return originOf(url).rfind("https://", 0) == 0; }
+
+// The URL as it may appear in a log line: scheme, host and path only. Query
+// strings carry OPDS search terms and OAuth device/login tokens, and logs are
+// copied into bug reports.
+inline std::string logUrl(const std::string& url) {
+  const size_t cut = url.find_first_of("?#");
+  return cut == std::string::npos ? url : url.substr(0, cut);
+}
 
 // One followed redirect, as decided before the next request is issued.
 struct RedirectDecision {

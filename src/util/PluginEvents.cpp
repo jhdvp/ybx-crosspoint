@@ -20,6 +20,7 @@
 #include "PluginQueueStorage.h"
 #include "components/UITheme.h"
 #include "network/ProtectedPaths.h"
+#include "network/TlsTransport.h"
 
 namespace {
 
@@ -497,6 +498,10 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
 }  // namespace
 
 void drain(GfxRenderer* renderer, const size_t maxEvents, const uint32_t maxMillis) {
+  // A drain runs at sleep entry: the clock gate must not add a multi-second
+  // SNTP wait to it. An https handler with an unusable clock fails immediately
+  // and its events stay queued for the next drain.
+  const tlspolicy::NoBlockingClockSync noBlockingSync;
   const EventDeadline deadline(millis(), maxMillis);
   size_t budget = maxEvents;
   for (const auto& sub : subscribers) {

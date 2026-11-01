@@ -11,11 +11,21 @@ namespace {
 constexpr uint32_t kClockSyncTimeoutMs = 15000;
 
 tlspolicy::Failure g_lastFailure = tlspolicy::Failure::None;
+// Nested guards must not re-enable blocking sync for an outer caller.
+int g_noBlockingSync = 0;
 }  // namespace
 
+bool tlspolicy::clockSyncAllowed() { return g_noBlockingSync == 0; }
+
+tlspolicy::NoBlockingClockSync::NoBlockingClockSync() { ++g_noBlockingSync; }
+
+tlspolicy::NoBlockingClockSync::~NoBlockingClockSync() { --g_noBlockingSync; }
+
 bool tlspolicy::ensureClock() {
+  // The record is per operation; every request path passes through this gate.
+  clearFailure();
   return ensureClock([] { return trustedtime::trustedNow(); },
-                     [] { return trustedtime::syncNow(kClockSyncTimeoutMs); });
+                     [] { return clockSyncAllowed() && trustedtime::syncNow(kClockSyncTimeoutMs); });
 }
 
 bool tlspolicy::ensureClockFor(const std::string& url) {
@@ -33,6 +43,8 @@ void tlspolicy::applyTrustFor(freeink::SecureHttpClient& client, const std::stri
 void tlspolicy::installTrust(freeink::SecureHttpClient& client) { client.setCACert(TLS_ROOTS_PEM); }
 
 bool tlspolicy::prepareHttpsClient(freeink::SecureHttpClient& client, const std::string& url) {
+  // ensureClock() clears; the non-https refusal below needs the clear too.
+  clearFailure();
   if (!isHttpsUrl(url)) {
     LOG_ERR("TLS", "Refusing a non-https request on a credential-bearing path");
     recordFailure(Failure::Configuration);

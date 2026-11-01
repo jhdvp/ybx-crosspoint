@@ -369,7 +369,8 @@ static bool loadSleepFrameBuffer() {
 // drain runs before goToSleep() renders the sleep screen). The connect path
 // has a join deadline and a cooperative drain budget, skipped on low battery.
 // DNS, TCP and the TLS handshake share the request's own timeout, but the
-// budget is still cooperative: WiFi stop and SD writes are outside it. A
+// budget is still cooperative: WiFi stop and SD writes are outside it, and
+// the clock gate does not start SNTP inside a drain. A
 // failed join or delivery just sleeps with the previous image and the queued
 // events retry on the next drain (at-least-once). The caller's WiFi shutdown
 // tears the radio down either way. Deferrable events already queued
@@ -425,7 +426,7 @@ static void deliverSleepPluginEvents(const bool allowNetwork) {
     delay(100);
   }
   if (WiFi.status() == WL_CONNECTED) {
-    trustedtime::startSync();  // snap the clock floor while the network is up
+    trustedtime::startSync();  // async floor lift; the drain itself never waits on SNTP
     pluginevents::drain(&renderer, 4, 15000);
   } else {
     LOG_DBG("MAIN", "Sleep-event WiFi join timed out; deferring delivery");

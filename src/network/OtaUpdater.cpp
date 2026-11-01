@@ -93,7 +93,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   updateAvailable = true;
 
   LOG_DBG("OTA", "Found update: tag=%s size=%zu", latestVersion.c_str(), otaSize);
-  LOG_DBG("OTA", "Firmware URL: %s", otaUrl.c_str());
+  LOG_DBG("OTA", "Firmware URL: %s", tlspolicy::logUrl(otaUrl).c_str());
   return OK;
 }
 

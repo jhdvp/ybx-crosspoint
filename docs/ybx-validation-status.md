@@ -48,11 +48,21 @@ parent YBX workspace; generated binaries and logs are not committed here.
 
 ## TLS verification checks
 
-- Host suite: `TlsPolicyTest` 20/20 passed. It covers the clock-not-set gate
-  (including a sync that claims success without a valid time), origin
-  normalization (case, user info, default ports, IPv6), https→http redirect
-  refusal (including a mixed-case scheme), and the same-origin decision that
-  controls credential forwarding. The full CTest run passed 918/918 cases.
+- Host suite: `TlsPolicyTest` 22/22 passed. It covers the clock-not-set gate
+  (including a sync that claims success without a valid time, and the
+  no-blocking-sync rule the sleep drain uses), origin normalization (case,
+  user info, default ports, IPv6), https→http redirect refusal (including a
+  mixed-case scheme), the same-origin decision that controls credential
+  forwarding, and query/fragment stripping in logged URLs. The full CTest
+  run passed 920/920 cases.
+- Review fixes (this round): the trust-failure record now resets at the
+  transport's operation gate (`ensureClockFor`/`prepareHttpsClient`) instead
+  of at each call site, so no read can describe an older operation; the
+  sleep-event drain blocks SNTP attempts, keeping a clock sync out of sleep
+  latency; `TlsRoots.h`'s per-root comments now match the bundle (all five
+  entries are self-signed anchors, fingerprints re-verified with
+  `openssl x509 -fingerprint -sha256`); URLs in `HttpDownloader`, `PluginHttp`,
+  `OtaUpdater` and the catalog activities are logged without query/fragment.
 - Size: the linked `firmware.elf` grew from 5,562,939 to 5,573,587 bytes of
   text (+10,648 B, about 10.4 KiB), 4,873 B of which is the PEM bundle; data
   and bss were unchanged. The final build (after the case-insensitive

@@ -33,6 +33,7 @@
 #include "components/UITheme.h"
 #include "network/HttpDownloader.h"
 #include "network/ProtectedPaths.h"
+#include "network/TlsTransport.h"
 #include "util/BookCacheUtils.h"
 #include "util/FirmwareIdentity.h"
 #include "util/PluginEvents.h"
@@ -343,18 +344,19 @@ PluginCatalogActivity::ListIndexResult PluginCatalogActivity::loadBrowseListInde
   if ((status == 401 || status == 403) && manifest.hasPasswordGrant() && refreshCredentialToken()) status = run();
   if (status < 200 || status >= 300) {
     if (status == 401 && manifest.hasDeviceCode()) return ListIndexResult::UNAUTHORIZED;
-    LOG_ERR("PCAT", "browse list index fetch failed: status=%d %s", status, manifest.browseListsUrl.c_str());
+    LOG_ERR("PCAT", "browse list index fetch failed: status=%d %s", status,
+            tlspolicy::logUrl(manifest.browseListsUrl).c_str());
     return ListIndexResult::FAILED;
   }
 
   JsonDocument doc;
   if (deserializeJson(doc, response) != DeserializationError::Ok) {
-    LOG_ERR("PCAT", "browse list index parse failed: %s", manifest.browseListsUrl.c_str());
+    LOG_ERR("PCAT", "browse list index parse failed: %s", tlspolicy::logUrl(manifest.browseListsUrl).c_str());
     return ListIndexResult::FAILED;
   }
   JsonArrayConst lists = doc["lists"].as<JsonArrayConst>();
   if (lists.isNull()) {
-    LOG_ERR("PCAT", "browse list index has no lists array: %s", manifest.browseListsUrl.c_str());
+    LOG_ERR("PCAT", "browse list index has no lists array: %s", tlspolicy::logUrl(manifest.browseListsUrl).c_str());
     return ListIndexResult::FAILED;
   }
 
@@ -374,7 +376,7 @@ PluginCatalogActivity::ListIndexResult PluginCatalogActivity::loadBrowseListInde
     if (!entry.title.empty() && !entry.url.empty()) manifest.browseLists.push_back(std::move(entry));
   }
   if (manifest.browseLists.empty()) {
-    LOG_ERR("PCAT", "browse list index has no valid lists: %s", manifest.browseListsUrl.c_str());
+    LOG_ERR("PCAT", "browse list index has no valid lists: %s", tlspolicy::logUrl(manifest.browseListsUrl).c_str());
     return ListIndexResult::FAILED;
   }
   return ListIndexResult::LOADED;
@@ -638,6 +640,9 @@ void PluginCatalogActivity::onExit() {
 }
 
 void PluginCatalogActivity::startBrowse() {
+  // This attempt can fail before any request runs (missing token file), so
+  // the TLS check below must only see failures recorded by this attempt.
+  tlspolicy::clearFailure();
   const bool needsListAuth = (!manifest.browseListsUrl.empty() && manifest.browseLists.empty()) || wantsListPicker();
   if (needsListAuth) {
     // Dynamic list indexes and list pickers may both use {token}/{cfg.KEY}, so
