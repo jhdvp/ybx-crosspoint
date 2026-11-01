@@ -4,31 +4,66 @@
 #include <I18n.h>
 #include <WiFi.h>
 
+#include <algorithm>
+
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/OtaUpdater.h"
+#include "util/OtaFailureScreen.h"
 
 namespace {
 namespace fui = freeink::ui;
 constexpr fui::ActionId ACTION_RETRY = 1;
 constexpr fui::ActionId ACTION_BACK = 2;
+
+// The detail line under "Update failed", chosen by the failure reason table.
+const char* detailFor(const otafailure::Reason reason) {
+  switch (reason) {
+    case otafailure::Reason::Memory:
+      return tr(STR_MEMORY_ERROR);
+    case otafailure::Reason::Network:
+      return tr(STR_UPDATE_NETWORK_HINT);
+    case otafailure::Reason::Server:
+      return tr(STR_ERROR_GENERAL_FAILURE);
+    case otafailure::Reason::WrongDevice:
+      return tr(STR_FIRMWARE_WRONG_DEVICE);
+    case otafailure::Reason::NoUpdate:
+      return tr(STR_NO_UPDATE);
+    case otafailure::Reason::FlashWrite:
+      return tr(STR_FIRMWARE_WRITE_FAILED);
+    case otafailure::Reason::Generic:
+      break;
+  }
+  return nullptr;
+}
 }  // namespace
 
-void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
-  if (!success) {
-    LOG_ERR("OTA", "WiFi connection failed, exiting");
-    finish();
-    return;
-  }
-
-  runUpdateCheck();
+// Wi-Fi is this activity's own session: entry opens it, and a retry whose
+// connection dropped re-opens it before re-running the failed step
+// (ClockSyncActivity.cpp:42-46 is the in-repo pattern). Cancelling the
+// network selection exits, like the first connect did.
+void OtaUpdateActivity::launchWifiSelection(const FailureStage resumeStage) {
+  LOG_DBG("OTA", "Launching WifiSelectionActivity");
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                         [this, resumeStage](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             LOG_ERR("OTA", "WiFi connection failed, exiting");
+                             finish();
+                             return;
+                           }
+                           if (resumeStage == FAILURE_INSTALL) {
+                             runUpdateInstall();
+                           } else {
+                             runUpdateCheck();
+                           }
+                         });
 }
 
-// Lookup + confirmation. Retry on the FAILED screen re-enters this while the
-// Wi-Fi connection this activity opened is still up.
+// Lookup + confirmation. Retry on the FAILED screen re-enters this once the
+// connection this activity owns is up.
 void OtaUpdateActivity::runUpdateCheck() {
   LOG_DBG("OTA", "WiFi connected, checking for update");
 
@@ -56,7 +91,7 @@ void OtaUpdateActivity::runUpdateCheck() {
   }
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update check failed: %d", res);
-    enterFailed(res == OtaUpdater::OOM_ERROR ? tr(STR_MEMORY_ERROR) : tr(STR_UPDATE_NETWORK_HINT), true);
+    enterFailed(res);
     return;
   }
 
@@ -70,13 +105,12 @@ void OtaUpdateActivity::runUpdateCheck() {
     return;
   }
 
-  {
-    RenderLock lock(*this);
-    state = WAITING_CONFIRMATION;
-  }
   const char* options[] = {tr(STR_CANCEL), tr(STR_UPDATE)};
   // Default the selection to Update so the hardware Confirm button installs,
   // matching the pre-popup layout (Back = cancel, Confirm = update).
+  // Populated before the state is published: render() reads the popup through
+  // processRender(), so the render task must never see WAITING_CONFIRMATION
+  // without the options it draws.
   confirmPopup.show(tr(STR_NEW_UPDATE), options, 2, 1, [this](const int idx) {
     if (idx == 1) {
       runUpdateInstall();
@@ -84,7 +118,11 @@ void OtaUpdateActivity::runUpdateCheck() {
       finish();
     }
   });
-  requestUpdate();
+  {
+    RenderLock lock(*this);
+    state = WAITING_CONFIRMATION;
+    requestUpdate();
+  }
 }
 
 void OtaUpdateActivity::onEnter() {
@@ -99,10 +137,7 @@ void OtaUpdateActivity::onEnter() {
   LOG_DBG("OTA", "Turning on WiFi...");
   WiFi.mode(WIFI_STA);
 
-  // Launch WiFi selection subactivity
-  LOG_DBG("OTA", "Launching WifiSelectionActivity...");
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
+  launchWifiSelection(FAILURE_CHECK);
 }
 
 void OtaUpdateActivity::onExit() {
@@ -131,14 +166,22 @@ void OtaUpdateActivity::render(RenderLock&&) {
   const auto top = (pageHeight - height) / 2;
 
   float updaterProgress = 0;
+  int updaterPercent = 0;
   if (state == UPDATE_IN_PROGRESS) {
     LOG_DBG("OTA", "Update progress: %d / %d", updater.getProcessedSize(), updater.getTotalSize());
-    updaterProgress = static_cast<float>(updater.getProcessedSize()) / static_cast<float>(updater.getTotalSize());
+    // An asset whose size the release JSON never reported leaves totalSize at 0;
+    // dividing by it would hand static_cast<int> an infinity and the bar a
+    // percentage past its own max.
+    const size_t totalSize = updater.getTotalSize();
+    if (totalSize > 0) {
+      updaterProgress = static_cast<float>(updater.getProcessedSize()) / static_cast<float>(totalSize);
+      updaterPercent = std::clamp(static_cast<int>(updaterProgress * 100), 0, 100);
+    }
     // Only update every 2% at the most
     if (static_cast<int>(updaterProgress * 50) == lastUpdaterPercentage / 2) {
       return;
     }
-    lastUpdaterPercentage = static_cast<int>(updaterProgress * 100);
+    lastUpdaterPercentage = static_cast<unsigned int>(updaterPercent);
   }
 
   if (state == CHECKING_FOR_UPDATE) {
@@ -164,7 +207,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
     GUI.drawProgressBar(
         renderer,
         Rect{metrics.contentSidePadding, y, pageWidth - metrics.contentSidePadding * 2, metrics.progressBarHeight},
-        static_cast<int>(updaterProgress * 100), 100);
+        updaterPercent, 100);
 
     y += metrics.progressBarHeight + metrics.verticalSpacing;
     // Percent label is drawn by BaseTheme::drawProgressBar; this slot is left intentionally empty
@@ -232,15 +275,7 @@ void OtaUpdateActivity::runUpdateInstall() {
 
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update failed: %d", res);
-    const char* detail = nullptr;
-    if (res == OtaUpdater::WRONG_DEVICE_ERROR) {
-      detail = tr(STR_FIRMWARE_WRONG_DEVICE);
-    } else if (res == OtaUpdater::HTTP_ERROR) {
-      detail = tr(STR_UPDATE_NETWORK_HINT);
-    }
-    // A wrong-device image fails the same way on every attempt; a truncated
-    // download or a failed flash write is worth re-running.
-    enterFailed(detail, res != OtaUpdater::WRONG_DEVICE_ERROR);
+    enterFailed(res);
     return;
   }
 
@@ -266,12 +301,21 @@ void OtaUpdateActivity::failedScreen(UiScreen& screen, void* user) {
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing),
       static_cast<int16_t>(self->renderer.getScreenWidth() - (safe.x + safe.width)),
-      static_cast<int16_t>(self->renderer.getScreenHeight() - (safe.y + safe.height)),
-      static_cast<int16_t>(safe.x)});
+      static_cast<int16_t>(self->renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
 
   const auto& theme = screen.theme();
-  const fui::Rect body = screen.body();
-  const fui::Rect band{body.x, static_cast<int16_t>(body.y + body.height * 2 / 3), body.width, theme.rowHeight};
+  // Back, with Retry beside it while the failure can repeat: the dismiss action
+  // on the left, the action on the right, the same order as addDialogCancelOk's
+  // dialog pair. layout() sizes the pair to the room the band actually has — a
+  // fixed themed row height reaches past a band whose lower third is shorter
+  // (landscape), and a themed gap wider than the band turns the pair's widths
+  // negative.
+  const auto buttons = otafailure::layout(screen.body(), theme.spaceMd, theme.rowHeight, self->allowRetry);
+  if (!buttons.valid) {
+    // No room for a control: the header chevron and the physical keys still
+    // exit, and an unregistered screen routes no tap at all.
+    return;
+  }
 
   const auto drawButton = [&screen, &theme](const char* label, const fui::ActionId action, const fui::Rect rect) {
     fui::ButtonProps props;
@@ -288,20 +332,11 @@ void OtaUpdateActivity::failedScreen(UiScreen& screen, void* user) {
     fui::button(screen.frame(), rect, props);
   };
 
-  // Back left, Retry right: the same order as the physical Back/Retry hints on
-  // buttons-only profiles. A wrong-device image repeats identically, so that
-  // failure offers Back alone.
-  if (self->allowRetry) {
-    const int16_t gap = theme.spaceMd;
-    const int16_t width = static_cast<int16_t>((band.width - gap) / 2);
-    drawButton(tr(STR_BACK), ACTION_BACK, fui::Rect{band.x, band.y, width, band.height});
-    drawButton(tr(STR_RETRY), ACTION_RETRY,
-               fui::Rect{static_cast<int16_t>(band.x + width + gap), band.y,
-                         static_cast<int16_t>(band.width - width - gap), band.height});
-  } else {
-    const int16_t width = static_cast<int16_t>(band.width / 2);
-    drawButton(tr(STR_BACK), ACTION_BACK,
-               fui::Rect{static_cast<int16_t>(band.x + (band.width - width) / 2), band.y, width, band.height});
+  // A wrong-device image or a release that is no newer repeats identically, so
+  // those failures offer Back alone (classify() withdraws Retry for them).
+  drawButton(tr(STR_BACK), ACTION_BACK, buttons.back);
+  if (buttons.hasRetry) {
+    drawButton(tr(STR_RETRY), ACTION_RETRY, buttons.retry);
   }
 }
 
@@ -309,7 +344,8 @@ void OtaUpdateActivity::onRetryEvent(const fui::ActionEvent&, void* user) {
   auto* self = static_cast<OtaUpdateActivity*>(user);
   self->app.clearTapFlash();
   // The last paint may still show Retry while enterFailed() has already
-  // withdrawn it; the flag, not the stale hit table, decides.
+  // withdrawn it; the flag, not the hit table, decides. enterFailed() closes
+  // the routing gate, so this only covers a tap that landed before it did.
   if (self->allowRetry) {
     self->retryFailedStep();
   }
@@ -321,17 +357,32 @@ void OtaUpdateActivity::onBackEvent(const fui::ActionEvent&, void* user) {
   finish();
 }
 
-void OtaUpdateActivity::enterFailed(const char* detail, const bool canRetry) {
+void OtaUpdateActivity::enterFailed(const OtaUpdater::OtaUpdaterError error) {
+  const auto failure = otafailure::classify(error);
+  // The previous FAILED paint may still be the published interaction table,
+  // with a Retry rect this failure has just withdrawn. Close it before the
+  // flags change; the next render re-publishes through renderUi().
+  closeRouting();
   {
     RenderLock lock(*this);
-    failedDetail = detail;
-    allowRetry = canRetry;
+    failedDetail = detailFor(failure.reason);
+    allowRetry = failure.allowRetry;
     state = FAILED;
   }
   requestUpdate();
 }
 
 void OtaUpdateActivity::retryFailedStep() {
+  closeRouting();
+  if (WiFi.status() != WL_CONNECTED) {
+    // The station can drop while the failure screen is up (AP reboot, walking
+    // out of range). Re-running the step against a dead connection would fail
+    // the same way, so go through network selection first and resume the stage
+    // that failed.
+    LOG_INF("OTA", "Retry requested without a Wi-Fi connection, re-opening network selection");
+    launchWifiSelection(failureStage);
+    return;
+  }
   if (failureStage == FAILURE_INSTALL) {
     runUpdateInstall();
   } else {
@@ -341,6 +392,10 @@ void OtaUpdateActivity::retryFailedStep() {
 
 void OtaUpdateActivity::loop() {
   if (state == WAITING_CONFIRMATION) {
+    // Deliberately not under RenderLock: handleInput() can run the selection
+    // callback here, and that calls runUpdateInstall(), which takes the lock —
+    // the rendering mutex is not recursive. The options it paints are filled
+    // before this state is published.
     if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
     // Popup dismissed without a selection (Back button or tap outside): cancel.
     finish();
@@ -353,13 +408,17 @@ void OtaUpdateActivity::loop() {
     const auto route = routeTouch(mappedInput);
     if (route.routed && app.invalidated()) requestUpdate();
     if (route) return;
-    // Physical keys keep working on every profile. The header chevron on touch
-    // profiles folds into Back (HeaderBackTapTarget), like every other screen.
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    // Physical keys keep working on every profile, and the header chevron on
+    // touch profiles folds into Back (HeaderBackTapTarget) like every other
+    // screen. Both act on release, the convention every Confirm/Back caller in
+    // the repo keeps (OptionPopup::handleInput): a Retry that fired on press
+    // would hand its release to the Cancel/Update popup the re-run opens, and
+    // that popup defaults to Update — an unchosen slot-erasing install.
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
       finish();
       return;
     }
-    if (allowRetry && mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (allowRetry && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
       retryFailedStep();
     }
     return;

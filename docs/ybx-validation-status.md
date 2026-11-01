@@ -127,3 +127,66 @@ left as-is — it is a suggestion, not a confirmed defect.
   checklist" section of [settings parity](ybx-settings-parity.md) (updated for the
   on-screen controls and the "Preparing…" state). No device flashing or hardware
   validation is part of these checks.
+
+## OTA failure-screen review follow-up (2026-11-01)
+
+Five findings were reported against the failure screen. Four were confirmed in the code and
+fixed; the fifth (key-mapping-derived Retry) was half right — the labels already follow the
+front-button mapping, but the keys acted on the press edge, which handed their own release
+to the Cancel/Update popup a retry opens (that popup defaults to Update, so the release
+started a slot-erasing install nobody chose). The review body reached this session
+truncated — only the five finding titles survived — so each row below is what the code
+showed once the title was checked against it, not a quotation of the report. Details,
+including why `confirmPopup` is deliberately *not* mutated under `RenderLock`, are in
+[settings parity](ybx-settings-parity.md), "What this branch changed" items 1–2 and
+"Error states: exit and retry".
+
+| Finding | Verdict | What the code showed |
+| --- | --- | --- |
+| render under lock | **confirmed** | `runUpdateCheck()` published `state = WAITING_CONFIRMATION` under `RenderLock` and only *then* filled `confirmPopup`, so the render task could enter that branch and paint the popup while the loop task was inside `show()` resizing `ownedStrings` — a reallocation under the reader. The options are now filled before the state is published (the lock release gives the render task the ordering edge). Every other write of render-visible state on the failure path (`state`, `failedDetail`, `allowRetry`, `failureStage`, `lastUpdaterPercentage`) was already under the lock and stays that way. `confirmPopup.handleInput()` is *not* wrapped in the lock: it can run the selection callback, which calls `runUpdateInstall()`, which takes the lock, and `renderingMutex` is a plain non-recursive `xSemaphoreCreateMutex()` (`ActivityManager.cpp:40`, `:516-521`; `EpubReaderActivity.cpp:220` records the same) — locking there would self-deadlock. Kept as a comment. |
+| key-mapping-derived Retry | **partly confirmed** | The label and the key were never inconsistent: `mapLabels()` and `wasPressed`/`wasReleased(Button::…)` both resolve through the same `SETTINGS.frontButton*` mapping. The defect under that title was the edge — FAILED handled `wasPressed(Confirm)`, so the *release* of that same keypress reached the Cancel/Update popup the retry opens, whose selection defaults to Update: an unchosen slot-erasing install. Both keys now act on release, matching `OptionPopup::handleInput` and `ui-activities.md` ("Confirm/Back callers retain release/long-press semantics"). Routing keys through the interaction table was rejected: `touchSnapshotFrom()` carries touch only and SDK key routing needs focus, which nothing here does this way. The pair-order comment that claimed it matched "the physical Back/Retry hints order" was wrong (the hints follow the mapping, which can be swapped) and now cites the dialog convention it does match (`UiAppHelpers.h:151-172`). |
+| Wi-Fi reconnect path | **confirmed** | Retry re-ran the failed step in whatever connection state existed; if the station dropped while the screen was up (AP reboot, out of range) it failed again the same way and the button looked dead. `retryFailedStep()` checks `WiFi.status()` and `launchWifiSelection(FailureStage)` (`ClockSyncActivity.cpp:42-46` is the in-repo pattern) re-opens network selection, then resumes the stage that failed. This replaces `onWifiSelectionComplete(bool)`, which always restarted the lookup even after an install failure. |
+| clamped buttons | **confirmed** | `failedScreen()` used `{body.x, body.y + body.height * 2 / 3, body.width, theme.rowHeight}`: a fixed themed row height, so whenever the band's lower third is shorter than one control (landscape, small safe area) the control was drawn past the band into the hint bar. The pair also computed `(band.width - gap) / 2`, which goes negative when the themed gap exceeds the band width, and those `int16_t` widths reached `fui::button` as-is. `otafailure::layout()` shrinks the height to the room left, caps the gap at a third of the band, and reports "no control" rather than drawing one that leaves the band. Residual, stated in the parity doc: `fui::button` still expands each *hit* rect to the SDK minimum touch target, clamped to the screen rather than the band (`components/controls/button.h:45`). `UiAppHelpers.h:155-171` keeps the same unclamped pattern for the slider Cancel/OK pair on touch devices and was left alone as out of scope. |
+| reason for internal errors | **confirmed** | `INTERNAL_UPDATE_ERROR` (no OTA partition, `esp_ota_begin`/`write`/`end` refusing) fell through to a bare "Update failed" heading with no reason line, and the install path named only two of the seven codes. The reason and the retry policy now come from one table (`otafailure::classify()`), which covers every code, including the two that were silently "no reason": a release JSON that could not be read, and a release that is not newer. Retry stays on for the write failure (worth re-running) and off for the wrong-device and not-newer cases. |
+
+Also fixed in the same path: the progress percentage divided by `getTotalSize()` without
+checking it, so an asset whose size the release JSON never reported produced `inf` →
+`static_cast<int>` (UB) and a bar value past its own maximum; the value is now guarded and
+clamped to 0…100.
+
+- Failure reason and retry policy now come from one table, and the control geometry from one
+  helper, both in `src/util/OtaFailureScreen.h`; the FAILED branch of the activity reads them.
+  Every reason reuses an existing `STR_*` entry, so **no translation key was added** and the
+  i18n blob is unchanged.
+- Retry re-enters the step that failed, and if the station dropped while the failure screen
+  was up it goes through `WifiSelectionActivity` first and resumes that same step
+  (`launchWifiSelection(failureStage)`, replacing `onWifiSelectionComplete(bool)`).
+- The on-screen Back/Retry pair is sized to the space the content band really has instead of
+  assuming one themed row fits; if the band holds no control, the screen draws none.
+- The progress bar no longer divides by an unset `totalSize` (a release asset with no size
+  reported `0 / 0`, and the percentage was unclamped).
+
+- `~/.platformio/penv/bin/pio run -e default` — **passed**; static RAM 66,712/327,680 bytes
+  (identical to the previous pass), flash 5,547,181/6,553,600 bytes (+436 over the previous
+  pass), i18n blob 408,200 bytes (unchanged — no new key). Full log `/tmp/ota-fix-build.log`
+  (not committed).
+- Host suite (CTest under `test/`) — **906/906 passed**, 0 failed: the 898 previous cases
+  plus 8 new `test/ota_failure/` cases over the reason table (each error names a reason,
+  only repeatable failures offer Retry) and the control placement (pair splits the band,
+  centered Back, short/narrow/empty bands). Configured offline as before
+  (`-DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=<v1.17.0 copy>`). The rendering and touch routing of
+  the screen itself stay outside the host harness.
+- `PATH=<clang-format 21 venv> ./bin/clang-format-fix -g`, plus `clang-format --style=file
+  --dry-run -Werror` over the four touched C/C++ files (including the two new untracked ones,
+  which `git ls-files` does not see) — **clean**, zero changes.
+- Note for the owner: a full-tree `clang-format -g` run in this environment re-packed one
+  already-committed `setContentMarginFromScreen` call in `OtaUpdateActivity.cpp` onto one
+  line. That is the formatter's canonical output for the region this change edited, not a
+  hand edit.
+- Not verified by these checks: any hardware behaviour. Steps 1–5, 9 and the new step 11 of
+  the [settings parity](ybx-settings-parity.md) owner checklist cover this pass — including the
+  release-edge Confirm (it must not auto-select Update), the retry after the connection
+  drops (must open network selection, not fail again instantly), the "no newer release"
+  screen (Back only), the buttons staying inside the band after an orientation change, and
+  each failure reason line appearing translated.
+

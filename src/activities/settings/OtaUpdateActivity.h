@@ -25,7 +25,8 @@ class OtaUpdateActivity : public Activity, private UiAppHost {
 
   State state = WIFI_SELECTION;
   // Which step produced FAILED, so the Retry hint re-runs that step instead of
-  // always going back to the release lookup.
+  // always going back to the release lookup, and so a retry that has to
+  // re-open network selection resumes the same step.
   enum FailureStage {
     FAILURE_CHECK,
     FAILURE_INSTALL,
@@ -44,10 +45,14 @@ class OtaUpdateActivity : public Activity, private UiAppHost {
   // hand-rolled bottom tap rects).
   OptionPopup confirmPopup;
 
-  void onWifiSelectionComplete(bool success);
+  // Opens network selection and runs `resumeStage` once connected. Entry uses
+  // it for the first connect; a retry uses it when the station dropped, so
+  // Retry never re-runs a step against a dead connection.
+  void launchWifiSelection(FailureStage resumeStage);
   void runUpdateCheck();
   void runUpdateInstall();
-  void enterFailed(const char* detail, bool canRetry);
+  // Publishes FAILED with the reason and the retry policy that `error` maps to.
+  void enterFailed(OtaUpdater::OtaUpdaterError error);
   void retryFailedStep();
 
   // The failure screen's labeled Retry/Back controls. They are drawn on every
