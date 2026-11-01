@@ -11,6 +11,27 @@
 #include "fontIds.h"
 #include "network/OtaUpdater.h"
 
+namespace {
+// Optional detail line drawn under the generic "Update failed" heading, only for the
+// failures a reader can tell apart before retrying. Any other code keeps the heading
+// alone. The pointers are into the i18n table (flash-resident), so they outlive the
+// render that shows them.
+const char* failureDetail(OtaUpdater::OtaUpdaterError error) {
+  switch (error) {
+    case OtaUpdater::WRONG_DEVICE_ERROR:
+      return tr(STR_FIRMWARE_WRONG_DEVICE);
+    case OtaUpdater::UNTRUSTED_SOURCE_ERROR:
+      return tr(STR_UPDATE_SOURCE_UNTRUSTED);
+    case OtaUpdater::IMAGE_SIZE_ERROR:
+      return tr(STR_UPDATE_DOES_NOT_FIT);
+    case OtaUpdater::CORRUPT_IMAGE_ERROR:
+      return tr(STR_UPDATE_IMAGE_CORRUPT);
+    default:
+      return nullptr;
+  }
+}
+}  // namespace
+
 void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
     LOG_ERR("OTA", "WiFi connection failed, exiting");
@@ -41,6 +62,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     LOG_DBG("OTA", "Update check failed: %d", res);
     {
       RenderLock lock(*this);
+      failedDetail = failureDetail(res);
       state = FAILED;
     }
     return;
@@ -192,7 +214,7 @@ void OtaUpdateActivity::runUpdateInstall() {
     LOG_DBG("OTA", "Update failed: %d", res);
     {
       RenderLock lock(*this);
-      failedDetail = res == OtaUpdater::WRONG_DEVICE_ERROR ? tr(STR_FIRMWARE_WRONG_DEVICE) : nullptr;
+      failedDetail = failureDetail(res);
       state = FAILED;
     }
     requestUpdate();

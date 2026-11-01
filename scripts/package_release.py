@@ -177,6 +177,17 @@ def app_partition_offset(csv_path: Path) -> int:
     raise PackagingError(f'{csv_path.name} has no app ota_0 partition')
 
 
+def otadata_region(csv_path: Path) -> tuple[int, int]:
+    """Flash offset and size of the otadata partition, read from the board's CSV.
+    The recovery steps in the release notes must erase this region, which sits at
+    a different address on every partition layout."""
+    for line in csv_path.read_text(encoding='utf-8').splitlines():
+        fields = [field.strip() for field in line.split(',') if field.strip()]
+        if len(fields) >= 5 and fields[1] == 'data' and fields[2] == 'ota':
+            return int(fields[3], 16), int(fields[4], 16)
+    raise PackagingError(f'{csv_path.name} has no otadata partition')
+
+
 def classify_application_image(data: bytes, board_tag: str, esptool_chip: str) -> None:
     """Assert `data` is exactly one complete application image for this board.
 
@@ -200,21 +211,29 @@ def classify_application_image(data: bytes, board_tag: str, esptool_chip: str) -
         raise PackagingError(f'application image is only {len(data)} bytes')
 
 
-def classify_factory_image(data: bytes, application: bytes, board_tag: str, app_offset: int) -> None:
+def classify_factory_image(data: bytes, application: bytes, esptool_chip: str, app_offset: int) -> None:
     """Assert `data` is the merged factory blob and that it carries this exact
-    application image at the app partition offset."""
+    application image at the app partition offset.
+
+    The blob is the bootloader, the partition table and this application, so it is
+    not a valid standalone application image and the OTA asset names must never be
+    swapped. The image at its start (the bootloader) declares far less than the whole
+    file holds, and that declared-length mismatch is the structural reason the
+    application check refuses it. Passing the board's real chip keeps the chip-id
+    check neutral here, so the guard can never pass on an incidental chip mismatch.
+    """
     if len(data) != app_offset + len(application):
         raise PackagingError(
             f'factory blob is {len(data)} bytes, expected {app_offset + len(application)}')
     if data[app_offset:app_offset + len(application)] != application:
         raise PackagingError('factory blob does not contain the application image at its partition offset')
-    # A factory blob is not a valid application image, and must never be accepted
-    # as one: the app check has to reject it.
-    try:
-        classify_application_image(data, board_tag, 'esp32c3' if data[12:14] else 'esp32c3')
-    except PackagingError:
-        return
-    raise PackagingError('factory blob was accepted as an application image; asset names could be swapped')
+    info = esp_image_info(data)
+    if info['chip_id'] != CHIP_IDS[esptool_chip]:
+        raise PackagingError(
+            f"factory blob starts with chip id {info['chip_id']}, expected {CHIP_IDS[esptool_chip]} "
+            f'({esptool_chip}); the application/factory swap guard cannot be exercised')
+    if info['declared_length'] == len(data):
+        raise PackagingError('factory blob was accepted as an application image; asset names could be swapped')
 
 
 # --- checksums and documents ------------------------------------------------
@@ -227,7 +246,7 @@ def sha256_hex(path: Path) -> str:
     return digest.hexdigest()
 
 
-def checksums_text(entries: list[tuple[str, int]]) -> str:
+def checksums_text(entries: list[tuple[str, str]]) -> str:
     """sha256sum-compatible lines: hash, two spaces, path relative to the folder."""
     return ''.join(f'{digest}  {name}\n' for name, digest in sorted(entries))
 
@@ -309,7 +328,7 @@ release notes; do not publish this template as-is.
 
 | File | Use with | Size |
 | --- | --- | --- |
-| `{app}` | OTA update on X3/X4, or `esptool write_flash 0x10000` | {app_size} bytes |
+| `{app}` | OTA update on X3/X4, or `esptool write_flash {app_offset}` | {app_size} bytes |
 | `{factory}` | First USB flash / recovery: `esptool write_flash 0x0` | {factory_size} bytes |
 
 SHA-256:
@@ -322,9 +341,9 @@ SHA-256:
 1. Back up the SD card and read the whole flash (`read_flash 0x0 0x1000000`).
 2. Devices already on a stable YBX build: Settings -> Update firmware (OTA).
 3. Devices on a preview build, or not running YBX: install `{app}` from the SD
-   card, or flash it over USB at `0x10000`.
+   card, or flash it over USB at `{app_offset}`.
 4. A device whose partition table or bootloader must be replaced: flash `{factory}`
-   at `0x0` and erase stale otadata (`erase_region 0xe000 0x2000`).
+   at `0x0` and erase stale otadata (`erase_region {otadata_offset} {otadata_size}`).
 
 {notes}
 
@@ -349,6 +368,8 @@ SHA-256:
 
 def release_notes_text(version: str, channel: str, board: Board, app: tuple[str, int],
                        factory: tuple[str, int], checksums: str, build_state: dict) -> str:
+    table = REPO_ROOT / board.partitions
+    otadata_offset, otadata_size = otadata_region(table)
     return RELEASE_NOTES_TEMPLATE.format(
         version=version,
         channel=channel,
@@ -356,6 +377,9 @@ def release_notes_text(version: str, channel: str, board: Board, app: tuple[str,
         app_size=app[1],
         factory=factory[0],
         factory_size=factory[1],
+        app_offset=f'0x{app_partition_offset(table):X}',
+        otadata_offset=f'0x{otadata_offset:X}',
+        otadata_size=f'0x{otadata_size:X}',
         checksums=checksums,
         notes='<!-- Owner: what changed, known issues, who tested it, on which devices. -->',
         commit=build_state['commit'],
@@ -428,7 +452,7 @@ def package(board: Board, version: str, channel: str, build_root: Path, output: 
 
     app_bytes = application.read_bytes()
     boot_bytes = bootloader.read_bytes()
-    app_offset = app_partition_offset(board.parent / board.partitions)
+    app_offset = app_partition_offset(REPO_ROOT / board.partitions)
     classify_application_image(app_bytes, board.board_tag, board.esptool_chip)
     # The bootloader and the application must be built for the same silicon.
     if esp_image_info(boot_bytes)['chip_id'] != esp_image_info(app_bytes)['chip_id']:
@@ -445,7 +469,7 @@ def package(board: Board, version: str, channel: str, build_root: Path, output: 
     merge_factory(esptool, board, bootloader, table, application, app_offset, factory_path)
 
     factory_bytes = factory_path.read_bytes()
-    classify_factory_image(factory_bytes, app_bytes, board.board_tag, app_offset)
+    classify_factory_image(factory_bytes, app_bytes, board.esptool_chip, app_offset)
     if factory_bytes == app_bytes:
         raise PackagingError('factory image is identical to the application image')
 
