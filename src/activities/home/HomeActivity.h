@@ -75,6 +75,7 @@ class HomeActivity final : public Activity {
   void onFileTransferOpen();
   void onOpdsBrowserOpen();
   void onPluginsOpen();
+  void onAchievementsOpen();
   void onMoreOpen();
 
   int getMenuItemCount() const;

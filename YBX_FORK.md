@@ -112,9 +112,12 @@ remapped front/side buttons, returning from each action, and repeated Home/book
 transitions. Record heap/latency and confirm no radio activation on Home.
 
 The broader native-client scope is tracked in [the parity matrix](docs/ybx-client-parity.md)
-and [the statistics adaptation plan](docs/ybx-reading-stats-plan.md). These are
-implementation plans; the preview does not yet implement native account statistics
-or achievements.
+and [the statistics adaptation plan](docs/ybx-reading-stats-plan.md). Native account
+statistics remain unimplemented. Achievements (More > Achievements) show received and
+pending Yandex rewards from the shared account with a token-bound SD cache, explicit
+no-data/offline/expired-token states and text-only rows; the service exposes one
+limited page per section and no device-fetchable reward image. Hardware acceptance is
+pending.
 
 Current implementation checks and open release blockers are recorded in
 [the validation status](docs/ybx-validation-status.md).
