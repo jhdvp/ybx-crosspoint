@@ -49,3 +49,14 @@ the current staged YBX review PRs. No production or release deployment.
   backup/recovery fix needs explicit migration/fault injection.
 - Validate actual max contiguous heap and device power consumption before
   the feature and the separate Native Apps framework are released.
+
+## Verified results (2026-11-03)
+
+- Full CMake host build: PASS.
+- CTest: 1125/1125 PASS, 28.35 seconds (includes 8 new gate tests).
+- ESP32-C3 X3/X4 PlatformIO default: PASS.
+  Flash 5,679,925 / 6,553,600 bytes (86.7%).
+  Static RAM 66,904 / 327,680 bytes (20.4%).
+  SHA-256 image 6e268c8db29c5808eaf1de1c66f7d30da187431ceb13cd12525ec2b215cae8a8.
+- X4 Pro metrics and acceptance are reported only after actual build success.
+- All images/build logs stay in local validation artifacts, not in OTA.
