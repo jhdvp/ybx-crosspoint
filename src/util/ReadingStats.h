@@ -22,6 +22,9 @@ inline constexpr int MAX_DAYS = 64;
 inline constexpr int MAX_BOOKS = 32;
 inline constexpr size_t MAX_BOOK_PATH = 96;
 inline constexpr size_t MAX_ID_LENGTH = 19;
+// The event outbox is bounded; retain more IDs than an ordinary queued replay
+// so an earlier session cannot inflate totals after another session is saved.
+inline constexpr int MAX_RECENT_SESSION_IDS = 16;
 inline constexpr int MAX_SESSION_SEGMENTS = 8;
 
 // Local calendar day as days since 1970-01-01, so DST and month lengths never
@@ -41,6 +44,11 @@ struct State {
   uint16_t lastDay = 0;     // newest day with data, 0 when none
   uint32_t lastSessionEpoch = 0;
   char lastSessionId[MAX_ID_LENGTH + 1] = {};
+  // Ring serialized in CPS2. CPS1 is still accepted and seeded from its last
+  // known ID. Older IDs beyond this bounded window require separate migration.
+  uint8_t recentSessionCount = 0;
+  uint8_t recentSessionNext = 0;
+  char recentSessionIds[MAX_RECENT_SESSION_IDS][MAX_ID_LENGTH + 1] = {};
   uint8_t dayCount = 0;
   Day days[MAX_DAYS];  // ascending by ordinal, the newest MAX_DAYS days
 };
@@ -59,7 +67,10 @@ struct SessionSegment {
 
 constexpr size_t STATE_HEADER_BYTES = 56;
 constexpr size_t DAY_RECORD_BYTES = 8;
-constexpr size_t MAX_STATE_BYTES = STATE_HEADER_BYTES + MAX_DAYS * DAY_RECORD_BYTES;
+// CPS2 keeps the CPS1 prefix and day array byte-compatible, then appends a
+// fixed recent-ID ring. A corrupt/truncated tail fails parsing as a unit.
+constexpr size_t RECENT_IDS_BYTES = 4 + MAX_RECENT_SESSION_IDS * (MAX_ID_LENGTH + 1);
+constexpr size_t MAX_STATE_BYTES = STATE_HEADER_BYTES + MAX_DAYS * DAY_RECORD_BYTES + RECENT_IDS_BYTES;
 constexpr size_t BOOKS_HEADER_BYTES = 8;
 constexpr size_t BOOK_RECORD_BYTES = MAX_BOOK_PATH + 8;
 constexpr size_t MAX_BOOKS_BYTES = BOOKS_HEADER_BYTES + MAX_BOOKS * BOOK_RECORD_BYTES;
@@ -254,11 +265,23 @@ inline int streakDays(const State& state, const uint16_t today, bool& clipped) {
 }
 
 inline bool isRecorded(const State& state, const char* id) {
-  return id != nullptr && id[0] != '\0' && std::strncmp(state.lastSessionId, id, MAX_ID_LENGTH) == 0;
+  if (id == nullptr || id[0] == '\0') return false;
+  // A full event ID must match; prefix comparison would alias different IDs.
+  if (std::strlen(id) > MAX_ID_LENGTH) return false;
+  if (std::strcmp(state.lastSessionId, id) == 0) return true;
+  for (int i = 0; i < state.recentSessionCount; ++i) {
+    if (std::strcmp(state.recentSessionIds[i], id) == 0) return true;
+  }
+  return false;
 }
 
 inline void noteSession(State& state, const char* id, const int64_t startEpoch) {
-  if (id == nullptr || id[0] == '\0') return;
+  if (id == nullptr || id[0] == '\0' || std::strlen(id) > MAX_ID_LENGTH) return;
+  if (!isRecorded(state, id)) {
+    std::memcpy(state.recentSessionIds[state.recentSessionNext], id, std::strlen(id) + 1);
+    state.recentSessionNext = static_cast<uint8_t>((state.recentSessionNext + 1) % MAX_RECENT_SESSION_IDS);
+    if (state.recentSessionCount < MAX_RECENT_SESSION_IDS) ++state.recentSessionCount;
+  }
   std::strncpy(state.lastSessionId, id, MAX_ID_LENGTH);
   state.lastSessionId[MAX_ID_LENGTH] = '\0';
   if (startEpoch > 0) {
@@ -358,11 +381,13 @@ inline void putBytes(uint8_t*& out, const void* data, const size_t size) {
 
 inline size_t serializeState(const State& state, uint8_t* out, const size_t capacity) {
   if (out == nullptr || state.dayCount > MAX_DAYS) return 0;
-  const size_t length = STATE_HEADER_BYTES + static_cast<size_t>(state.dayCount) * DAY_RECORD_BYTES;
+  if (state.recentSessionCount > MAX_RECENT_SESSION_IDS || state.recentSessionNext >= MAX_RECENT_SESSION_IDS)
+    return 0;
+  const size_t length = STATE_HEADER_BYTES + static_cast<size_t>(state.dayCount) * DAY_RECORD_BYTES + RECENT_IDS_BYTES;
   if (capacity < length) return 0;
   uint8_t* p = out;
   detail::putBytes(p, "CPS1", 4);
-  *p++ = 1;  // format version
+  *p++ = 2;  // CPS2: CPS1 prefix + bounded replay-ID trailer
   *p++ = state.dayCount;
   detail::putU16(p, 0);
   detail::putU32(p, state.totalSeconds);
@@ -381,6 +406,12 @@ inline size_t serializeState(const State& state, uint8_t* out, const size_t capa
     detail::putU32(p, state.days[i].seconds);
     detail::putU16(p, state.days[i].sessions);
   }
+  *p++ = state.recentSessionCount;
+  *p++ = state.recentSessionNext;
+  detail::putU16(p, 0);
+  for (int i = 0; i < MAX_RECENT_SESSION_IDS; ++i) {
+    detail::putBytes(p, state.recentSessionIds[i], MAX_ID_LENGTH + 1);
+  }
   return static_cast<size_t>(p - out);
 }
 
@@ -394,7 +425,7 @@ inline bool parseState(const uint8_t* in, const size_t length, State& state) {
   uint8_t dayCount = 0;
   uint16_t reserved16 = 0;
   uint32_t reserved32 = 0;
-  if (!detail::takeU8(p, end, version) || version != 1) return false;
+  if (!detail::takeU8(p, end, version) || (version != 1 && version != 2)) return false;
   if (!detail::takeU8(p, end, dayCount) || dayCount > MAX_DAYS) return false;
   if (!detail::takeU16(p, end, reserved16)) return false;
   State next;
@@ -424,6 +455,44 @@ inline bool parseState(const uint8_t* in, const size_t length, State& state) {
     if (day.seconds == 0 && day.sessions == 0) day.seconds = 1;  // keep the day active
   }
   next.dayCount = dayCount;
+  if (version == 2) {
+    // A committed CPS2 record is complete only with all recent event IDs.
+    if (static_cast<size_t>(end - p) != RECENT_IDS_BYTES) return false;
+    uint16_t ringReserved = 0;
+    if (!detail::takeU8(p, end, next.recentSessionCount) ||
+        !detail::takeU8(p, end, next.recentSessionNext) || !detail::takeU16(p, end, ringReserved) ||
+        ringReserved != 0 || next.recentSessionCount > MAX_RECENT_SESSION_IDS ||
+        next.recentSessionNext >= MAX_RECENT_SESSION_IDS) {
+      return false;
+    }
+    if (next.recentSessionCount < MAX_RECENT_SESSION_IDS &&
+        next.recentSessionNext != next.recentSessionCount) {
+      return false;
+    }
+    for (int i = 0; i < MAX_RECENT_SESSION_IDS; ++i) {
+      if (end - p < static_cast<ptrdiff_t>(MAX_ID_LENGTH + 1)) return false;
+      const char* id = reinterpret_cast<const char*>(p);
+      const bool active = i < next.recentSessionCount;
+      const void* terminator = std::memchr(id, 0, MAX_ID_LENGTH + 1);
+      if ((active && (id[0] == '\0' || terminator == nullptr)) ||
+          (!active && id[0] != '\0')) {
+        return false;
+      }
+      std::memcpy(next.recentSessionIds[i], p, MAX_ID_LENGTH + 1);
+      next.recentSessionIds[i][MAX_ID_LENGTH] = '\0';
+      p += MAX_ID_LENGTH + 1;
+    }
+    if (end != p) return false;
+  } else {
+    // CPS1 had a single legacy ID. Include it in the ring so a replay just
+    // after the firmware upgrade cannot double-count it.
+    if (end != p) return false;
+    if (next.lastSessionId[0] != '\0') {
+      next.recentSessionCount = 1;
+      next.recentSessionNext = 1;
+      std::memcpy(next.recentSessionIds[0], next.lastSessionId, MAX_ID_LENGTH + 1);
+    }
+  }
   state = next;
   return true;
 }
@@ -501,7 +570,9 @@ inline bool parseBooks(const uint8_t* in, const size_t length, Book* books, cons
 bool loadState(State& state);
 bool loadBooks(Book* books, int capacity, int& count);
 // Adds one finished session. `id` is the session event id, used to ignore a
-// replay of the same session. Failures are logged; totals never grow twice.
+// replay of a recent session. Failures are logged; the bounded ring prevents
+// local totals from increasing twice for the last MAX_RECENT_SESSION_IDS IDs.
+// This is not unbounded lifetime deduplication: older evicted IDs may replay.
 bool recordSession(const char* id, int64_t startEpoch, uint32_t durationSeconds, const std::string& bookPath);
 
 }  // namespace readingstats

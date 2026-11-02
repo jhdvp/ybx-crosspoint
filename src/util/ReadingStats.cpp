@@ -199,7 +199,8 @@ bool loadBooks(Book* books, const int capacity, int& count) {
 
 bool recordSession(const char* id, const int64_t startEpoch, const uint32_t durationSeconds,
                    const std::string& bookPath) {
-  if (durationSeconds == 0) return false;
+  // Reject an untrackable ID rather than record a session we cannot dedup.
+  if (durationSeconds == 0 || id == nullptr || id[0] == '\0' || std::strlen(id) > MAX_ID_LENGTH) return false;
   State state;
   loadState(state);
   // The journal retries a session with its original id; the file it wrote from
