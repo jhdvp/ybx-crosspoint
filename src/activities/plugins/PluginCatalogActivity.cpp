@@ -336,10 +336,8 @@ bool PluginCatalogActivity::loadBrowseListIndex() {
 
   String response;
   const std::string url = substituted(manifest.browseListsUrl, nullptr);
-  const auto& headers = manifest.browseListsHeaders.empty() ? manifest.browseReq.headers
-                                                            : manifest.browseListsHeaders;
-  const int status = pluginhttp::request(session.get(), url, "GET", "",
-                                         substitutedHeaders(headers, nullptr), response,
+  const auto& headers = manifest.browseListsHeaders.empty() ? manifest.browseReq.headers : manifest.browseListsHeaders;
+  const int status = pluginhttp::request(session.get(), url, "GET", "", substitutedHeaders(headers, nullptr), response,
                                          MAX_BROWSE_LIST_INDEX_RESPONSE);
   if (status < 200 || status >= 300) {
     LOG_ERR("PCAT", "browse list index fetch failed: status=%d %s", status, url.c_str());
@@ -545,8 +543,7 @@ void PluginCatalogActivity::openList(const int index) {
   const auto& list = manifest.browseLists[index];
   if (list.url.empty() && !list.id.empty()) {
     // A malformed remote index cannot create an infinitely-recursive picker.
-    if (groupTrail.size() >= 8 ||
-        std::find(groupTrail.begin(), groupTrail.end(), list.id) != groupTrail.end()) {
+    if (groupTrail.size() >= 8 || std::find(groupTrail.begin(), groupTrail.end(), list.id) != groupTrail.end()) {
       fail(StrId::STR_PARSE_FEED_FAILED);
       return;
     }
@@ -593,8 +590,7 @@ std::vector<int> PluginCatalogActivity::visibleLists() const {
   std::vector<int> result;
   result.reserve(manifest.browseLists.size());
   for (size_t i = 0; i < manifest.browseLists.size(); ++i) {
-    if (manifest.browseLists[i].parent == currentGroup)
-      result.push_back(static_cast<int>(i));
+    if (manifest.browseLists[i].parent == currentGroup) result.push_back(static_cast<int>(i));
   }
   return result;
 }
@@ -859,8 +855,7 @@ bool PluginCatalogActivity::parseBrowseResponse() {
     item.url = std::move(row.field[JsonListParser::F_URL]);
     item.version = std::move(row.field[JsonListParser::F_VERSION]);
     item.base = std::move(row.field[JsonListParser::F_BASE]);
-    if (!manifest.folderUrlPath.empty() && manifest.bundleFilesPath.empty() &&
-        !item.base.empty()) {
+    if (!manifest.folderUrlPath.empty() && manifest.bundleFilesPath.empty() && !item.base.empty()) {
       item.isDir = true;
       item.url = item.base;  // folder target, never a download
       item.base.clear();
@@ -870,10 +865,10 @@ bool PluginCatalogActivity::parseBrowseResponse() {
   };
   // Streamed straight from the SD temp file: neither the raw response nor a
   // parsed document occupies DRAM, only the rows kept.
-  const std::string* const fields[] = {&manifest.titlePath, &manifest.authorPath,  &manifest.idPath,
-                                       &manifest.urlPath,   &manifest.versionPath,
-                                       manifest.folderUrlPath.empty() ? &manifest.bundleBasePath
-                                                                      : &manifest.folderUrlPath};
+  const std::string* const fields[] = {
+      &manifest.titlePath,   &manifest.authorPath,
+      &manifest.idPath,      &manifest.urlPath,
+      &manifest.versionPath, manifest.folderUrlPath.empty() ? &manifest.bundleBasePath : &manifest.folderUrlPath};
   auto parser = makeUniqueNoThrow<JsonListParser>(
       manifest.itemsPath, fields, manifest.bundleFilesPath,
       [](void* context, JsonListParser::Row& row) { (*static_cast<decltype(append)*>(context))(row); }, &append);
@@ -1300,13 +1295,19 @@ void PluginCatalogActivity::onBackButton() {
     if (!currentGroup.empty() && visibleLists().size() == 1) {
       if (!groupTrail.empty()) groupTrail.pop_back();
       currentGroup = groupTrail.empty() ? "" : groupTrail.back();
-      if (currentGroup.empty() && visibleLists().size() == 1) { exitCatalog(); return; }
+      if (currentGroup.empty() && visibleLists().size() == 1) {
+        exitCatalog();
+        return;
+      }
     }
     startBrowse();
   } else if (state == State::LIST_PICKER && !currentGroup.empty()) {
     if (!groupTrail.empty()) groupTrail.pop_back();
     currentGroup = groupTrail.empty() ? "" : groupTrail.back();
-    if (currentGroup.empty() && visibleLists().size() == 1) { exitCatalog(); return; }
+    if (currentGroup.empty() && visibleLists().size() == 1) {
+      exitCatalog();
+      return;
+    }
     startBrowse();
   } else {
     exitCatalog();
@@ -1538,8 +1539,7 @@ void PluginCatalogActivity::drawFooter() {
       } else {
         const bool onItem = itemSel >= 0 && itemSel < static_cast<int>(items.size());
         const bool onDir = onItem && items[itemSel].isDir;
-        const bool onDetails = !manifest.isXmlList() && onItem &&
-                               !items[itemSel].isDir && manifest.hasItemDetails();
+        const bool onDetails = !manifest.isXmlList() && onItem && !items[itemSel].isDir && manifest.hasItemDetails();
         confirmLabel = count == 0 ? "" : (onDir ? tr(STR_OPEN) : (onDetails ? tr(STR_DETAILS) : tr(STR_FETCH)));
       }
       // On the top row of a searchable catalog the previous-nav slot becomes
@@ -1625,7 +1625,10 @@ std::string PluginCatalogActivity::browsingHeaderLabel() const {
     label = std::string(tr(STR_SEARCH)) + ": " + searchQuery;
   } else if (state == State::LIST_PICKER && !currentGroup.empty()) {
     for (const auto& group : manifest.browseLists) {
-      if (group.id == currentGroup && group.url.empty()) { label = group.title; break; }
+      if (group.id == currentGroup && group.url.empty()) {
+        label = group.title;
+        break;
+      }
     }
   } else if (state == State::BROWSING && !folderLabel.empty()) {
     label = folderLabel;

@@ -153,10 +153,10 @@ class PluginCatalogActivity final : public CatalogActivity {
   pluginhttp::Headers config;  // {cfg.KEY} values
   int page = 1;
   bool hasMore = false;
-  int currentList = -1;  // index into manifest.browseLists; -1 = none/default
-  std::string currentGroup;  // dynamic list-picker folder, empty at the root
+  int currentList = -1;                 // index into manifest.browseLists; -1 = none/default
+  std::string currentGroup;             // dynamic list-picker folder, empty at the root
   std::vector<std::string> groupTrail;  // bounded cycle-free path for nested groups
-  std::string folderLabel;  // current JSON page folder title
+  std::string folderLabel;              // current JSON page folder title
   std::string searchQuery;
   bool searchActive = false;
   // Reuse browse TLS; release in the picker and before a single-file download.
