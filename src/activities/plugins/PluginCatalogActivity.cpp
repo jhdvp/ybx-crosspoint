@@ -267,6 +267,7 @@ bool PluginCatalogActivity::loadManifest() {
   manifest.pageSize = browse["page_size"] | 8;
   // Documented bounds: each row costs an Item (strings) and a screen slot.
   manifest.pageSize = std::clamp(manifest.pageSize, 1, MAX_PAGE_SIZE);
+  manifest.folderUrlPath = browse["fields"]["folder_url"] | "";
   manifest.browseListsUrl = browse["lists_url"] | "";
   pluginhttp::readHeaders(browse["lists_headers"], manifest.browseListsHeaders);
   manifest.browseLists.reserve(browse["lists"].size());
@@ -274,6 +275,8 @@ bool PluginCatalogActivity::loadManifest() {
     Manifest::BrowseList entry;
     entry.title = l["title"] | "";
     entry.url = l["url"] | "";
+    entry.id = l["id"] | "";
+    entry.parent = l["parent"] | "";
     entry.body = l["body"] | "";
     JsonVariantConst notice = l["notice"];
     entry.noticeTitle = notice["title"] | "";
@@ -360,13 +363,16 @@ bool PluginCatalogActivity::loadBrowseListIndex() {
     Manifest::BrowseList entry;
     entry.title = l["title"] | "";
     entry.url = l["url"] | "";
+    entry.id = l["id"] | "";
+    entry.parent = l["parent"] | "";
     entry.body = l["body"] | "";
     JsonVariantConst notice = l["notice"];
     entry.noticeTitle = notice["title"] | "";
     entry.noticeMessage = notice["message"] | "";
     entry.noticeConfirm = notice["confirm"] | "";
     entry.noticeCancel = notice["cancel"] | "";
-    if (!entry.title.empty() && !entry.url.empty()) manifest.browseLists.push_back(std::move(entry));
+    if (!entry.title.empty() && (!entry.url.empty() || !entry.id.empty()))
+      manifest.browseLists.push_back(std::move(entry));
   }
   if (manifest.browseLists.empty()) {
     LOG_ERR("PCAT", "browse list index has no valid lists: %s", url.c_str());
@@ -524,6 +530,9 @@ void PluginCatalogActivity::resetBrowse() {
   page = 1;
   hasMore = false;
   currentList = -1;
+  currentGroup.clear();
+  groupTrail.clear();
+  folderLabel.clear();
   searchActive = false;
   searchQuery.clear();
   releaseRows();
@@ -534,6 +543,23 @@ void PluginCatalogActivity::resetBrowse() {
 // picker, or leaves the catalog when this list is the only one.
 void PluginCatalogActivity::openList(const int index) {
   const auto& list = manifest.browseLists[index];
+  if (list.url.empty() && !list.id.empty()) {
+    // A malformed remote index cannot create an infinitely-recursive picker.
+    if (groupTrail.size() >= 8 ||
+        std::find(groupTrail.begin(), groupTrail.end(), list.id) != groupTrail.end()) {
+      fail(StrId::STR_PARSE_FEED_FAILED);
+      return;
+    }
+    groupTrail.push_back(list.id);
+    currentGroup = list.id;
+    currentList = -1;
+    releaseRows();
+    startBrowse();
+    return;
+  }
+  browseHistory.clear();
+  browseCurrentUrl.clear();
+  folderLabel.clear();
   if (!list.hasNotice()) {
     currentList = index;
     startBrowse();
@@ -561,6 +587,16 @@ void PluginCatalogActivity::openList(const int index) {
 
 bool PluginCatalogActivity::wantsListPicker() const {
   return !manifest.browseLists.empty() && !manifest.isXmlList() && currentList < 0;
+}
+
+std::vector<int> PluginCatalogActivity::visibleLists() const {
+  std::vector<int> result;
+  result.reserve(manifest.browseLists.size());
+  for (size_t i = 0; i < manifest.browseLists.size(); ++i) {
+    if (manifest.browseLists[i].parent == currentGroup)
+      result.push_back(static_cast<int>(i));
+  }
+  return result;
 }
 
 void PluginCatalogActivity::onExit() {
@@ -594,8 +630,13 @@ void PluginCatalogActivity::startBrowse() {
   }
   // Browse lists apply to JSON catalogs; XML lists navigate by folder instead.
   if (wantsListPicker()) {
-    if (manifest.browseLists.size() == 1) {
-      openList(0);  // a one-entry picker is just an extra click
+    const auto visible = visibleLists();
+    if (visible.empty()) {
+      fail(StrId::STR_PARSE_FEED_FAILED);
+      return;
+    }
+    if (visible.size() == 1) {
+      openList(visible.front());  // Skip redundant folders for a lone source.
       return;
     }
     items.clear();
@@ -728,7 +769,7 @@ bool PluginCatalogActivity::nextRowVisible() const {
 int PluginCatalogActivity::rowCount() const {
   if (state == State::PLUGIN_PICKER)
     return static_cast<int>(installedPlugins.size()) + (showOpds ? 1 : 0) + (showPluginHubInstallRow ? 1 : 0);
-  if (state == State::LIST_PICKER) return static_cast<int>(manifest.browseLists.size());
+  if (state == State::LIST_PICKER) return static_cast<int>(visibleLists().size());
   if (state != State::BROWSING) return 0;
   return static_cast<int>(items.size()) + (prevRowVisible() ? 1 : 0) + (nextRowVisible() ? 1 : 0);
 }
@@ -736,6 +777,7 @@ int PluginCatalogActivity::rowCount() const {
 const std::string& PluginCatalogActivity::activeBrowseUrl() const {
   // Search overrides the list view, reusing the browse url when unspecified.
   if (searchActive) return pick(manifest.searchUrl, manifest.browseReq.url);
+  if (!manifest.isXmlList() && !browseCurrentUrl.empty()) return browseCurrentUrl;
   if (currentList < 0 || currentList >= static_cast<int>(manifest.browseLists.size())) return manifest.browseReq.url;
   return pick(manifest.browseLists[currentList].url, manifest.browseReq.url);
 }
@@ -817,13 +859,21 @@ bool PluginCatalogActivity::parseBrowseResponse() {
     item.url = std::move(row.field[JsonListParser::F_URL]);
     item.version = std::move(row.field[JsonListParser::F_VERSION]);
     item.base = std::move(row.field[JsonListParser::F_BASE]);
+    if (!manifest.folderUrlPath.empty() && manifest.bundleFilesPath.empty() &&
+        !item.base.empty()) {
+      item.isDir = true;
+      item.url = item.base;  // folder target, never a download
+      item.base.clear();
+    }
     item.files = std::move(row.files);
     items.push_back(std::move(item));
   };
   // Streamed straight from the SD temp file: neither the raw response nor a
   // parsed document occupies DRAM, only the rows kept.
   const std::string* const fields[] = {&manifest.titlePath, &manifest.authorPath,  &manifest.idPath,
-                                       &manifest.urlPath,   &manifest.versionPath, &manifest.bundleBasePath};
+                                       &manifest.urlPath,   &manifest.versionPath,
+                                       manifest.folderUrlPath.empty() ? &manifest.bundleBasePath
+                                                                      : &manifest.folderUrlPath};
   auto parser = makeUniqueNoThrow<JsonListParser>(
       manifest.itemsPath, fields, manifest.bundleFilesPath,
       [](void* context, JsonListParser::Row& row) { (*static_cast<decltype(append)*>(context))(row); }, &append);
@@ -1236,9 +1286,27 @@ void PluginCatalogActivity::onBackButton() {
     browseHistory.pop_back();
     beginLoading();
     fetchPage(page);
+  } else if (!manifest.isXmlList() && state == State::BROWSING && !browseHistory.empty()) {
+    browseCurrentUrl = browseHistory.back();
+    browseHistory.pop_back();
+    folderLabel.clear();
+    beginLoading();
+    fetchPage(1);
   } else if (state == State::BROWSING && currentList >= 0 && manifest.browseLists.size() > 1) {
-    // Browsing a picked list: Back returns to the list picker, not out.
+    // Back from a selected category into its parent folder.
     currentList = -1;
+    browseCurrentUrl.clear();
+    folderLabel.clear();
+    if (!currentGroup.empty() && visibleLists().size() == 1) {
+      if (!groupTrail.empty()) groupTrail.pop_back();
+      currentGroup = groupTrail.empty() ? "" : groupTrail.back();
+      if (currentGroup.empty() && visibleLists().size() == 1) { exitCatalog(); return; }
+    }
+    startBrowse();
+  } else if (state == State::LIST_PICKER && !currentGroup.empty()) {
+    if (!groupTrail.empty()) groupTrail.pop_back();
+    currentGroup = groupTrail.empty() ? "" : groupTrail.back();
+    if (currentGroup.empty() && visibleLists().size() == 1) { exitCatalog(); return; }
     startBrowse();
   } else {
     exitCatalog();
@@ -1310,9 +1378,10 @@ void PluginCatalogActivity::activateIndex(const int index) {
     return;
   }
   if (state == State::LIST_PICKER) {
-    if (index < 0 || index >= static_cast<int>(manifest.browseLists.size())) return;
+    const auto visible = visibleLists();
+    if (index < 0 || index >= static_cast<int>(visible.size())) return;
     app.clearTapFlash();
-    openList(index);
+    openList(visible[index]);
     return;
   }
   // The pager rows bracket the items: "Previous page" ahead of them past
@@ -1331,11 +1400,12 @@ void PluginCatalogActivity::activateIndex(const int index) {
 void PluginCatalogActivity::activateItem(const int itemIndex) {
   if (itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
   const Item& item = items[itemIndex];
-  if (manifest.isXmlList() && item.isDir) {
+  if (item.isDir) {
     browseHistory.push_back(browseCurrentUrl);
     browseCurrentUrl = item.url;
+    folderLabel = item.title;
     beginLoading();
-    fetchPage(page);
+    fetchPage(1);
     return;
   }
   if (!manifest.isXmlList() && manifest.hasItemDetails()) {
@@ -1467,8 +1537,9 @@ void PluginCatalogActivity::drawFooter() {
         confirmLabel = count > 0 ? tr(STR_OPEN) : "";
       } else {
         const bool onItem = itemSel >= 0 && itemSel < static_cast<int>(items.size());
-        const bool onDir = manifest.isXmlList() && onItem && items[itemSel].isDir;
-        const bool onDetails = !manifest.isXmlList() && onItem && manifest.hasItemDetails();
+        const bool onDir = onItem && items[itemSel].isDir;
+        const bool onDetails = !manifest.isXmlList() && onItem &&
+                               !items[itemSel].isDir && manifest.hasItemDetails();
         confirmLabel = count == 0 ? "" : (onDir ? tr(STR_OPEN) : (onDetails ? tr(STR_DETAILS) : tr(STR_FETCH)));
       }
       // On the top row of a searchable catalog the previous-nav slot becomes
@@ -1552,6 +1623,12 @@ std::string PluginCatalogActivity::browsingHeaderLabel() const {
   std::string label = catalogTitle;
   if (searchActive) {
     label = std::string(tr(STR_SEARCH)) + ": " + searchQuery;
+  } else if (state == State::LIST_PICKER && !currentGroup.empty()) {
+    for (const auto& group : manifest.browseLists) {
+      if (group.id == currentGroup && group.url.empty()) { label = group.title; break; }
+    }
+  } else if (state == State::BROWSING && !folderLabel.empty()) {
+    label = folderLabel;
   } else if (state == State::BROWSING && currentList >= 0 &&
              currentList < static_cast<int>(manifest.browseLists.size())) {
     label = manifest.browseLists[currentList].title;
@@ -1634,7 +1711,10 @@ void PluginCatalogActivity::rebuildRowItems() {
       }
     }
   } else if (state == State::LIST_PICKER) {
-    for (const auto& list : manifest.browseLists) addRow(list.title.c_str());
+    for (int index : visibleLists()) {
+      const auto& list = manifest.browseLists[index];
+      addRow(list.title.c_str(), nullptr, list.url.empty() ? ">" : nullptr);
+    }
   } else {
     if (prevRowVisible()) addRow(tr(STR_PREV_PAGE), nullptr, ">");
     for (const auto& entry : items) {

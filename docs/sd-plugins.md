@@ -182,6 +182,7 @@ Stock CrossPoint currently advertises these catalog capabilities:
 | Capability | What it means | Why it exists in the plugin system |
 |---|---|---|
 | `catalog.lists` | The catalog manifest can expose named browse lists, including lists supplied dynamically through `browse.lists_url`. | Any plugin can split or dynamically publish multiple catalog views without adding plugin-specific firmware logic. Plugin Hub currently uses this for Official/Community catalogs. |
+| `catalog.lists.auth` | Authenticated dynamic list indexes and nested JSON catalog folders. | Supports account-scoped source trees and the All → Series → Books hierarchy. |
 | `catalog.notices` | A browse list can display an optional confirmation notice with custom title, message, Confirm, and Cancel labels before opening. | Any plugin can require a generic user notice before entering a catalog or section. Plugin Hub currently uses this for the Community-plugin warning. |
 | `catalog.bundle_install` | A catalog entry can install a multi-file plugin bundle from a base URL plus a file list into the plugin directory. | Any catalog can distribute a plugin or other supported bundle made of multiple files without a dedicated installer in firmware. Plugin Hub currently uses this to install complete plugins. |
 | `catalog.version_tracking` | Catalog item versions are compared with installed plugin manifests to show Installed or Update status. | Any catalog can expose install/update state using the generic installed-plugin version contract. Plugin Hub currently uses it to identify available updates. |
@@ -372,6 +373,8 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
   defaults to the list title, and omitted button labels use the firmware's
   translated Cancel/Confirm defaults. Back from the book list returns to the
   picker.
+- **Authenticated dynamic lists**: a list index can contain entries with `id` and no `url` (groups), and children with matching `parent` plus a browse `url`. Only root entries are shown first; Back moves to the previous group. A single provider skips its redundant outer folder. The list-index GET uses `browse.lists_headers`, or falls back to the normal browse headers, with `{token}` substituted. This is the `catalog.lists.auth` capability.
+- **JSON navigation**: `browse.fields.folder_url` maps a per-item JSON string. An item with a nonempty `folder_url` is a folder, not a downloadable file. Confirm follows its URL using the catalog's authenticated browse request; Back returns to the prior folder. Book rows without `folder_url` retain the original download behavior.
 - **XML navigation**: Confirm on a folder (an item carrying `container_element`)
   descends into it, Back climbs out (Back at the root leaves the screen).
   With `resolve_urls`, server-relative URLs resolve against the browse URL's
