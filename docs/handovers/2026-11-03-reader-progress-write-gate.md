@@ -60,3 +60,15 @@ the current staged YBX review PRs. No production or release deployment.
   SHA-256 image 6e268c8db29c5808eaf1de1c66f7d30da187431ceb13cd12525ec2b215cae8a8.
 - X4 Pro metrics and acceptance are reported only after actual build success.
 - All images/build logs stay in local validation artifacts, not in OTA.
+
+## Verified X4 Pro build (2026-11-03)
+
+- ESP32-S3 X4 Pro PlatformIO x4pro: PASS.
+  Flash 5,523,466 / 6,553,600 bytes (84.3%).
+  Static RAM 111,956 / 327,680 bytes (34.2%).
+  Retained application firmware.bin is 5,528,736 bytes.
+  SHA-256 31fcda72a0f06c2b3db73caad8f8024bf61442977ac4e1ac02c03731a9d842f6.
+- The C3 firmware.bin is 5,694,448 bytes.
+- Verified: complete host suite 1125/1125 and both requested reader target builds.
+- Runtime and physical power-loss acceptance remains OPEN. No flash to a
+  device, OTA, firmware release or production deployment.
