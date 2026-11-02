@@ -268,6 +268,7 @@ bool PluginCatalogActivity::loadManifest() {
   // Documented bounds: each row costs an Item (strings) and a screen slot.
   manifest.pageSize = std::clamp(manifest.pageSize, 1, MAX_PAGE_SIZE);
   manifest.browseListsUrl = browse["lists_url"] | "";
+  pluginhttp::readHeaders(browse["lists_headers"], manifest.browseListsHeaders);
   manifest.browseLists.reserve(browse["lists"].size());
   for (JsonVariantConst l : browse["lists"].as<JsonArrayConst>()) {
     Manifest::BrowseList entry;
@@ -332,7 +333,11 @@ bool PluginCatalogActivity::loadBrowseListIndex() {
 
   String response;
   const std::string url = substituted(manifest.browseListsUrl, nullptr);
-  const int status = pluginhttp::request(session.get(), url, "GET", "", {}, response, MAX_BROWSE_LIST_INDEX_RESPONSE);
+  const auto& headers = manifest.browseListsHeaders.empty() ? manifest.browseReq.headers
+                                                            : manifest.browseListsHeaders;
+  const int status = pluginhttp::request(session.get(), url, "GET", "",
+                                         substitutedHeaders(headers, nullptr), response,
+                                         MAX_BROWSE_LIST_INDEX_RESPONSE);
   if (status < 200 || status >= 300) {
     LOG_ERR("PCAT", "browse list index fetch failed: status=%d %s", status, url.c_str());
     return false;

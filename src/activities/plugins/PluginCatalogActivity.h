@@ -81,6 +81,9 @@ class PluginCatalogActivity final : public CatalogActivity {
     std::vector<BrowseList> browseLists;
     // Optional remote index that supplies the named JSON views dynamically.
     std::string browseListsUrl;
+    // Optional credentials for the remote index. If omitted, reuse browse
+    // request headers; only send to the explicitly configured index endpoint.
+    pluginhttp::Headers browseListsHeaders;
     // JSON search overrides URL/body independently; empty fields reuse browse.
     std::string searchUrl, searchBody;
     bool hasSearch() const { return (!searchUrl.empty() || !searchBody.empty()) && browseFormat != "xml"; }
