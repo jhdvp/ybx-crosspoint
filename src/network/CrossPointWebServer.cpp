@@ -2682,9 +2682,13 @@ void CrossPointWebServer::handlePluginJobClaim() {
     job.state = JOB_RUNNING;
     job.claim = nextPluginJobClaim++;
     job.updatedAt = now;
-    const std::string msg = "{\"id\":" + std::to_string(job.id) + ",\"claim\":" + std::to_string(job.claim) +
-                            ",\"action\":\"" + job.action + "\",\"args\":" + (job.args[0] ? job.args : "{}") + "}";
-    server->send(200, "application/json", msg.c_str());
+    // Stack buffer avoids heap allocation on every claim. job.action and
+    // job.args are fixed-size char arrays; id/claim fit in unsigned.
+    char msg[512];
+    snprintf(msg, sizeof(msg), "{\"id\":%u,\"claim\":%u,\"action\":\"%s\",\"args\":%s}",
+             static_cast<unsigned>(job.id), static_cast<unsigned>(job.claim),
+             job.action, job.args[0] ? job.args : "{}");
+    server->send(200, "application/json", msg);
     return;
   }
   server->send(200, "application/json", "{\"id\":0}");
@@ -2735,9 +2739,13 @@ void CrossPointWebServer::handlePluginJobStatus() {
   static constexpr const char* STATE_NAMES[] = {"empty", "pending", "running", "done", "error"};
   for (auto& job : pluginJobs) {
     if (job.id != id || job.state == JOB_EMPTY) continue;
-    const std::string msg = "{\"id\":" + std::to_string(id) + ",\"state\":\"" + STATE_NAMES[job.state] +
-                            "\",\"result\":" + (job.result[0] ? job.result : "null") + "}";
-    server->send(200, "application/json", msg.c_str());
+    // Stack buffer avoids heap allocation on every status poll. job.result is
+    // already bounded to sizeof(job.result); state names are short literals.
+    char msg[512];
+    snprintf(msg, sizeof(msg), "{\"id\":%u,\"state\":\"%s\",\"result\":%s}",
+             static_cast<unsigned>(id), STATE_NAMES[job.state],
+             job.result[0] ? job.result : "null");
+    server->send(200, "application/json", msg);
     return;
   }
   // Unknown: never existed, or its slot was recycled after completion.
