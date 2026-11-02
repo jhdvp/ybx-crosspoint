@@ -634,6 +634,13 @@ void EpubReaderActivity::openClippings() {
 }
 
 void EpubReaderActivity::loop() {
+  // Persist an idle page after the bounded coalescing window, even if no more
+  // page turns occur. Both the render task and this path use RenderLock.
+  {
+    RenderLock lock(RenderLock::Mode::Try);
+    if (lock.ownsLock() && progressWriteGate.due(millis())) persistPendingProgress();
+  }
+
   if (loadFailurePopup.isActive()) {
     loadFailurePopup.handleInput(mappedInput, [this] { requestUpdate(); });
     return;
@@ -1946,14 +1953,13 @@ void EpubReaderActivity::renderBook() {
     markPageRendered();
   }
 
-  if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
-      section->pageCount != lastSavedPageCount) {
-    if (saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
-      lastSavedSpineIndex = currentSpineIndex;
-      lastSavedPage = section->currentPage;
-      lastSavedPageCount = section->estimatedTotalPages();
-    }
-  }
+  // Reduce SD FAT operations while turning pages. The first page is saved at
+  // once; later pages are coalesced with an eight-turn/60-second cap. The
+  // lifecycle hooks force the final position before sleep, exit or a child UI.
+  const uint64_t progressKey = (static_cast<uint64_t>(static_cast<uint16_t>(currentSpineIndex)) << 32) |
+                               (static_cast<uint64_t>(static_cast<uint16_t>(section->currentPage)) << 16) |
+                               static_cast<uint16_t>(section->estimatedTotalPages());
+  if (progressWriteGate.observe(progressKey, millis())) persistPendingProgress();
 
   showPendingSyncSaveError();
 
@@ -2044,6 +2050,35 @@ bool EpubReaderActivity::applyDeferredReposition() {
 void EpubReaderActivity::clearDeferredReposition() {
   cachedChapterTotalPageCount = 0;
   cachedVisibleTextOffset.reset();
+}
+
+void EpubReaderActivity::persistPendingProgress(const bool force) {
+  if (!progressWriteGate.needsFlush() || !epub) return;
+  const uint32_t now = millis();
+  if (!force && !progressWriteGate.due(now)) return;
+  const ChapterPosition pos = chapterPosition();
+  if (currentSpineIndex < 0 || pos.pageIndex < 0 || pos.totalPages < 0) return;
+  const bool saved = saveProgress(currentSpineIndex, pos.pageIndex, pos.totalPages);
+  progressWriteGate.complete(now, saved);
+  if (!saved) LOG_ERR("ERS", "Deferred reader progress write failed");
+}
+
+void EpubReaderActivity::onScreenCovered() {
+  // Called with the render lock already held by ActivityManager.
+  persistPendingProgress(true);
+  ReaderActivity::onScreenCovered();
+}
+
+void EpubReaderActivity::prepareForSleep() {
+  // ActivityManager owns RenderLock around this callback.
+  persistPendingProgress(true);
+  ReaderActivity::prepareForSleep();
+}
+
+void EpubReaderActivity::onExit() {
+  // onExit is called under RenderLock: do not lock again here.
+  persistPendingProgress(true);
+  ReaderActivity::onExit();
 }
 
 bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {
