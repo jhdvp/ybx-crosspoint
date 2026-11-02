@@ -13,7 +13,9 @@
       "handoffStatus": "incomplete",
       "handoffBranch": null,
       "handoffCommit": null,
-      "reportPath": null
+      "reportPath": null,
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 40
     },
     {
       "id": "rc-fw-02",
@@ -25,7 +27,9 @@
       "handoffStatus": "blocked",
       "handoffBranch": null,
       "handoffCommit": null,
-      "reportPath": null
+      "reportPath": null,
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 41
     },
     {
       "id": "rc-fw-03",
@@ -37,7 +41,9 @@
       "handoffStatus": "wip-committed",
       "handoffBranch": "agents/ratecloud/rc-fw-03",
       "handoffCommit": "a52e4b5d",
-      "reportPath": "reports/ratecloud/rc-fw-03.md"
+      "reportPath": "reports/ratecloud/rc-fw-03.md",
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 42
     },
     {
       "id": "rc-fw-04",
@@ -49,7 +55,9 @@
       "handoffStatus": "blocked",
       "handoffBranch": null,
       "handoffCommit": null,
-      "reportPath": null
+      "reportPath": null,
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 43
     },
     {
       "id": "rc-fw-05",
@@ -61,7 +69,9 @@
       "handoffStatus": "blocked",
       "handoffBranch": null,
       "handoffCommit": null,
-      "reportPath": null
+      "reportPath": null,
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 44
     },
     {
       "id": "rc-fw-06",
@@ -73,7 +83,9 @@
       "handoffStatus": "wip-committed",
       "handoffBranch": "agents/ratecloud/rc-fw-06",
       "handoffCommit": "e93b694a",
-      "reportPath": "reports/ratecloud/rc-fw-06.md"
+      "reportPath": "reports/ratecloud/rc-fw-06.md",
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 45
     },
     {
       "id": "rc-fw-07",
@@ -85,7 +97,9 @@
       "handoffStatus": "wip-committed",
       "handoffBranch": "agents/ratecloud/rc-fw-07",
       "handoffCommit": "0ef8576b",
-      "reportPath": "reports/ratecloud/rc-fw-07.md"
+      "reportPath": "reports/ratecloud/rc-fw-07.md",
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 46
     },
     {
       "id": "rc-fw-08",
@@ -97,7 +111,9 @@
       "handoffStatus": "incomplete",
       "handoffBranch": null,
       "handoffCommit": null,
-      "reportPath": null
+      "reportPath": null,
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 47
     },
     {
       "id": "rc-fw-09",
@@ -109,7 +125,9 @@
       "handoffStatus": "wip-committed",
       "handoffBranch": "agents/ratecloud/rc-fw-09",
       "handoffCommit": "dc1415b3",
-      "reportPath": "reports/ratecloud/rc-fw-09.md"
+      "reportPath": "reports/ratecloud/rc-fw-09.md",
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 48
     },
     {
       "id": "rc-fw-10",
@@ -121,7 +139,9 @@
       "handoffStatus": "wip-committed",
       "handoffBranch": "agents/ratecloud/rc-fw-10",
       "handoffCommit": "5c32aa0e",
-      "reportPath": "reports/ratecloud/rc-fw-10.md"
+      "reportPath": "reports/ratecloud/rc-fw-10.md",
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 49
     },
     {
       "id": "rc-fw-11",
@@ -133,7 +153,9 @@
       "handoffStatus": "not-started",
       "handoffBranch": null,
       "handoffCommit": null,
-      "reportPath": null
+      "reportPath": null,
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 50
     },
     {
       "id": "rc-fw-12",
@@ -145,7 +167,12 @@
       "handoffStatus": "not-started",
       "handoffBranch": null,
       "handoffCommit": null,
-      "reportPath": null
+      "reportPath": null,
+      "currentKaneoProjectId": "m7bzuab46as9kqwxtwlqw38i",
+      "currentKaneoTaskNumber": 51
     }
-  ]
+  ],
+  "priorKaneoProjectId": "hjc9ev0xss6432hamr88kau1",
+  "priorKaneoProjectArchived": true,
+  "mainKaneoHandoffTaskId": "jiczhiokb1vnol8ovipx40x5"
 }
