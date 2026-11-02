@@ -56,7 +56,8 @@
 ## Kaneo
 
 - [Rate Cloud sprint](http://127.0.0.1:5173/dashboard/workspace/kmuPv6G5D6zt1dhwTeYFuf6E7HPLmaJ2/project/hjc9ev0xss6432hamr88kau1/board)
-- [Parent YBX Reader firmware board](http://127.0.0.1:5173/dashboard/workspace/kmuPv6G5D6zt1dhwTeYFuf6E7HPLmaJ2/project/m7bzuab46as9kqwxtwlqw38i/board)
+- [Parent YBX Reader firmware board](http://127.0.0.1:5173/dashboard/workspace/kmuPv6G5D6zt1dhwTeYFuf6E7HPLmaJ2/project/m7bzuab46as9kqwxtwlqw38i/board): handoff umbrella card **#39** (`jiczhiokb1vnol8ovipx40x5`).
+- Private on-Mac diagnostics archive: `~/.local/state/ybx-ratecloud-sprint/archive/ratecloud-2026-11-02-private-logs.tar.gz`, SHA-256 `b6d73856a1f20f4e4173b6a229cb9a45f0d41dacf7eafee658d7291b518e3198`. **Never publish this archive**.
 
 ## Lessons for next trial
 
