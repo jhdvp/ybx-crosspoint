@@ -48,3 +48,15 @@ finished initialization. This is an unsafe partial-boot state.
   to power-saving mode between user actions. Physical current draw must be
   measured. The device may need manual power-off if no card is available.
 - No OTA or production changes were performed.
+
+## Verified host and C3 results (2026-11-03)
+- Full CMake host test build: PASS.
+- CTest: 1117/1117 PASS in 25.32 s, including 5 new NoSdRecovery policy tests.
+- ESP32-C3 X3/X4 firmware PlatformIO default target: PASS.
+  Flash 5,679,369 / 6,553,600 bytes (86.7%).
+  Static RAM 66,904 / 327,680 bytes (20.4%).
+  The application image is preserved in the local verification artifacts;
+  SHA-256 aab3793f7f4d2a6a697063bdd82628847e6b5412e1e9a3a981997d8e073f29ef.
+- X4 Pro target acceptance is reported separately only after a verified pass.
+- These are host and build checks, not runtime SD card hot-insertion or
+  physical power-button shutdown validation.
