@@ -54,7 +54,7 @@ class PluginCatalogActivity final : public CatalogActivity {
     pluginhttp::RequestSpec browseReq;
     std::string itemsPath;  // JSON: dotted path to the item array; "" = response root
     // JSON field paths (dotted); XML field selectors ("elem", "elem@attr", "@attr").
-    std::string titlePath, authorPath, idPath, urlPath;
+    std::string titlePath, authorPath, idPath, urlPath, folderUrlPath;
     // Optional JSON detail fields are streamed only for the selected item so a
     // page of long descriptions/repository metadata does not stay in DRAM.
     std::string descriptionPath, detailAuthorPath, repositoryPath;
@@ -75,12 +75,16 @@ class PluginCatalogActivity final : public CatalogActivity {
     // Named JSON views override the browse URL/body; Back returns to their picker.
     struct BrowseList {
       std::string title, url, body;
+      std::string id, parent;  // optional dynamic folder nodes; blank parent = top level
       std::string noticeTitle, noticeMessage, noticeConfirm, noticeCancel;
       bool hasNotice() const { return !noticeMessage.empty(); }
     };
     std::vector<BrowseList> browseLists;
     // Optional remote index that supplies the named JSON views dynamically.
     std::string browseListsUrl;
+    // Optional credentials for the remote index. If omitted, reuse browse
+    // request headers; only send to the explicitly configured index endpoint.
+    pluginhttp::Headers browseListsHeaders;
     // JSON search overrides URL/body independently; empty fields reuse browse.
     std::string searchUrl, searchBody;
     bool hasSearch() const { return (!searchUrl.empty() || !searchBody.empty()) && browseFormat != "xml"; }
@@ -149,7 +153,10 @@ class PluginCatalogActivity final : public CatalogActivity {
   pluginhttp::Headers config;  // {cfg.KEY} values
   int page = 1;
   bool hasMore = false;
-  int currentList = -1;  // index into manifest.browseLists; -1 = none/default
+  int currentList = -1;                 // index into manifest.browseLists; -1 = none/default
+  std::string currentGroup;             // dynamic list-picker folder, empty at the root
+  std::vector<std::string> groupTrail;  // bounded cycle-free path for nested groups
+  std::string folderLabel;              // current JSON page folder title
   std::string searchQuery;
   bool searchActive = false;
   // Reuse browse TLS; release in the picker and before a single-file download.
@@ -173,6 +180,7 @@ class PluginCatalogActivity final : public CatalogActivity {
   void resetBrowse();
   // JSON catalog with named lists and none picked yet.
   bool wantsListPicker() const;
+  std::vector<int> visibleLists() const;
   void openList(int index);
   bool loadManifest();
   bool loadBrowseListIndex();
