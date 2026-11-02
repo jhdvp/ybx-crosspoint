@@ -218,19 +218,28 @@ Create fresh tickets only for scopes *not already present*; where applicable add
 |---|---|---|---|
 | 00 | firmware candidate reconciliation and branch manifest | existing #15, #39 | — |
 | 01 | bounded TLS/event/sleep regression gate | existing #3, #5, #11, #25 | 00 |
-| 02 | durable settings/data writer + no-SD recovery | new ticket, sprint atomic-settings reference | 00, 01 |
-| 03 | C3 memory/workspace and quick-resume benchmark | new ticket, sprint resource-budget reference | 00, 01 |
+| 02 | durable settings/data writer + no-SD recovery | firmware #53, sprint atomic-settings #1 | 00, 01 |
+| 03 | C3 memory/workspace and quick-resume benchmark | firmware #54, sprint resource-budget #3 | 00, 01 |
 | 04 | emulator reading/recovery end-to-end suite | existing #26–38 | 00 |
 | 05 | vCodex 6 one-time stats migration + dedup | existing #2, #8, #18 | 01, 02 |
-| 06 | device-profile EPUB conversion + identity plan | new YBX Server task linked to #22, #21 | 00 |
+| 06 | device-profile EPUB conversion + identity plan | YBX Site #47, firmware #22 and #21 | 00 |
 | 07 | native reader catalog/cover performance | existing #6, #7, #16, #22 | 02, 03 |
-| 08 | Markdown reader, bookmarks/notes export | new ticket | 02, 03 |
-| 09 | plugin vs native app registry and minimal demo | new ticket | 03 |
-| 10 | bilingual EPUB mode (pretranslated first) | new ticket | 06, 08 |
-| 11 | RSS/Instapaper/Readwise ingestion OPDS | new YBX Server task | 06 |
-| 12 | opt-in flashcards, offline reference / BLE writer | new ticket | 09 |
-| 13 | safe stock/YBX alternate-slot flasher investigation | new experimental ticket, existing #14 | 00, 02 |
+| 08 | Markdown reader, bookmarks/notes export | firmware #56 | 02, 03 |
+| 09 | plugin vs native app registry and minimal demo | firmware #55 | 03 |
+| 10 | bilingual EPUB mode (pretranslated first) | firmware #57 | 06, 08 |
+| 11 | RSS/Instapaper/Readwise ingestion OPDS | YBX Site #48 | 06 |
+| 12 | opt-in flashcards, offline reference / BLE writer | firmware #59 | 09 |
+| 13 | safe stock/YBX alternate-slot flasher investigation | firmware #58, existing #14 | 00, 02 |
 | 14 | optional owner QR / sleep themes | existing #13, optional new subtasks | 01 |
 | 15 | hardware + OTA release gates | existing #14, #24 | all chosen release modules |
 
 **Start now:** choose 00, 01, 02, 03, 04; product extras should not delay fixes for TLS/FIFO and broken SD handling. All work should be in reviewable branches with tests and actual provenance. No automerge and no production deployment are implied by this plan.
+
+### Kaneo synchronization (2026-11-02)
+
+- Firmware umbrella/review: #52 (In Review), this draft PR #6.
+- Firmware newly scheduled: #53 crash-safe/no-SD, #54 quick-resume/heap, #55 native app registry, #56 Markdown/notes, #57 bilingual EPUB, #58 flasher investigation, #59 flashcards/PocketWiki.
+- YBX Site newly scheduled: #47 device-profile EPUB variants and stable KOSync identity, #48 opt-in article/news ingestion.
+- Existing firmware #5, #8, #13, #14, #15, #19, #22 were cross-referenced in comments rather than duplicated; no ownership or status was altered.
+- YBX Reader board: http://127.0.0.1:5173/dashboard/workspace/kmuPv6G5D6zt1dhwTeYFuf6E7HPLmaJ2/project/m7bzuab46as9kqwxtwlqw38i/board (local Kaneo only).
+- YBX Site board: http://127.0.0.1:5173/dashboard/workspace/kmuPv6G5D6zt1dhwTeYFuf6E7HPLmaJ2/project/lmky1hdxrygh41wzuq93s41l/board (local Kaneo only).
