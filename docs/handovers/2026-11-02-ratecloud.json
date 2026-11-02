@@ -1,0 +1,151 @@
+{
+  "date": "2026-11-02",
+  "base": "979386ee",
+  "project": "YBX Firmware · Rate Cloud Sprint",
+  "tasks": [
+    {
+      "id": "rc-fw-01",
+      "cardId": "xotnmqziiki9w227papaugfg",
+      "title": "Design/config: atomic settings persistence and forward migrations",
+      "model": "ratecloud/glm-5.3",
+      "scope": "Audit the current firmware's on-SD settings and runtime state persistence. Implement ONE limited, provable improvement for atomic updates, corruption recovery, schema migration or validation. Avoid existing agent-owned changes. Include regression tests; preserve compatibility.",
+      "priority": "high",
+      "handoffStatus": "incomplete",
+      "handoffBranch": null,
+      "handoffCommit": null,
+      "reportPath": null
+    },
+    {
+      "id": "rc-fw-02",
+      "cardId": "ykhjya89rlbn774l56loa3bx",
+      "title": "Security: YBX tokens and privacy-safe firmware diagnostics",
+      "model": "ratecloud/deepseek-v4.1-flash",
+      "scope": "Review YBX auth credentials/logging paths on the integration branch. Close one demonstrated secret leakage or unprotected persistent credential path with tests. Do NOT change ongoing TLS/network tasks, do not weaken TLS verification.",
+      "priority": "urgent",
+      "handoffStatus": "blocked",
+      "handoffBranch": null,
+      "handoffCommit": null,
+      "reportPath": null
+    },
+    {
+      "id": "rc-fw-03",
+      "cardId": "ucrxe82a5b9nfp34g5lqxtvn",
+      "title": "Resource budgets: heap/flash and measurable optimization",
+      "model": "ratecloud/deepseek-v4-pro",
+      "scope": "Benchmark or statically measure heap and flash footprint using available host tools. Identify an actual repeated allocation or memory lifetime issue and implement one focused optimization with before/after numbers. Do not touch agents' QEMU code.",
+      "priority": "high",
+      "handoffStatus": "wip-committed",
+      "handoffBranch": "agents/ratecloud/rc-fw-03",
+      "handoffCommit": "a52e4b5d",
+      "reportPath": "reports/ratecloud/rc-fw-03.md"
+    },
+    {
+      "id": "rc-fw-04",
+      "cardId": "qjv1tuhfafnnsfz3nax1qyf9",
+      "title": "UX: offline/expired session states and reader recovery",
+      "model": "ratecloud/qwen-3.8-max",
+      "scope": "Improve one native YBX account or library error/recovery flow on reader: explicit offline, expired auth, retry and user-visible explanation. Use existing UI conventions and localization. Avoid redesigning the entire dashboard being worked by other agents.",
+      "priority": "high",
+      "handoffStatus": "blocked",
+      "handoffBranch": null,
+      "handoffCommit": null,
+      "reportPath": null
+    },
+    {
+      "id": "rc-fw-05",
+      "cardId": "vxyctf7pcxed0nel6pmsnhg2",
+      "title": "Release QA: X3/X4/X4 Pro compile smoke + artifact matrix",
+      "model": "ratecloud/glm-5.3-flash",
+      "scope": "Create or improve deterministic local firmware build validation, identify actual target envs, compile what is available, document reproducible command/results and bin size. No flash/push. Update only build scripts/tests/docs.",
+      "priority": "high",
+      "handoffStatus": "blocked",
+      "handoffBranch": null,
+      "handoffCommit": null,
+      "reportPath": null
+    },
+    {
+      "id": "rc-fw-06",
+      "cardId": "bzaka48q9gkynjo7c8o5r9qx",
+      "title": "Sync: dedup/idempotency regression tests",
+      "model": "ratecloud/deepseek-v4.1-flash",
+      "scope": "Investigate native YBX progress/session sync and add a narrow reproducible regression covering replay, retry or duplicate events. Only fix verified errors; do not reimplement server integrations, and avoid agent-owned session delivery code.",
+      "priority": "medium",
+      "handoffStatus": "wip-committed",
+      "handoffBranch": "agents/ratecloud/rc-fw-06",
+      "handoffCommit": "e93b694a",
+      "reportPath": "reports/ratecloud/rc-fw-06.md"
+    },
+    {
+      "id": "rc-fw-07",
+      "cardId": "ydzi4wmu2oh8rrd07gbjmh08",
+      "title": "OTA and config compatibility: version/rollback matrix",
+      "model": "ratecloud/glm-5.3",
+      "scope": "Review version checking and OTA upgrade path for downstream YBX. Add a testable compatibility or fail-safe validation (metadata / version gating), without publishing, flashing or changing official CrossPoint OTA endpoints.",
+      "priority": "high",
+      "handoffStatus": "wip-committed",
+      "handoffBranch": "agents/ratecloud/rc-fw-07",
+      "handoffCommit": "0ef8576b",
+      "reportPath": "reports/ratecloud/rc-fw-07.md"
+    },
+    {
+      "id": "rc-fw-08",
+      "cardId": "df67gz3cxitryuu1zbubnrtj",
+      "title": "EPUB reader stability under memory pressure",
+      "model": "ratecloud/deepseek-v4-pro",
+      "scope": "Stress a native EPUB parsing/rendering path with a reproducible oversized input or malformed edge case. Fix one confirmed crash/leak or enforce bounded memory allocation. Include a host test.",
+      "priority": "high",
+      "handoffStatus": "incomplete",
+      "handoffBranch": null,
+      "handoffCommit": null,
+      "reportPath": null
+    },
+    {
+      "id": "rc-fw-09",
+      "cardId": "zw4aj2vbnvodddtcn4xog4vc",
+      "title": "Accessible reader UI: focus, strings, navigation regression",
+      "model": "ratecloud/qwen-3.8-max",
+      "scope": "Pick one demonstrable native UI navigation/accessibility regression (button focus, long labels, RTL, localization or E-Ink refresh) and add a narrow test or verified fix. Avoid in-progress dashboard overhaul.",
+      "priority": "medium",
+      "handoffStatus": "wip-committed",
+      "handoffBranch": "agents/ratecloud/rc-fw-09",
+      "handoffCommit": "dc1415b3",
+      "reportPath": "reports/ratecloud/rc-fw-09.md"
+    },
+    {
+      "id": "rc-fw-10",
+      "cardId": "kfrnarvalcfd57b5wwj7vwwb",
+      "title": "Test infrastructure: host fixtures and failure diagnostics",
+      "model": "ratecloud/glm-5.3-flash",
+      "scope": "Add one meaningful host-side firmware regression harness/test fixture for persistence, auth or update packaging. Document commands and reliable PASS/FAIL; no external device requirement.",
+      "priority": "medium",
+      "handoffStatus": "wip-committed",
+      "handoffBranch": "agents/ratecloud/rc-fw-10",
+      "handoffCommit": "5c32aa0e",
+      "reportPath": "reports/ratecloud/rc-fw-10.md"
+    },
+    {
+      "id": "rc-fw-11",
+      "cardId": "l7upoo91tvrfqn0l18pae1om",
+      "title": "Network isolation: malformed service response resilience",
+      "model": "ratecloud/deepseek-v4.1-flash",
+      "scope": "Test firmware parsing of YBX Server HTTP/JSON responses for malformed, oversized or partial payloads. Add bounds/retries or tests for a confirmed case. Do not overlap TLS/DNS deadlines under separate agents.",
+      "priority": "medium",
+      "handoffStatus": "not-started",
+      "handoffBranch": null,
+      "handoffCommit": null,
+      "reportPath": null
+    },
+    {
+      "id": "rc-fw-12",
+      "cardId": "o5jgofld79ao5bwzqqz1f603",
+      "title": "Cross-worker acceptance audit and integration proposal",
+      "model": "ratecloud/glm-5.3",
+      "scope": "Review reports and diffs from this sprint, assess test evidence, identify conflicts with ongoing YBX worktrees, propose safe cherry-pick order. Do not merge, push, flash or deploy.",
+      "priority": "high",
+      "handoffStatus": "not-started",
+      "handoffBranch": null,
+      "handoffCommit": null,
+      "reportPath": null
+    }
+  ]
+}
