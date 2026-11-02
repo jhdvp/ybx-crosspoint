@@ -522,12 +522,15 @@ bool TextSettingsActivity::styleRowChecked(int row) const {
 }
 
 void TextSettingsActivity::switchTab(const int direction) {
-  const bool onTabBar = ringPos() == 0;
+  // Capture ring position BEFORE mutating tab_: activeNav() resolves via
+  // activeTab(), so reading it after the switch would target the NEW tab's
+  // nav state instead of preserving focus context for the OLD tab.
+  const bool wasOnTabBar = ringPos() == 0;
   constexpr int count = static_cast<int>(Tab::Count);
   tab_ = static_cast<Tab>((static_cast<int>(tab_) + direction + count) % count);
   rebuildRowItems();
   auto& n = activeNav();
-  if (onTabBar) n.selected = 0;
+  if (wasOnTabBar) n.selected = 0;
   n.followOnBuild = true;  // pull the new tab's viewport to its remembered selection
   requestUpdate();
 }
