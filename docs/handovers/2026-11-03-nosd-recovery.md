@@ -60,3 +60,12 @@ finished initialization. This is an unsafe partial-boot state.
 - X4 Pro target acceptance is reported separately only after a verified pass.
 - These are host and build checks, not runtime SD card hot-insertion or
   physical power-button shutdown validation.
+
+## Verified X4 Pro firmware build (2026-11-03)
+- ESP32-S3 / X4 Pro PlatformIO x4pro target: PASS.
+  Flash 5,523,014 / 6,553,600 bytes (84.3%).
+  Static RAM 111,956 / 327,680 bytes (34.2%).
+  Retained application image: 5,528,272 bytes.
+  SHA-256 e912ebf83f0b88997289962b8dab61c4f2e20fdc7a932fb0bc8dbcb3ad066889.
+- Both target builds and the complete 1117/1117 host suite passed.
+  No physical reader was flashed and no OTA or production deployment occurred.
