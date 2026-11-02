@@ -64,3 +64,11 @@
 - Dispatch serially for shared-one-slot plans; suppress background quota probes that consume the same slot.
 - Split work into **4–5-minute atomic tasks**, commit/report at first checkpoint, and track separate `tests passed` versus `report exists` states.
 - Avoid confusing exit code 0 with completed work or a timed-out agent with no changes: inspect local diffs and files before discarding.
+
+## Kaneo board consolidation (2026-11-02 19:07 +03:00)
+
+- **All 12 active tickets were moved in-place**, without copying or recreating cards, from the trial project into `YBX Reader · прошивка` (project `m7bzuab46as9kqwxtwlqw38i`).
+- Task IDs, comments, links, priority and status were verified unchanged against pre-move snapshot. The new main-board numbers are **#40–#51**, mapping `rc-fw-01` → #40 through `rc-fw-12` → #51.
+- Source project `hjc9ev0xss6432hamr88kau1` was archived, **not deleted**. Its one pre-existing archived duplicate #13 remains there for history.
+- Main board handoff acceptance task **#39** (`jiczhiokb1vnol8ovipx40x5`) now links and prioritizes the transferred tickets.
+- Full before/after snapshots and migration verification logs are private on the Mac in `~/.local/state/ybx-ratecloud-sprint/board-merge-20261102/`. The source archive is not a second active task queue.
