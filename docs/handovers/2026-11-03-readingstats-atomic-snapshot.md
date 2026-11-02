@@ -31,3 +31,24 @@ Algorithm independently adapts transactional validation and backup concepts stud
 - Up to 32 book records, roughly 4.3 KiB serialized; peak contiguous heap and task stack need real C3 measurement.
 - Does not cover PluginQueueStorage, ReaderSessionJournal or unrelated settings; no-SD recovery UI is a separate task.
 - Physical hardware acceptance and safe downgrade are release gates; no flash/OTA/deployment in this branch.
+
+## Verified CI-equivalent results (2026-11-03 +03:00)
+
+- Full CMake host test build: PASS.
+- Full CTest: **1112/1112 PASS** in 23.54 seconds.
+- The ReadingStats-specific suite consists of 35 previously existing tests,
+  10 new snapshot serializer/fault tests, and 6 new firmware-HAL migration/fault
+  tests. All passed.
+- ESP32-C3, PlatformIO env default: **PASS**, 5,678,781 / 6,553,600 bytes
+  application flash (86.7%), 66,904 / 327,680 static RAM (20.4%).
+  Retained application image: 5,693,312 bytes,
+  SHA-256 0481823908643e7cb1d4938f293c318ebaa60ce09879216bc1af52df004690ad.
+- ESP32-S3 / X4 Pro, PlatformIO env x4pro: **PASS**,
+  5,522,426 / 6,553,600 bytes flash (84.3%),
+  111,956 / 327,680 static RAM (34.2%).
+  Retained application image: 5,527,696 bytes,
+  SHA-256 ef66f67d7ee684556942161f5702d4950c9110524e0f0cc8ec0bca8895dfdb4c.
+- Actual images and raw build logs are local to
+  ~/Projects/Ybx/artifacts/ybx-stats-atomic-validation-20261103
+  and are **not** OTA release assets. The 16 host regression tests use simulated
+  failure injection; physical FAT power-loss acceptance is still missing.
