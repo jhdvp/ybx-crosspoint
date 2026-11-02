@@ -27,6 +27,7 @@ Do not deploy or merge without review and real-device SD/power-loss tests. No ba
 ## Verified build evidence (2026-11-03 +03:00)
 
 - Host ReadingStatsTest: **35/35 passed**, including new replay and migration regressions.
+- Full CMake host build and CTest: **1096/1096 passed** (on the updated bugfix branch; 2026-11-03).
 - ESP32-C3 (default) and ESP32-S3 (x4pro) firmware builds: **both PASS**, each from this isolated worktree.
 - Compiling does not establish physical board, SD power-cut or OTA rollback acceptance.
 
