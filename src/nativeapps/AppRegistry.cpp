@@ -7,6 +7,7 @@
 
 #include "CatalogPolicy.h"
 #include "MemoryStatusActivity.h"
+#include "notes/NotesActivity.h"
 
 namespace nativeapps {
 namespace {
@@ -15,10 +16,15 @@ std::unique_ptr<Activity> createMemoryStatus(GfxRenderer& renderer, MappedInputM
   return makeUniqueNoThrow<MemoryStatusActivity>(renderer, input);
 }
 
+std::unique_ptr<Activity> createNotes(GfxRenderer& renderer, MappedInputManager& input) {
+  return makeUniqueNoThrow<NotesActivity>(renderer, input);
+}
+
 #if FREEINK_DEVICE_X3 || FREEINK_DEVICE_X4 || FREEINK_DEVICE_X4PRO
 // Deliberately small pilot registry: all other InkHome apps remain unlinked.
-constexpr std::array<Descriptor, 1> kApps{{
+constexpr std::array<Descriptor, 2> kApps{{
     {"memory-status", StrId::STR_YBX_APP_MEMORY, StrId::STR_YBX_APP_MEMORY_SUMMARY, createMemoryStatus, nullptr, 12 * 1024},
+    {"notes", StrId::STR_YBX_NOTES, StrId::STR_YBX_NOTE_SUMMARY, createNotes, nullptr, 28 * 1024},
 }};
 #else
 constexpr std::array<Descriptor, 0> kApps{};
