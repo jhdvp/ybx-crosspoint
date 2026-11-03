@@ -37,6 +37,7 @@
 #include "EpubReaderFootnoteSelectActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
 #include "EpubReaderUtils.h"
+#include "MarkdownLegacyProgress.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
@@ -246,6 +247,26 @@ bool EpubReaderActivity::loadBook() {
     return false;
   }
 
+  // Detect and snapshot an old pre-formatted Markdown position BEFORE
+  // Epub::load() rebuilds V1 cache metadata. If the snapshot cannot be
+  // verified, fail closed rather than overwrite the only copy on the next
+  // page render. EPUB and ordinary TXT do not run this migration.
+  markdownlegacy::Plan legacy;
+  if (FsHelpers::hasMarkdownExtension(bookPath)) {
+    HalFile source;
+    if (Storage.openFileForRead("MDP", bookPath, source)) {
+      const size_t length = source.size();
+      source.close();
+      legacy = markdownlegacy::prepare(
+          loadedEpub->getCachePath(), length > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(length));
+    }
+    if (legacy.action == markdownlegacy::Action::Failed) {
+      LOG_ERR("MDP", "Could not preserve legacy Markdown progress before reindexing");
+      GUI.drawPopup(renderer, tr(STR_SAVE_PROGRESS_FAILED));
+      return false;
+    }
+  }
+
   const bool uncached = !Storage.exists((loadedEpub->getCachePath() + "/book.bin").c_str());
   if (uncached) {
     disableFastInitialRefresh();
@@ -294,6 +315,23 @@ bool EpubReaderActivity::loadBook() {
       cachedChapterTotalPageCount = data[4] + (data[5] << 8);
       cachedVisibleTextOffset = static_cast<uint32_t>(data[6]) | (static_cast<uint32_t>(data[7]) << 8) |
                                 (static_cast<uint32_t>(data[8]) << 16) | (static_cast<uint32_t>(data[9]) << 24);
+    }
+  }
+
+  if (legacy.action == markdownlegacy::Action::Approximate ||
+      legacy.action == markdownlegacy::Action::Restart) {
+    // The old visible-text offset is from a different parser; never reuse it.
+    // Preserve raw progress.md-v1.bin for manual recovery. A bounded document
+    // can be fully repaginated with the existing Go-to-% path. Larger MDs and
+    // 4-byte/no-total old progress start at page one, with a clear notice.
+    cachedVisibleTextOffset.reset();
+    cachedChapterTotalPageCount = 0;
+    nextPageNumber = 0;
+    legacyMarkdownResumeNotice = true;
+    legacyMarkdownResumeApproximate = legacy.action == markdownlegacy::Action::Approximate;
+    if (legacyMarkdownResumeApproximate) {
+      pendingPercentJump = true;
+      pendingSpineProgress = legacy.fraction();
     }
   }
 
@@ -1962,6 +2000,12 @@ void EpubReaderActivity::renderBook() {
   if (progressWriteGate.observe(progressKey, millis())) persistPendingProgress();
 
   showPendingSyncSaveError();
+
+  if (legacyMarkdownResumeNotice) {
+    legacyMarkdownResumeNotice = false;
+    GUI.drawPopup(renderer, legacyMarkdownResumeApproximate ? tr(STR_MD_RESUME_APPROXIMATE)
+                                                            : tr(STR_MD_RESUME_RESTART));
+  }
 
   if (pendingScreenshot) {
     pendingScreenshot = false;

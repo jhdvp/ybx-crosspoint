@@ -30,6 +30,8 @@ STR_YBX_NOTE_SAVE_FAILED: "Не удалось сохранить заметку
 STR_YBX_NOTE_OPEN: "Открыть для чтения"
 STR_YBX_NOTE_EDIT_TITLE: "Изменить заголовок"
 STR_YBX_NOTE_EDIT_BODY: "Изменить текст"
+STR_MD_RESUME_APPROXIMATE: "Позиция примерная; копия сохранена"
+STR_MD_RESUME_RESTART: "Открыто с начала; копия сохранена"
 STR_YBX_SYNC: "Синхронизация YBX"
 STR_YBX_SYNC_STATUS: "Состояние"
 STR_YBX_SYNC_SWITCH: "Синхронизировать через YBX"

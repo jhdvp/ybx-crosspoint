@@ -21,6 +21,8 @@ class HalFile {
   size_t getName(char* out, size_t cap) const;
   HalFile openNextFile();
   size_t write(const void* data, size_t size);
+  size_t size() const;
+  int read(void* data, size_t size);
   void flush() {}
   bool close();
 
@@ -29,6 +31,7 @@ class HalFile {
   std::string path_;
   bool directory_ = false;
   size_t index_ = 0;
+  size_t readOffset_ = 0;
 };
 
 class MockStorage {
@@ -73,6 +76,11 @@ class MockStorage {
     auto it = files.find(path);
     if (it == files.end() || it->second.empty() || it->second.size() > cap) return false;
     out = it->second;
+    return true;
+  }
+  bool openFileForRead(const char*, const std::string& path, HalFile& out) {
+    if (!online || !exists(path.c_str())) return false;
+    out = HalFile(this, path, false);
     return true;
   }
   bool openFileForWrite(const char*, const std::string& path, HalFile& out) {
@@ -127,6 +135,18 @@ inline size_t HalFile::write(const void* data, size_t count) {
   const size_t length = storage_->shortWrite ? count / 2 : count;
   storage_->files[path_].append(static_cast<const char*>(data), length);
   return length;
+}
+inline size_t HalFile::size() const {
+  if (!storage_ || directory_) return 0;
+  return storage_->files.at(path_).size();
+}
+inline int HalFile::read(void* data, size_t maxCount) {
+  if (!storage_ || directory_ || storage_->shortRead) return -1;
+  const std::string& contents = storage_->files.at(path_);
+  const size_t count = std::min(maxCount, contents.size() - readOffset_);
+  std::memcpy(data, contents.data() + readOffset_, count);
+  readOffset_ += count;
+  return static_cast<int>(count);
 }
 inline bool HalFile::close() {
   if (!storage_) return false;

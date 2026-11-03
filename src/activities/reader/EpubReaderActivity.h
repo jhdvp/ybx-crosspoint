@@ -126,6 +126,11 @@ class EpubReaderActivity final : public ReaderActivity {
   uint16_t buildViewportHeight = 0;
   bool partialRebuildStartFailed = false;
 
+  // V1 plain-text Markdown progress cannot be treated as exact V2 page
+  // numbers or visible offsets. The original 4/6/10 bytes are snapshotted
+  // before the metadata migration; the approximation is explained once.
+  bool legacyMarkdownResumeNotice = false;
+  bool legacyMarkdownResumeApproximate = false;
   readerprogress::ProgressWriteGate progressWriteGate;
   void persistPendingProgress(bool force = false);
 
