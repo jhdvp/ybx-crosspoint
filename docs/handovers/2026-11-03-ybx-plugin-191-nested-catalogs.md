@@ -53,3 +53,14 @@ were used or copied to this branch.
 4. Test upgrades, SD preservation, OTA rollback and hardware separately.
 5. Issue #9 (pairing/QEMU) and #10 (legacy insecure TLS) remain open until
    corresponding end-to-end and legacy compatibility checks complete.
+
+## Edition policy
+
+YBX Stock (public jhdvp/ybx-crosspoint-plugin main, 1.6.13) and YBX Native
+(this custom firmware's sd-card/plugins/ybx, 1.9.1) are maintained separately.
+The two packages deliberately use the existing SD plugin ID ybx, so they may
+not be installed on the same reader together. The Native installer now checks
+both manifest/plugin compatibility contracts and the JSON browse schema before
+any SD writes; it refuses the stock package. The stock CI validator separately
+rejects Native-only capabilities and catalog group fields. The historic
+v1.7.0-rc.1 is not an upstream CrossPoint Stock update.

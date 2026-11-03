@@ -38,8 +38,8 @@
 #include "components/UITheme.h"
 #include "network/HttpDownloader.h"
 #include "network/ProtectedPaths.h"
-#include "util/CatalogFolderNavigation.h"
 #include "util/BookCacheUtils.h"
+#include "util/CatalogFolderNavigation.h"
 #include "util/FirmwareIdentity.h"
 #include "util/PluginEvents.h"
 #include "util/PluginHttp.h"
@@ -1006,10 +1006,12 @@ bool PluginCatalogActivity::parseBrowseResponse() {
   // Streamed straight from the SD temp file: neither the raw response nor a
   // parsed document occupies DRAM, only the rows kept.
   const std::string* const fields[] = {
-      &manifest.titlePath,   &manifest.authorPath,
-      &manifest.idPath,      &manifest.urlPath,
-      &manifest.versionPath, (!manifest.isBundle() && !manifest.folderUrlPath.empty())
-                                 ? &manifest.folderUrlPath : &manifest.bundleBasePath};
+      &manifest.titlePath,
+      &manifest.authorPath,
+      &manifest.idPath,
+      &manifest.urlPath,
+      &manifest.versionPath,
+      (!manifest.isBundle() && !manifest.folderUrlPath.empty()) ? &manifest.folderUrlPath : &manifest.bundleBasePath};
   auto parser = makeUniqueNoThrow<JsonListParser>(
       manifest.itemsPath, fields, manifest.bundleFilesPath,
       [](void* context, JsonListParser::Row& row) { (*static_cast<decltype(append)*>(context))(row); }, &append);
@@ -1766,8 +1768,7 @@ void PluginCatalogActivity::onBackButton() {
     }
     beginLoading();
     fetchPage(manifest.isXmlList() ? page : 1);
-  } else if (state == State::BROWSING && currentList >= 0 &&
-             manifest.browseLists.size() > 1) {
+  } else if (state == State::BROWSING && currentList >= 0 && manifest.browseLists.size() > 1) {
     // Return from a selected shelf to its parent source directory.
     currentList = -1;
     browseCurrentUrl.clear();
@@ -2029,7 +2030,9 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
   spec.hasPrimaryAction = downloadable;
   if (downloadable) {
     const bool updateAvailable = item.status == tr(STR_UPDATE_AVAILABLE);
-    spec.actionLabel = item.onReader ? tr(STR_OPEN) : updateAvailable ? tr(STR_UPDATE) : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH));
+    spec.actionLabel = item.onReader     ? tr(STR_OPEN)
+                       : updateAvailable ? tr(STR_UPDATE)
+                                         : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH));
   } else {
     // No download source: the card states that and offers no action to start one.
     spec.status = tr(STR_OPDS_UNAVAILABLE);
@@ -2287,9 +2290,11 @@ void PluginCatalogActivity::rebuildRowItems() {
   } else {
     if (prevRowVisible()) addRow(tr(STR_PREV_PAGE), nullptr, ">");
     for (const auto& entry : items) {
-      const char* value = entry.isDir ? ">" :
-          (entry.onReader && entry.status.empty() ? tr(STR_ON_READER) :
-           (itemDownloadable(entry) ? entry.status.c_str() : tr(STR_OPDS_UNAVAILABLE)));
+      const char* value = entry.isDir
+                              ? ">"
+                              : (entry.onReader && entry.status.empty()
+                                     ? tr(STR_ON_READER)
+                                     : (itemDownloadable(entry) ? entry.status.c_str() : tr(STR_OPDS_UNAVAILABLE)));
       addRow(entry.title.c_str(), entry.author.c_str(), value);
     }
     if (nextRowVisible()) addRow(tr(STR_NEXT_PAGE), nullptr, ">");

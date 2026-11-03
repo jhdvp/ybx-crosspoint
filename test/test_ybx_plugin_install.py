@@ -66,6 +66,41 @@ class YbxPluginInstall(unittest.TestCase):
         self.assertTrue((legacy / 'manifest.json').is_file())
         self.assertFalse((self.root / 'plugins/ybx').exists())
 
+    def test_stock_edition_is_rejected_before_any_sd_writes(self):
+        import shutil
+        stock = self.root / 'stock-variant'
+        shutil.copytree(installer.SOURCE, stock)
+        for filename in ('manifest.json', 'plugin.json'):
+            path = stock / filename
+            doc = json.loads(path.read_text())
+            doc['compatibility'].pop('requires', None)
+            path.write_text(json.dumps(doc))
+        device_path = stock / 'device.json'
+        device = json.loads(device_path.read_text())
+        device['browse'].pop('lists_url', None)
+        device['browse']['fields'].pop('folder_url', None)
+        device_path.write_text(json.dumps(device))
+
+        sd = self.root / 'card'
+        sd.mkdir()
+        with self.assertRaisesRegex(ValueError, 'YBX Native only'):
+            installer.install(sd, source=stock)
+        self.assertFalse((sd / 'plugins').exists())
+
+    def test_mixed_edition_metadata_is_rejected_before_any_sd_writes(self):
+        import shutil
+        source = self.root / 'mixed'
+        shutil.copytree(installer.SOURCE, source)
+        metadata = source / 'plugin.json'
+        obj = json.loads(metadata.read_text())
+        obj['compatibility']['requires'].remove('catalog.folders.json')
+        metadata.write_text(json.dumps(obj))
+        sd = self.root / 'card'
+        sd.mkdir()
+        with self.assertRaisesRegex(ValueError, 'YBX Native only'):
+            installer.install(sd, source=source)
+        self.assertFalse((sd / 'plugins').exists())
+
     def test_two_installations_stop_before_writing(self):
         first = self.root / 'plugins/ybx'
         second = self.root / '.crosspoint/plugins/ybx'

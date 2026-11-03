@@ -24,6 +24,7 @@ harness = r"""
 struct Item {
   std::string url;
   std::vector<std::string> files;
+  bool isDir = false;
 };
 
 struct Manifest {
@@ -67,6 +68,11 @@ int main() {
   assert(activity.itemDownloadable(Item{"", {"manifest.json", "plugin.js"}}));
   assert(activity.itemDownloadable(Item{"https://host/file.epub", {}}));
   assert(!activity.itemDownloadable(Item{"", {}}));
+
+  // JSON series/shelf folders are never downloadable, even with a URL.
+  assert(!activity.itemDownloadable(Item{"https://my.ybx.app/catalog/series", {}, true}));
+  activity.manifest = {"", "", "", false};
+  assert(!activity.itemDownloadable(Item{"https://my.ybx.app/catalog/series", {}, true}));
 }
 """
 

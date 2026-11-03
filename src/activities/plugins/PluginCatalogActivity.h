@@ -173,8 +173,8 @@ class PluginCatalogActivity final : public CatalogActivity {
   pluginhttp::Headers config;  // {cfg.KEY} values
   int page = 1;
   bool hasMore = false;
-  int currentList = -1;  // index into manifest.browseLists; -1 = none/default
-  std::string currentGroup;  // dynamic directory, empty at top
+  int currentList = -1;                 // index into manifest.browseLists; -1 = none/default
+  std::string currentGroup;             // dynamic directory, empty at top
   std::vector<std::string> groupTrail;  // cycle-free stack (max 8)
   std::string folderLabel;
   std::vector<std::string> folderLabelHistory;
