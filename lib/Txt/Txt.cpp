@@ -13,6 +13,61 @@
 #include <cstring>
 
 #include "TxtToHtml.h"
+#include "MarkdownStream.h"
+#include "MarkdownSourceFingerprint.h"
+
+namespace {
+
+// Cache marker binds the Markdown heading/HTML index to the exact source
+// bytes. A same-size edit must invalidate old TOC anchors and pagination.
+// Using an allocation-free streamed digest also works when SD mtime is zero.
+bool markdownFingerprint(const std::string& path, uint64_t& digest) {
+  HalFile source;
+  if (!Storage.openFileForRead("MD", path, source)) return false;
+  uint8_t block[1024];
+  MarkdownSourceFingerprint::Hasher hasher;
+  int bytes;
+  while ((bytes = source.read(block, sizeof(block))) > 0) {
+    hasher.add(block, static_cast<size_t>(bytes));
+  }
+  const bool closed = source.close();
+  if (bytes < 0 || !closed) return false;
+  digest = hasher.value();
+  return true;
+}
+
+bool saveMarkdownCacheMarker(const std::string& cachePath, const uint64_t fingerprint) {
+  const std::string path = cachePath + MarkdownSourceFingerprint::kMarkerFile;
+  const std::string temp = path + ".tmp";
+  const std::string contents = MarkdownSourceFingerprint::marker(fingerprint);
+  HalFile f;
+  if (!Storage.openFileForWrite("MD", temp, f)) return false;
+  const bool written = f.write(contents.data(), contents.size()) == contents.size();
+  f.flush();
+  const bool closed = f.close();
+  if (!written || !closed) return false;
+  if (Storage.exists(path.c_str()) && !Storage.remove(path.c_str())) return false;
+  return Storage.rename(temp.c_str(), path.c_str());
+}
+
+bool scanMarkdownToc(const std::string& path, BookMetadataCache& cache, unsigned& headings) {
+  HalFile source;
+  if (!Storage.openFileForRead("MD", path, source)) return false;
+  auto reader = [](void* ctx, uint8_t* data, size_t n) {
+    return static_cast<HalFile*>(ctx)->read(data, n);
+  };
+  auto unused = [](std::string_view) {};
+  auto heading = [&cache, &headings](unsigned ordinal, uint8_t level, const std::string& title) {
+    if (!title.empty()) {
+      cache.createTocEntry(title, "content.html", MarkdownStream::anchorFor(ordinal), level);
+      ++headings;
+    }
+  };
+  const bool ok = MarkdownStream::process(&source, reader, unused, heading, false);
+  return source.close() && ok;
+}
+
+}  // namespace
 
 bool Txt::isTxtOrMd(std::string_view path) {
   return FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path);
@@ -120,6 +175,19 @@ void Txt::invalidateCache(const std::string& cachePath) {
 
 bool Txt::validateCache(const std::string& filepath, const std::string& cachePath, size_t cachedSize) {
   bool valid = true;
+  if (FsHelpers::hasMarkdownExtension(filepath)) {
+    // Prior to V2 Markdown was escaped plain text with a one-entry TOC.
+    // Rebuild metadata and sections together; an HTML-only version bump
+    // cannot invalidate the old TOC index. Compare actual source bytes so
+    // an edited note of unchanged length also invalidates its page cache.
+    uint64_t current = 0;
+    std::string cached;
+    if (!markdownFingerprint(filepath, current) ||
+        !Storage.readFileToString("MD", cachePath + MarkdownSourceFingerprint::kMarkerFile, 40, cached) ||
+        cached != MarkdownSourceFingerprint::marker(current)) {
+      valid = false;
+    }
+  }
 
   // 1. If html/0.html exists, check its embedded version comment
   const std::string htmlPath = cachePath + "/html/0.html";
@@ -174,6 +242,11 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
     invalidateCache(cachePath);
   }
 
+  const bool markdown = FsHelpers::hasMarkdownExtension(filepath);
+  if (markdown) {
+    // Never leave an old successful marker during an interrupted rebuild.
+    Storage.remove((cachePath + MarkdownSourceFingerprint::kMarkerFile).c_str());
+  }
   if (!bookMetadataCache->beginWrite()) {
     LOG_ERR("TXT", "Could not begin writing cache");
     return false;
@@ -197,7 +270,18 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
   }
 
   std::string title = FsHelpers::getFileNameWithoutExtension(filepath);
-  bookMetadataCache->createTocEntry(title, "content.html", "", 0);
+  if (markdown) {
+    unsigned headings = 0;
+    if (!scanMarkdownToc(filepath, *bookMetadataCache, headings)) {
+      LOG_ERR("TXT", "Markdown heading scan failed");
+      return false;
+    }
+    // Only include the fallback file title if there are no headings.
+    // Otherwise a note whose H1 is its title would show a duplicate root.
+    if (!headings) bookMetadataCache->createTocEntry(title, "content.html", "", 0);
+  } else {
+    bookMetadataCache->createTocEntry(title, "content.html", "", 0);
+  }
 
   if (!bookMetadataCache->endTocPass()) {
     LOG_ERR("TXT", "Could not end writing toc pass");
@@ -231,5 +315,12 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
     return false;
   }
 
+  if (markdown) {
+    uint64_t fingerprint = 0;
+    if (!markdownFingerprint(filepath, fingerprint) || !saveMarkdownCacheMarker(cachePath, fingerprint)) {
+      LOG_ERR("TXT", "Failed to finalize Markdown index marker");
+      return false;
+    }
+  }
   return true;
 }

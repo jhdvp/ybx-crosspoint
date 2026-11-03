@@ -7,8 +7,10 @@
 #include <algorithm>
 #include <cstring>
 
+#include "MarkdownStream.h"
+
 const char* TxtToHtml::cacheVersionTag(std::string_view filename) {
-  return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 1 -->" : "<!-- TXT_CACHE_VERSION: 1 -->";
+  return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 2 -->" : "<!-- TXT_CACHE_VERSION: 1 -->";
 }
 
 size_t TxtToHtml::escapedHtmlSize(const std::string_view text) {
@@ -63,6 +65,14 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   std::string title = FsHelpers::getFileNameWithoutExtension(filename);
   TxtToHtml::streamEscapedHtml(writeStr, title);
   writeStr("</title></head>\n<body>\n");
+
+  if (FsHelpers::hasMarkdownExtension(filename)) {
+    auto ignoreHeading = [](unsigned, uint8_t, const std::string&) {};
+    const bool parsed = MarkdownStream::process(readerCtx, readFn, writeStr, ignoreHeading, true);
+    writeStr("\n</body>\n</html>\n");
+    flushOut();
+    return parsed && outputOk;
+  }
 
   bool isStart = true;
   bool atLineStart = true;
