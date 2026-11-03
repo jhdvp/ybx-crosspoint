@@ -326,6 +326,8 @@ bool EpubReaderActivity::loadBook() {
     // 4-byte/no-total old progress start at page one, with a clear notice.
     cachedVisibleTextOffset.reset();
     cachedChapterTotalPageCount = 0;
+    currentSpineIndex = 0;
+    cachedSpineIndex = 0;
     nextPageNumber = 0;
     legacyMarkdownResumeNotice = true;
     legacyMarkdownResumeApproximate = legacy.action == markdownlegacy::Action::Approximate;

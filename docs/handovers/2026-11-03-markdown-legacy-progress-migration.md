@@ -18,8 +18,9 @@ This migration deliberately preserves that exact original binary.
 ## Protection policy before reindexing
 
 Before Epub::load can rebuild the Markdown TOC/HTML/sections, inspect
-the existing cache for book.bin and the absence of the successful
-markdown-index-v2.fnv marker. If legacy progress.bin exists, copy its
+the absence of the successful markdown-index-v2.fnv marker.
+Even if book.bin is absent after a corrupt/interrupted rebuild,
+a remaining legacy progress.bin must still be protected. Copy its
 EXACT 4/6/10 bytes to:
 
     /.crosspoint/epub_<book-cache-id>/progress.md-v1.bin
@@ -78,3 +79,31 @@ successful and failed KoSync, long Markdown cold-open time, exact
 screen layout and popup visibility, live max-contiguous heap and
 battery. The requested exact semantic migration of highlight/quote
 ranges and cross-client note identity remains separate work.
+
+## Final verified QA evidence (2026-11-03)
+
+- Complete CMake/CTest regression: 1191 / 1191 PASS, 13.89 seconds.
+  Includes 19 new MarkdownLegacyProgress tests (4/6/10B layouts,
+  missing book.bin, V2 marker/no progress, multiple failure modes,
+  repeat attempt, nonzero invalid spine and bounded approximation).
+- ESP32-C3 default X3/X4 PlatformIO: PASS.
+  Flash 5,714,359 / 6,553,600 bytes (87.2%);
+  static RAM 66,904 / 327,680 bytes (20.4%).
+  firmware.bin 5,728,880 bytes.
+  SHA-256 ffe81852d43ce538cb4b360b95d611393e0f084d2f8edffa43f622e556458b19.
+- ESP32-S3 X4 Pro PlatformIO: PASS.
+  Flash 5,553,358 / 6,553,600 bytes (84.7%);
+  static RAM 111,956 / 327,680 bytes (34.2%).
+  firmware.bin 5,558,624 bytes.
+  SHA-256 2bd10e579b7342238d7d5bf7de760a52e4f8669410444f25b4c35ff5a3a43c4f.
+- Flash delta compared with parent PR #16:
+  +1,942 bytes C3 and +1,864 bytes S3. Static RAM unchanged.
+  No actual free-heap, power or SD throughput claim from these metrics.
+- Local raw build logs, both firmware images and checksums:
+  ~/Projects/Ybx/artifacts/ybx-md-progress-migration-20261103.
+  This folder is for validation, not OTA or release publication.
+- Simulated HalStorage failures do not substitute for FAT
+  metadata-atomicity, unexpected electrical power loss, real EPD/input
+  testing or cross-client KoSync position acceptance.
+- There was no physical device flashing, OTA, production deployment,
+  merge or release.

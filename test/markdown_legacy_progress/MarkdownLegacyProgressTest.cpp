@@ -133,3 +133,28 @@ TEST_F(MarkdownLegacyProgress, BadProgressLengthCannotBeSilentlyMigrated) {
   EXPECT_EQ(ml::prepare(dir, 100).action, ml::Action::Failed);
   EXPECT_FALSE(Storage.exists(snapshotPath.c_str()));
 }
+
+
+TEST_F(MarkdownLegacyProgress, MissingBookIndexStillProtectsLegacyPosition) {
+  oldIndex(18, 40, false);
+  Storage.files.erase(indexPath);
+  const auto action = ml::prepare(dir, 4096);
+  EXPECT_EQ(action.action, ml::Action::Approximate);
+  EXPECT_EQ(Storage.files.at(snapshotPath), Storage.files.at(originalPath));
+}
+TEST_F(MarkdownLegacyProgress, MissingV2MarkerWithPreexistingBackupStopsUnsafeOverwrite) {
+  oldIndex(10, 40, false);
+  Storage.files[snapshotPath] = Storage.files.at(originalPath);
+  Storage.files[originalPath][2] = static_cast<char>(15);
+  const auto action = ml::prepare(dir, 100);
+  EXPECT_EQ(action.action, ml::Action::Failed);
+  EXPECT_EQ(static_cast<uint8_t>(Storage.files.at(snapshotPath)[2]), 10u);
+}
+
+TEST_F(MarkdownLegacyProgress, InvalidLegacySpineCannotOpenOutsideMarkdownChapter) {
+  oldIndex(15, 40, true);
+  Storage.files[originalPath][0] = static_cast<char>(3);
+  const auto plan = ml::prepare(dir, 100);
+  EXPECT_EQ(plan.action, ml::Action::Restart);
+  EXPECT_EQ(Storage.files.at(snapshotPath), Storage.files.at(originalPath));
+}

@@ -86,11 +86,11 @@ inline bool preserve(const std::string& cachePath, const Bytes& legacy) {
 // Presence of V2's successful index sidecar means any saved progress is
 // already a V2 reading position and should be handled by the existing path.
 inline Plan prepare(const std::string& cachePath, uint32_t sourceBytes) {
-  const std::string legacyIndex = cachePath + "/book.bin";
   const std::string v2Index = cachePath + "/markdown-index-v2.fnv";
   const std::string progressFile = cachePath + "/progress.bin";
-  if (!Storage.exists(legacyIndex.c_str()) || Storage.exists(v2Index.c_str()) ||
-      !Storage.exists(progressFile.c_str())) {
+  // Old progress can survive a missing/corrupt book.bin (e.g. interrupted
+  // cache rebuild). Do not treat it as V2 simply because metadata vanished.
+  if (Storage.exists(v2Index.c_str()) || !Storage.exists(progressFile.c_str())) {
     return {};
   }
   Bytes data;
@@ -101,7 +101,10 @@ inline Plan prepare(const std::string& cachePath, uint32_t sourceBytes) {
     plan.savedPage = static_cast<uint16_t>(data.data[2] | (data.data[3] << 8));
     plan.savedTotal = static_cast<uint16_t>(data.data[4] | (data.data[5] << 8));
   }
-  if (data.size >= 6 && plan.savedTotal > 1 && plan.savedPage != UINT16_MAX &&
+  const uint16_t savedSpine = static_cast<uint16_t>(data.data[0] | (data.data[1] << 8));
+  // TXT/Markdown always has a single spine. A stale/corrupt foreign spine
+  // must never attempt an out-of-bounds resume.
+  if (savedSpine == 0 && data.size >= 6 && plan.savedTotal > 1 && plan.savedPage != UINT16_MAX &&
       sourceBytes <= kApproximateMaxSourceBytes && plan.savedPage > 0) {
     plan.action = Action::Approximate;
   }
