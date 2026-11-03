@@ -82,3 +82,33 @@ Remaining: real X3/X4/X4Pro devices, staging HTTPS KoSync sync,
 offline deletion and restart, two divergent note revisions, SD
 power cuts, runtime memory, exact quote reattachment and server
 account-specific canonical document mapping. No merge or OTA.
+
+## Final verified QA · 2026-11-04
+
+- Full host CMake/CTest: **1209/1209 PASS** (25.69 s), including
+  Python/C++ extracted production selection/redraw/hit-target harness.
+- Targeted note identity + clipping preview: **25/25 PASS**;
+  generated filename validation, directory moves, changed same-size
+  Markdown content, stale/matching source signatures and EPUB parity.
+- Existing YBX Site clipping wire-contract pytest: **19/19 PASS**.
+  Server files, schema and production data were not modified.
+- ESP32-C3 default / X3-X4 final PlatformIO: **PASS**;
+  flash 5,715,437 / 6,553,600 bytes (87.2%);
+  static RAM 66,904 / 327,680 bytes (20.4%);
+  firmware.bin 5,729,968 bytes;
+  SHA-256 999471ba3de455dbc326de101a5fbf25f46ea68e1f3617e9913152848fea1618.
+- ESP32-S3 x4pro / X4 Pro final PlatformIO: **PASS**;
+  flash 5,554,398 / 6,553,600 bytes (84.8%);
+  static RAM 111,956 / 327,680 bytes (34.2%);
+  firmware.bin 5,559,664 bytes;
+  SHA-256 e89165b07cfdc6f9a899b34ac1b6d5ba0d4273d0b71f536b0265424f70606aae.
+- Flash delta against draft parent PR #18:
+  +728 bytes C3, +776 bytes S3. Static RAM unchanged.
+  Link metrics are NOT measurements of real runtime heap or battery.
+- Raw logs, retained firmware images, sha256 files:
+  ~/Projects/Ybx/artifacts/ybx-native-note-doc-id-20261104.
+- Both environments were rebuilt incrementally at the final source
+  head after the last tap hit-test fix. freeink-sdk was dirtied by
+  the PlatformIO patch step only, not staged or committed.
+- No real hardware, staging KoSync upload, SD fault injection,
+  main merge, OTA, firmware release or production deployment.
