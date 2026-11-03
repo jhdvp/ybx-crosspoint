@@ -80,3 +80,29 @@ Still open:
   and tested; this feature is offline-only.
 - QEMU/real-device end-to-end acceptance. No OTA, device flash,
   release or merge to main based solely on build passes.
+
+## Final host and firmware build evidence · 2026-11-03
+
+- Host CMake/CTest: 1172 of 1172 PASS (17.36 seconds).
+  Markdown/TXT target: all 18 tests PASS, including strict XML
+  well-formedness, sanitized malformed UTF-8, same-size digest changes
+  and 128-heading TOC bound.
+- ESP32-C3 default, X3/X4: PlatformIO PASS.
+  Flash: 5,712,417 / 6,553,600 bytes (87.2%).
+  Static RAM: 66,904 / 327,680 bytes (20.4%).
+  firmware.bin: 5,726,944 bytes.
+  SHA-256 d412c3b9680051f538cd381298d18780282add595f609037d5a7804b62d91018.
+- ESP32-S3 x4pro: PlatformIO PASS.
+  Flash: 5,551,494 / 6,553,600 bytes (84.7%).
+  Static RAM: 111,956 / 327,680 bytes (34.2%).
+  firmware.bin: 5,556,752 bytes.
+  SHA-256 5c266ec5194907c837871d35388af971334f31880e831999555ed4b8a244599f.
+- Flash growth vs the preceding Native Notes PR #15:
+  +7,578 bytes C3, +7,112 bytes S3; no static RAM growth.
+  These build figures are NOT real runtime heap or battery data.
+- Full raw logs, retained firmware images and SHA-256 files:
+  ~/Projects/Ybx/artifacts/ybx-markdown-20261103.
+- The freeink-sdk worktree can be marked dirty by the PlatformIO
+  patch step. Its modifications were deliberately not committed.
+- Both reader firmware images are validation artifacts only: never
+  flashed to devices, installed via OTA, deployed or released.
