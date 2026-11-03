@@ -13,16 +13,22 @@ inline std::string remoteResponse;
 inline int requests = 0;
 inline int failHttpAt = -1;
 inline bool incomplete = false;
+inline bool insecureCalled = false;
+inline bool trustedClient = false;
+inline unsigned authHeaders = 0;
 }  // namespace fake
 namespace freeink {
 class SecureHttpClient {
  public:
-  void setInsecure() {}
+  void setInsecure() { fake::insecureCalled = true; }
+  void setCACert(const char*) { fake::trustedClient = true; }
   bool begin(const std::string& url) {
     url_ = url;
-    return true;
+    return fake::trustedClient;
   }
-  void addHeader(const std::string&, const std::string&) {}
+  void addHeader(const std::string& key, const std::string&) {
+    if (key == "x-auth-user" || key == "x-auth-key" || key == "Authorization") ++fake::authHeaders;
+  }
   template <typename Sink>
   int sendRequest(const char* method, const uint8_t* data, size_t length, Sink sink) {
 #if defined(CONFIG_IDF_TARGET_ESP32C3) && CONFIG_IDF_TARGET_ESP32C3

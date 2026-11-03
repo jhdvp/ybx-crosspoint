@@ -12,6 +12,7 @@
 
 #include "BuildScratch.h"
 #include "clippings/ClippingSync.h"
+#include "network/TlsTransport.h"
 
 namespace {
 constexpr const char* book = "/book.epub";
@@ -20,12 +21,23 @@ std::vector<uint8_t> framebuffer(52272);
 void reset() {
   CLIPPINGS.unload();
   fake::reset();
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3
+  fake::syncHeap = 100000;
+#else
   fake::syncHeap = 68000;
+#endif
   fake::syncBufferAllocated = false;
   fake::uploads.clear();
   fake::requests = 0;
   fake::failHttpAt = -1;
   fake::incomplete = false;
+  fake::insecureCalled = false;
+  fake::trustedClient = false;
+  fake::authHeaders = 0;
+  fake::allowVerifiedTls = true;
+  fake::tlsPrepared = false;
+  fake::tlsAttempts = 0;
+  syncCredentials.baseUrl = "https://sync.test";
   fake::remoteResponse = "{\"cursor\":0,\"more\":false,\"items\":[]}";
   syncCredentials.enabled = true;
 }
@@ -99,8 +111,32 @@ int main() {
   released();
 #if defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3
   reset();
+  fake::syncHeap = 68000;
   assert(!clippingSync::run(book, "hash"));  // Preserve the S3 heap guard.
 #endif
+  // Account credentials must never be sent over HTTP or unverified TLS,
+  // including on the old anonymous clipping upload path.
+  reset();
+  syncCredentials.baseUrl = "http://sync.test";
+  assert(!clippingSync::run(book, "hash"));
+  assert(fake::tlsAttempts == 1);
+  assert(fake::requests == 0);
+  assert(fake::authHeaders == 0);
+  assert(!fake::insecureCalled);
+  released();
+  reset();
+  fake::allowVerifiedTls = false;  // unavailable clock / bad CA
+  assert(!clippingSync::run(book, "hash"));
+  assert(fake::tlsAttempts == 1);
+  assert(fake::requests == 0);
+  assert(fake::authHeaders == 0);
+  released();
+  reset();
+  assert(clippingSync::run(book, "hash"));
+  assert(fake::tlsPrepared && fake::trustedClient && !fake::insecureCalled);
+  assert(fake::authHeaders >= 2);
+  released();
+
   buildscratch::reclaim();
 #if defined(CONFIG_IDF_TARGET_ESP32C3) && CONFIG_IDF_TARGET_ESP32C3
   reset();

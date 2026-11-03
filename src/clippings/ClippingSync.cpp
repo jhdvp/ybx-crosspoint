@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "ClippingStore.h"
+#include "network/TlsTransport.h"
 
 namespace {
 // One item per response: 4 KiB text may occupy 24 KiB when JSON-escaped.
@@ -153,8 +154,14 @@ bool clippingSync::run(const std::string& bookPath, const std::string& documentH
     LOG_ERR("CLIP", "Insufficient heap for clipping sync");
     return false;
   }
-  http->setInsecure();
   const std::string url = KOREADER_STORE.getBaseUrl() + "/api/v1/clippings/" + documentHash;
+  // Clippings carry the account KOSync password hash and optional bearer
+  // credentials. Never send either over HTTP or unverified TLS; use the same
+  // clock + CA/hostname verification already enforced by YBX PluginHttp.
+  if (!tlspolicy::prepareHttpsClient(*http, url)) {
+    LOG_ERR("CLIP", "Verified HTTPS is required for clipping sync");
+    return false;
+  }
   JsonDocument doc;
   // Probe the extension before any upload, even when the user explicitly enabled it.
   if (!request(*http, url + "?cursor=0&limit=1&format=reader", buffer.get(), doc) ||

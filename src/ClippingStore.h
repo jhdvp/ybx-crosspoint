@@ -99,6 +99,7 @@ class ClippingStore {
   bool dirty = false;
 
   bool reserveClippings(size_t count);
+  bool assignUniqueId(Clipping& clipping);
   bool readFromFile();
   bool writeToFile(const std::string* replacementText = nullptr, size_t replacementIndex = SIZE_MAX);
 };
