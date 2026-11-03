@@ -37,6 +37,7 @@ saved_draw = method("void EpubReaderActivity::drawClippingHighlights", "void Epu
 # Compile production extraction, export, and redraws with bounded UI/rendering stubs.
 harness = r"""
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -54,6 +55,7 @@ harness = r"""
 #include "clippings/ClippingText.h"
 #include "ClippingStore.h"
 #include "util/YbxDocumentIdentity.h"
+#include "util/YbxNoteReanchor.h"
 #include <Epub/ReaderRenderSpec.h>
 namespace BidiUtils { enum class BidiBaseDir : int8_t { AUTO = -1, LTR = 0, RTL = 1 }; }
 struct EpdFontFamily { enum Style { REGULAR, UNDERLINE = 4 }; };
@@ -230,6 +232,8 @@ struct EpubReaderActivity {
   int currentSpineIndex = 0, buildViewportWidth = 480, buildViewportHeight = 800;
   std::string bookPath = "/ordinary.epub";
   uint32_t nativeNoteRevision = 0;
+  std::array<ybxnote::Relocation, ybxnote::kMaxRelocations> nativeNoteReanchors{};
+  uint8_t nativeNoteReanchorCount = 0;
   int clippingAtPoint(const Page&, int, int) const;
   void drawClippingHighlights(const Page&, int, int, int) const;
 };
@@ -371,6 +375,15 @@ int main() {
     reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
     assert(activity.renderer.fills.empty());
     assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 8) == -1);
+    // A uniquely relocated quote reappears in both draw and touch; it is
+    // never persisted into the original stale clipping record.
+    reader.nativeNoteReanchors[0] = {0, 0, 3};
+    reader.nativeNoteReanchorCount = 1;
+    activity.renderer.fills.clear();
+    reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
+    assert(activity.renderer.fills.size() == 1);
+    assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 8) == 0);
+    reader.nativeNoteReanchorCount = 0;
     savedClippings.clipping.layoutSignature = 123456u;
     activity.renderer.fills.clear();
     reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
@@ -453,7 +466,7 @@ with tempfile.TemporaryDirectory() as directory:
         "-I", str(ROOT / "src"), "-I", str(ROOT / "lib/Memory"),
         "-I", str(ROOT / "test/minibidi_arabic/stubs"),
         "-I", str(ROOT / "lib/MiniBidi"), "-I", str(ROOT / "lib/Utf8"),
-        "-I", str(ROOT / "lib/Epub"),
+        "-I", str(ROOT / "lib/Epub"), "-I", str(ROOT / "lib/Txt"),
         str(cpp), str(bidi_object), str(ROOT / "lib/MiniBidi/BidiUtils.cpp"),
         str(ROOT / "lib/Utf8/Utf8.cpp"), "-o", str(executable),
     ], check=True)

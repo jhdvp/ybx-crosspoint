@@ -5,6 +5,7 @@
 #include <Epub/PageLink.h>
 #include <Epub/Section.h>
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <optional>
@@ -19,6 +20,7 @@
 #include "ProgressWriteGate.h"
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
+#include "util/YbxNoteReanchor.h"
 #include "components/OptionPopup.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -125,6 +127,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // Source-revision guard for managed Native Notes. Zero means unavailable:
   // still show quotations in the list, but never paint stale coordinates.
   uint32_t nativeNoteRevision = 0;
+  std::array<ybxnote::Relocation, ybxnote::kMaxRelocations> nativeNoteReanchors{};
+  uint8_t nativeNoteReanchorCount = 0;
   uint16_t buildViewportWidth = 0;
   uint16_t buildViewportHeight = 0;
   bool partialRebuildStartFailed = false;

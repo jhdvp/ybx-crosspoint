@@ -13,6 +13,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <HalMemory.h>
 #include <TrustedTime.h>
 #include <WiFi.h>
 #include <esp_system.h>
@@ -244,16 +245,7 @@ EpubReaderActivity::~EpubReaderActivity() {
 
 bool EpubReaderActivity::loadBook() {
   nativeNoteRevision = 0;
-  if (ybxdocument::isManagedNote(bookPath)) {
-    std::string source;
-    // No unbounded allocation: Native Notes must fit the format's own
-    // 4 KiB body + title budget. Other Markdown files are not scanned here.
-    if (Storage.readFileToString("NOTE", bookPath, nativeapps::notes::kMaxFileBytes, source)) {
-      nativeNoteRevision = ybxnote::revisionSignature(source);
-    }
-    // Missing/corrupt/oversize note -> 0. Reading still works; highlighting
-    // old offsets is disabled rather than falsely using a layout signature.
-  }
+  nativeNoteReanchorCount = 0;
   auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, "/.crosspoint");
   if (!loadedEpub) {
     LOG_ERR("ERS", "Failed to allocate EPUB object");
@@ -361,8 +353,46 @@ bool EpubReaderActivity::loadBook() {
 
   loadLinkStack();
   loadCachedBookmarks();
-  if (!CLIPPINGS.loadForBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), "epub")) {
-    LOG_ERR("CLIP", "Failed to load clippings for %s", epub->getPath().c_str());
+  const bool clippingsLoaded = CLIPPINGS.loadForBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), "epub");
+  if (!clippingsLoaded) LOG_ERR("CLIP", "Failed to load clippings for %s", epub->getPath().c_str());
+
+  if (ybxdocument::isManagedNote(bookPath)) {
+    std::string source;
+    nativeapps::notes::Document validated;
+    // Re-read after EPUB is loaded to avoid retaining a 4 KiB source buffer
+    // throughout potentially expensive index construction.
+    if (Storage.readFileToString("NOTE", bookPath, nativeapps::notes::kMaxFileBytes, source) &&
+        nativeapps::notes::decode(source, validated)) {
+      nativeNoteRevision = ybxnote::revisionSignature(source);
+      // C3: never spend our last contiguous heap block on best-effort
+      // relinking. Normal page display, clipping lists and sync win.
+      const auto heap = HalMemory::getDefaultHeap();
+      if (clippingsLoaded && CLIPPINGS.hasClippings() &&
+          heap.freeBytes >= 32 * 1024 && heap.largestBlockBytes >= 12 * 1024) {
+        std::string visible;
+        if (ybxnote::renderVisibleText(source, visible)) {
+          uint8_t attempts = 0;
+          for (size_t i = 0; i < CLIPPINGS.clippingCount() &&
+                             attempts < ybxnote::kMaxRelocations; ++i) {
+            const Clipping& clip = *CLIPPINGS.clippingAt(i);
+            if (clip.spineIndex != 0 || clip.layoutSignature == 0 ||
+                clip.layoutSignature == nativeNoteRevision ||
+                clip.textLength < ybxnote::kMinQuoteBytes ||
+                clip.textLength > ybxnote::kMaxQuoteBytes) continue;
+            ++attempts;
+            std::string quote;
+            if (!CLIPPINGS.readClippingText(i, quote)) continue;
+            const auto candidate = ybxnote::findUnique(visible, quote);
+            if (candidate.status == ybxnote::Match::Found) {
+              nativeNoteReanchors[nativeNoteReanchorCount++] =
+                  {static_cast<uint16_t>(i), candidate.start, candidate.end};
+            }
+          }
+        }
+      }
+    }
+    // An unreadable/corrupt note remains readable but old highlights are
+    // never painted or given tap targets without a valid source revision.
   }
   return true;
 }
@@ -2447,6 +2477,12 @@ int EpubReaderActivity::clippingAtPoint(const Page& page, const int x, const int
                                  signature, index, range.start, range.end, managedNote))
           return static_cast<int>(j);
       }
+      // Scan at most 16 resolved spans ONCE per word, not once per clip.
+      if (managedNote && currentSpineIndex == 0) {
+        for (uint8_t k = 0; k < nativeNoteReanchorCount; ++k)
+          if (ybxnote::contains(nativeNoteReanchors[k], nativeNoteReanchors[k].index, range.start, range.end))
+            return nativeNoteReanchors[k].index;
+      }
     }
   }
   return -1;
@@ -2467,17 +2503,22 @@ void EpubReaderActivity::drawClippingHighlights(const Page& page, const int font
   const auto started = millis();
   size_t highlightedWords = 0;
   const uint16_t currentPage = static_cast<uint16_t>(section->currentPage);
+  const bool managedNote = ybxdocument::isManagedNote(bookPath);
   const uint32_t layoutSignature =
-      ybxdocument::isManagedNote(bookPath) ? nativeNoteRevision
-          : readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
+      managedNote ? nativeNoteRevision
+                  : readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
   const auto isHighlighted = [&](const uint16_t wordIndex, const TextBlock::SourceRange range) {
     // ponytail: scan at most 256 C3 / 1024 S3 clippings per word; index by chapter if this becomes slow.
     for (size_t index = 0; index < CLIPPINGS.clippingCount(); ++index) {
       const Clipping& clipping = *CLIPPINGS.clippingAt(index);
       if (clippingContainsWord(clipping, static_cast<uint16_t>(currentSpineIndex), currentPage, section->pageCount,
-                               layoutSignature, wordIndex, range.start, range.end,
-                               ybxdocument::isManagedNote(bookPath)))
+                               layoutSignature, wordIndex, range.start, range.end, managedNote))
         return true;
+    }
+    if (managedNote && currentSpineIndex == 0) {
+      for (uint8_t k = 0; k < nativeNoteReanchorCount; ++k)
+        if (ybxnote::contains(nativeNoteReanchors[k], nativeNoteReanchors[k].index, range.start, range.end))
+          return true;
     }
     return false;
   };
