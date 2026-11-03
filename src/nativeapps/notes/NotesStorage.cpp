@@ -140,12 +140,21 @@ List list() {
     char name[64] = {};
     if (!file.getName(name, sizeof(name))) continue;
     const std::string fullName(name);
+    std::string noteName;
     if (validFileName(fullName)) {
-      candidates.push_back(fullName);
+      noteName = fullName;
     } else if (fullName.size() > 4 && fullName.substr(fullName.size() - 4) == ".bak" &&
                validFileName(std::string_view(fullName).substr(0, fullName.size() - 4))) {
-      candidates.push_back(fullName.substr(0, fullName.size() - 4));
+      noteName = fullName.substr(0, fullName.size() - 4);
     }
+    if (noteName.empty()) continue;
+    // A large/copied SD directory must never force an unbounded heap
+    // allocation simply from listing names. Keep an extra slot to signal
+    // truncation without materializing the remainder.
+    if (candidates.size() < kMaxNotes + 1)
+      candidates.push_back(std::move(noteName));
+    else
+      result.truncated = true;
   }
   dir.close();
   std::sort(candidates.begin(), candidates.end());
