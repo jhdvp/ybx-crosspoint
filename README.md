@@ -90,8 +90,8 @@ agent changes and remaining device gates.
    prompt. Connect services in the YBX account; reopen the catalog after changing
    connections.
 
-The public stock-CrossPoint plugin and the bundled **1.9.0** plugin are separate
-channels. This bundled version requires firmware capability `catalog.lists.auth`.
+The public stock-CrossPoint plugin and the bundled **1.9.1** plugin are separate
+channels. This bundled version requires firmware capabilities `catalog.lists.auth` and `catalog.folders.json`.
 Do not copy it onto a stock firmware that lacks that capability.
 
 ## Build from source

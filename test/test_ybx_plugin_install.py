@@ -21,11 +21,28 @@ class YbxPluginInstall(unittest.TestCase):
         target = self.root / 'plugins/ybx'
         manifest = json.loads((target / 'manifest.json').read_text())
         device = json.loads((target / 'device.json').read_text())
-        self.assertEqual(manifest['version'], '1.9.0')
+        self.assertEqual(manifest['version'], '1.9.1')
         self.assertIn('catalog.lists.auth', manifest['compatibility']['requires'])
+        self.assertIn('catalog.folders.json', manifest['compatibility']['requires'])
+        self.assertEqual(device['browse']['fields']['folder_url'], 'folder_url')
+        self.assertEqual(device['browse']['lists_headers']['Authorization'], 'Bearer {token}')
+
         self.assertIn('/catalog/lists', device['browse']['lists_url'])
         self.assertFalse((target / 'token.json').exists())
         self.assertIn('config.json', result['installed'])
+
+    def test_nested_folder_extension_preserves_native_ybx_features(self):
+        manifest = json.loads((installer.SOURCE / 'manifest.json').read_text())
+        device = json.loads((installer.SOURCE / 'device.json').read_text())
+        metadata = json.loads((installer.SOURCE / 'plugin.json').read_text())
+        self.assertIn('catalog.folders.json', metadata['compatibility']['requires'])
+        self.assertEqual(metadata['version'], manifest['version'])
+        self.assertEqual(device['download']['dest_dir'], '/books/ybx')
+        self.assertTrue(device['download']['require_url'])
+        self.assertIn('reading_summary', device['ybx'])
+        self.assertIn('achievements', device['ybx'])
+        self.assertEqual(device['auth']['token_path'], 'access_token')
+        self.assertEqual(device['token']['file'], 'token.json')
 
     def test_existing_credentials_and_custom_config_are_preserved(self):
         target = self.root / 'plugins/ybx'
