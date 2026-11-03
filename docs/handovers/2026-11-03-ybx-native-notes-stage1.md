@@ -87,3 +87,34 @@ file round-trip, power cycle and FAT repair. Cross-client YBX notes sync
 and canonical highlight IDs, full Markdown parser/TOC and stable
 pagination/resume mapping are separately unimplemented requirements
 within #56. Never do OTA/flash/merge based only on compilation.
+
+## Final verified QA evidence (2026-11-03)
+
+- Complete CMake/CTest suite: **1157/1157 PASS** (14.31 sec).
+  Includes 8 pure Markdown-document tests and 14 storage tests using
+  fault-injectable simulated HalStorage.
+- Simulated storage faults verified: short temp write, failed close,
+  verification-read failure, failed canonical-to-backup rename, failed
+  temp-to-canonical rename + fallback, missing canonical recovery from valid
+  backup, orphaned tmp never promoted, corrupt final retains backup, delete
+  removes resurrection candidates, failed deletion retains canonical,
+  offline SD, and 250-entry bounded directory scan.
+- ESP32-C3 default (X3/X4) PlatformIO PASS at the corrected source head:
+  flash 5,704,839 / 6,553,600 bytes (87.0%);
+  static RAM 66,904 / 327,680 bytes (20.4%);
+  firmware.bin 5,719,360 bytes;
+  SHA-256 2eab8a0b84faedc64e366caffba01556a545d64074e8ef081e92c9b62788cfc6.
+- ESP32-S3 x4pro PlatformIO PASS:
+  flash 5,544,382 / 6,553,600 bytes (84.6%);
+  static RAM 111,956 / 327,680 bytes (34.2%);
+  firmware.bin 5,549,648 bytes;
+  SHA-256 3ef50549380bc8f5c39f976ff076f4cebe568442a77ca7e23e026a96375149b6.
+- Relative to parent PR #13, flash delta: +17,802 bytes on C3,
+  +15,152 bytes on S3; unchanged static RAM. These are compile-time
+  measurements, NOT measured runtime peak heap, stack or SD reliability.
+- Local retained builds and logs:
+  ~/Projects/Ybx/artifacts/ybx-notes-20261103.
+- Host fault injection validates NotesStorage control flow with a fake HAL.
+  It cannot prove that FAT metadata and physical SD writes survive a real
+  interrupted write/power failure. Hardware and QEMU end-to-end remain OPEN.
+- No production merge, OTA, firmware release or physical flash.
