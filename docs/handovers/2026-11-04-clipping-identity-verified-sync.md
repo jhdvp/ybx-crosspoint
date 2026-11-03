@@ -68,3 +68,36 @@ Acceptance remains: real SNTP and wolfSSL CA/hostname checks, full SD
 and power-cut, certificate renewal, large batches and retries,
 staging server with test account, memory/energy, real X3/X4/X4Pro
 selection, export and clip deletion. No main merge, OTA or device flash.
+
+## Final verified acceptance evidence · 2026-11-04
+
+- Full CMake/CTest host suite: **1197 / 1197 PASS** (14.68 seconds).
+- ClippingStore targeted GTests: **26 / 26 PASS** (13 for C3 and
+  13 for S3), including pre-sync ID, restart/retry, deletion
+  tombstone and forced repeat-entropy collision.
+- ClippingSync standalone dual-target host harness: **C3 PASS**,
+  **S3 PASS**, including HTTPS-only CA/time trust gate, no auth
+  headers when rejected, no calls to setInsecure, protocol regression,
+  maximal escaped quote and memory/loan guards.
+- YBX Site server protocol pytest: **19 / 19 PASS**, against the
+  existing sync_version=2 contract; server source not modified.
+- ESP32-C3 default / X3-X4 PlatformIO: **PASS**.
+  Flash 5,714,709 / 6,553,600 bytes (87.2%).
+  Static RAM 66,904 / 327,680 bytes (20.4%).
+  firmware.bin 5,729,232 bytes.
+  SHA-256 885745dfd7899acd1a423ad8a48df2bc0f130431414e9a390593801577959125.
+- ESP32-S3 x4pro / X4 Pro PlatformIO: **PASS**.
+  Flash 5,553,622 / 6,553,600 bytes (84.7%).
+  Static RAM 111,956 / 327,680 bytes (34.2%).
+  firmware.bin 5,558,880 bytes.
+  SHA-256 ec77cb3d70a03076f237eff48a54c29442a97a7eae09a4443dc59e0ec7ab6a03.
+- Versus parent PR #17: C3 flash +350 bytes; S3 flash +264
+  bytes, static RAM unchanged. These are link metrics, NOT a
+  runtime-heap or battery benchmark.
+- Retained images, full build/test logs and SHA files:
+  ~/Projects/Ybx/artifacts/ybx-clippings-identity-tls-20261104.
+- The freeink-sdk worktree was marked dirty by PlatformIO's
+  SDK patch step and was not committed.
+- Physical X3/X4/X4 Pro, genuine CA verification/clock recovery,
+  staging sync, power-loss and book-identity acceptance remain open.
+  No device flash, OTA, production or main merge.
