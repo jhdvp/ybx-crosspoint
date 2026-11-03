@@ -36,7 +36,8 @@ domain-separated as ybx-native-note-md-v2:). The note is read once on
 load, within its maximum native-note format budget, and the signature
 is reused for selection and drawing. A note highlight paints only
 when the saved signature matches, source offsets are known and overlap,
-and spine matches. The old page/word fallback is forbidden for notes:
+and spine matches. The same guard applies to clippingAtPoint hit-testing
+so stale quotes cannot be opened by tapping unrelated words. The old page/word fallback is forbidden for notes:
 it cannot prove correctness after an edit.
 
 If the source is missing/oversized/unreadable, the note can still
@@ -72,8 +73,8 @@ text matching. False placement is deliberately avoided.
   stable clipping key after same-size edits and unchanged EPUB sync.
 - Preview tests: unknown/stale note signature hides a highlight
   while EPUB and same-version native-note clipping remain visible.
-- Production drawing harness verifies both cases from actual
-  EpubReaderActivity::drawClippingHighlights extraction.
+- Production drawing and hit-test harness verifies both cases from
+  actual EpubReaderActivity::drawClippingHighlights and clippingAtPoint.
 - Final full CMake/CTest and both board build evidence appended after
   verification.
 

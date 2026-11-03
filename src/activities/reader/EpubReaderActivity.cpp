@@ -2420,8 +2420,10 @@ int EpubReaderActivity::clippingAtPoint(const Page& page, const int x, const int
   int top, right, bottom, left;
   renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
   const int fontId = SETTINGS.getReaderFontId();
+  const bool managedNote = ybxdocument::isManagedNote(bookPath);
   const uint32_t signature =
-      readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
+      managedNote ? nativeNoteRevision
+                  : readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
   uint16_t wordIndex = 0;
   for (const auto& element : page.elements) {
     if (element->getTag() != TAG_PageLine) continue;
@@ -2442,7 +2444,7 @@ int EpubReaderActivity::clippingAtPoint(const Page& page, const int x, const int
       const auto range = block->wordSourceRange(i);
       for (size_t j = 0; j < CLIPPINGS.clippingCount(); ++j) {
         if (clippingContainsWord(*CLIPPINGS.clippingAt(j), currentSpineIndex, section->currentPage, section->pageCount,
-                                 signature, index, range.start, range.end))
+                                 signature, index, range.start, range.end, managedNote))
           return static_cast<int>(j);
       }
     }

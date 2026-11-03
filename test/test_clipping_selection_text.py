@@ -370,10 +370,12 @@ int main() {
     activity.renderer.fills.clear();
     reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
     assert(activity.renderer.fills.empty());
+    assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 8) == -1);
     savedClippings.clipping.layoutSignature = 123456u;
     activity.renderer.fills.clear();
     reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
     assert(activity.renderer.fills.size() == 1);
+    assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 8) == 0);
     reader.bookPath = "/ordinary.epub";
   }
   for (const auto& logical : {std::vector<std::string>{"אחד", "alpha", "beta", "שני"},
