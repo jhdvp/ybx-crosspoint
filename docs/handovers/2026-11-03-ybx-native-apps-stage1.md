@@ -83,3 +83,34 @@ new keys. Existing language selection logic is unchanged.
 - QEMU screen capture/interaction requires a working emulator EPD/input
   profile, so a compiler pass is not accepted as proof of rendered visuals.
 - No flash to any real device, OTA, release or production deployment.
+
+## Verified host and board build evidence (2026-11-03)
+
+- Host CMake/CTest: 1135/1135 PASS (18.66 s), including 10 new
+  NativeAppsCatalog tests covering metadata, device filtering, safe paths
+  and reject cases.
+- ESP32-C3 default (X3/X4) PlatformIO: PASS.
+  Static RAM: 66,904 / 327,680 bytes (20.4%).
+  Application flash: 5,687,037 / 6,553,600 bytes (86.8%).
+  Retained firmware.bin: 5,701,568 bytes.
+  SHA-256 6ceacc762b41631bb2cd1c213a7feec6f25b8a08d2ac75072cbbd3a391bbffae.
+- ESP32-S3 x4pro PlatformIO: PASS.
+  Static RAM: 111,956 / 327,680 bytes (34.2%).
+  Application flash: 5,529,230 / 6,553,600 bytes (84.4%).
+  Retained firmware.bin: 5,534,496 bytes.
+  SHA-256 b3436405650d831d817d03c7c0bd4258ecd7f64db713c8eaf91f9e4c2f497d4c.
+- Relative to the immediately preceding firmware change (PR #12):
+  +7,112 bytes C3 flash and +5,764 bytes S3 flash, with no static RAM delta.
+  This is a code/asset build comparison, not a free-heap or battery result.
+- Both binaries and full raw logs retained locally under
+  ~/Projects/Ybx/artifacts/ybx-native-apps-20261103.
+  They are not release assets; no OTA or device flashing was performed.
+
+## Remaining release blockers
+
+- 100-cycle launcher / diagnostics / back test on physical boards, measured
+  max contiguous heap and stack headroom before and after.
+- Actual X4 Pro touch navigation and X3/X4 button behavior, including More
+  with/without On Reader shelf, locale strings and all supported rotations.
+- Energy, sleep/restart, low-memory and card-removal tests.
+- Do not merge this draft PR chain to main based on build evidence alone.
