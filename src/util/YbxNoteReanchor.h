@@ -21,6 +21,15 @@ inline constexpr size_t kMaxQuoteBytes = 512;
 inline constexpr size_t kMinQuoteBytes = 8;
 inline constexpr size_t kMaxVisibleBytes = nativeapps::notes::kMaxFileBytes * 2 + 64;
 
+// Optional context extends PR #20's exact-quote strategy. It is a
+// capture-time snapshot of *visible XHTML text*, not raw Markdown.
+inline constexpr size_t kMaxContextCodepoints = 16;
+inline constexpr size_t kMaxContextBytes = 64;
+struct Context {
+  std::string prefix;
+  std::string suffix;
+};
+
 struct Relocation {
   uint16_t index = 0;
   uint32_t start = 0; // Codepoint index in the EXACT renderer's XHTML body text stream
@@ -134,7 +143,8 @@ inline bool wordish(unsigned char c) {
 // never selects an arbitrary first or nearest match.
 inline Candidate findUnique(std::string_view visible, std::string_view quote) {
   if (quote.size() < kMinQuoteBytes || quote.size() > kMaxQuoteBytes ||
-      visible.size() > kMaxVisibleBytes || quote.front() <= ' ' || quote.back() <= ' ' ||
+      visible.size() > kMaxVisibleBytes || static_cast<unsigned char>(quote.front()) <= ' ' ||
+      static_cast<unsigned char>(quote.back()) <= ' ' ||
       !nativeapps::notes::isValidUtf8(quote, true) ||
       !nativeapps::notes::isValidUtf8(visible, true)) return {};
 
@@ -157,6 +167,79 @@ inline Candidate findUnique(std::string_view visible, std::string_view quote) {
       result.end = result.start + codepointCount(quote);
     }
     ++at; // detect overlapping duplicates too
+  }
+  return result;
+}
+
+// Convert the exact XHTML-body codepoint offsets supplied by the reader to
+// byte offsets within the same valid UTF-8 visible-text stream.
+inline bool byteAtCodepoint(std::string_view utf8, uint32_t requested, size_t& byte) {
+  uint32_t count = 0;
+  for (size_t pos = 0; pos < utf8.size(); ++pos) {
+    if ((static_cast<unsigned char>(utf8[pos]) & 0xC0) == 0x80) continue;
+    if (count++ == requested) { byte = pos; return true; }
+  }
+  if (count == requested) { byte = utf8.size(); return true; }
+  return false;
+}
+
+inline bool makeContext(std::string_view visible, std::string_view quote, uint32_t start, uint32_t end,
+                        Context& result) {
+  if (start == UINT32_MAX || end == UINT32_MAX || end <= start ||
+      quote.size() < kMinQuoteBytes || quote.size() > kMaxQuoteBytes ||
+      visible.size() > kMaxVisibleBytes || static_cast<unsigned char>(quote.front()) <= ' ' ||
+      static_cast<unsigned char>(quote.back()) <= ' ' ||
+      !nativeapps::notes::isValidUtf8(quote, true) ||
+      !nativeapps::notes::isValidUtf8(visible, true)) return false;
+  size_t first = 0, last = 0, prefix = 0, suffix = 0;
+  const uint32_t cpTotal = codepointCount(visible);
+  if (end > cpTotal || end - start != codepointCount(quote) ||
+      !byteAtCodepoint(visible, start, first) || !byteAtCodepoint(visible, end, last) ||
+      !byteAtCodepoint(visible, start > kMaxContextCodepoints ? start - kMaxContextCodepoints : 0, prefix) ||
+      !byteAtCodepoint(visible, std::min<uint32_t>(end + kMaxContextCodepoints, cpTotal), suffix) ||
+      visible.substr(first, last - first) != quote) return false;
+  Context candidate{std::string(visible.substr(prefix, first - prefix)),
+                    std::string(visible.substr(last, suffix - last))};
+  if (candidate.prefix.size() > kMaxContextBytes || candidate.suffix.size() > kMaxContextBytes ||
+      (candidate.prefix.empty() && candidate.suffix.empty())) return false;
+  result = std::move(candidate);
+  return true;
+}
+
+inline Candidate findWithContext(std::string_view visible, std::string_view quote, const Context& context) {
+  if (quote.size() < kMinQuoteBytes || quote.size() > kMaxQuoteBytes ||
+      visible.size() > kMaxVisibleBytes || static_cast<unsigned char>(quote.front()) <= ' ' ||
+      static_cast<unsigned char>(quote.back()) <= ' ' ||
+      context.prefix.size() > kMaxContextBytes || context.suffix.size() > kMaxContextBytes ||
+      (context.prefix.empty() && context.suffix.empty()) ||
+      !nativeapps::notes::isValidUtf8(quote, true) ||
+      !nativeapps::notes::isValidUtf8(visible, true) ||
+      !nativeapps::notes::isValidUtf8(context.prefix, true) ||
+      !nativeapps::notes::isValidUtf8(context.suffix, true)) return {};
+
+  Candidate result{Match::Missing};
+  for (size_t at = 0; at < visible.size();) {
+    at = visible.find(quote, at);
+    if (at == std::string_view::npos) break;
+    const size_t end = at + quote.size();
+    const bool leftBoundary = at == 0 || !wordish(static_cast<unsigned char>(visible[at - 1])) ||
+                              !wordish(static_cast<unsigned char>(quote.front()));
+    const bool rightBoundary = end == visible.size() ||
+                               !wordish(static_cast<unsigned char>(visible[end])) ||
+                               !wordish(static_cast<unsigned char>(quote.back()));
+    const bool leftContext = context.prefix.empty() ? at == 0
+        : at >= context.prefix.size() &&
+          visible.substr(at - context.prefix.size(), context.prefix.size()) == context.prefix;
+    const bool rightContext = context.suffix.empty() ? end == visible.size()
+        : visible.substr(end, context.suffix.size()) == context.suffix;
+    if (leftBoundary && rightBoundary && leftContext && rightContext &&
+        (static_cast<unsigned char>(visible[at]) & 0xC0) != 0x80 &&
+        (end == visible.size() || (static_cast<unsigned char>(visible[end]) & 0xC0) != 0x80)) {
+      if (result.status == Match::Found) return {Match::Ambiguous};
+      result = {Match::Found, codepointCount(visible.substr(0, at)), 0};
+      result.end = result.start + codepointCount(quote);
+    }
+    ++at;
   }
   return result;
 }

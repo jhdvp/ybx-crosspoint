@@ -65,6 +65,7 @@
 #include "util/YbxKosync.h"
 #include "util/YbxDocumentIdentity.h"
 #include "util/YbxNoteRevision.h"
+#include "util/YbxNoteContextStore.h"
 
 namespace {
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -382,7 +383,14 @@ bool EpubReaderActivity::loadBook() {
             ++attempts;
             std::string quote;
             if (!CLIPPINGS.readClippingText(i, quote)) continue;
-            const auto candidate = ybxnote::findUnique(visible, quote);
+            ybxnote::Context savedContext;
+            const auto contextStatus = ybxnote::contextstore::read(
+                CLIPPINGS.contextAnchorPath(), clip.id, quote, savedContext);
+            // A stored context is authoritative for this local revision.
+            // A corrupt context store NEVER downgrades to text-only matching;
+            // older clippings without context retain PR #20's unique fallback.
+            const auto candidate =
+                ybxnote::contextstore::resolve(visible, quote, contextStatus, savedContext);
             if (candidate.status == ybxnote::Match::Found) {
               nativeNoteReanchors[nativeNoteReanchorCount++] =
                   {static_cast<uint16_t>(i), candidate.start, candidate.end};
@@ -648,6 +656,26 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
         chapterTitle.c_str(), paragraphIndex, clipping.text, layoutSignature, clipping.startOffset, clipping.endOffset);
     bool exported = false;
     if (addResult == ClippingStore::AddResult::Added) {
+      if (ybxdocument::isManagedNote(bookPath) && nativeNoteRevision &&
+          clipping.startOffset != UINT32_MAX && clipping.endOffset != UINT32_MAX &&
+          clipping.text.size() >= ybxnote::kMinQuoteBytes &&
+          clipping.text.size() <= ybxnote::kMaxQuoteBytes) {
+        const auto heap = HalMemory::getDefaultHeap();
+        if (heap.freeBytes >= 32 * 1024 && heap.largestBlockBytes >= 12 * 1024) {
+          std::string source;
+          if (Storage.readFileToString("NCTX", bookPath, nativeapps::notes::kMaxFileBytes, source) &&
+              ybxnote::revisionSignature(source) == nativeNoteRevision) {
+            std::string visible;
+            ybxnote::Context context;
+            if (ybxnote::renderVisibleText(source, visible) &&
+                ybxnote::makeContext(visible, clipping.text, clipping.startOffset, clipping.endOffset, context)) {
+              const Clipping* saved = CLIPPINGS.clippingAt(CLIPPINGS.clippingCount() - 1);
+              if (saved && !ybxnote::contextstore::save(CLIPPINGS.contextAnchorPath(), saved->id, clipping.text, context))
+                LOG_ERR("NCTX", "Clipping saved, but optional context anchor was not persisted");
+            }
+          }
+        }
+      }
       exported = ClippingsManager::saveClipping(bookTitle, author, chapterTitle, startPage + 1, clipping.text);
     }
     clippingMessage = addResult == ClippingStore::AddResult::LimitReached ? StrId::STR_CLIPPING_LIMIT_REACHED

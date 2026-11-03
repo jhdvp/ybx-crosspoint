@@ -230,6 +230,8 @@ TEST(ClippingStore, MovesFolderWithClipsAndDeletionJournalAndRollsBackFailure) {
     ASSERT_EQ(add(store, "two"), Result::Added);
     ASSERT_TRUE(store.prepareSync());
     ASSERT_TRUE(store.removeClippingAt(0));
+    const std::string contextPath = store.contextAnchorPath();
+    fake::add(contextPath, "context-snapshot-for-move");
     store.unload();
     const auto oldStore = storePath();
     const auto original = fake::files.at(oldStore)->bytes;
@@ -240,7 +242,10 @@ TEST(ClippingStore, MovesFolderWithClipsAndDeletionJournalAndRollsBackFailure) {
       EXPECT_FALSE(Storage.exists("/books/sub/book.epub"));
       EXPECT_TRUE(Storage.exists("/renamed/sub/book.epub"));
       EXPECT_FALSE(Storage.exists(oldStore.c_str()));
+      EXPECT_FALSE(Storage.exists(contextPath.c_str()));
       ASSERT_TRUE(store.loadForBook("/renamed/sub/book.epub", "", "", "epub"));
+      EXPECT_EQ(fake::files.at(store.contextAnchorPath())->bytes,
+                std::vector<uint8_t>({'c','o','n','t','e','x','t','-','s','n','a','p','s','h','o','t','-','f','o','r','-','m','o','v','e'}));
       EXPECT_EQ(store.clippingCount(), 1u);
       std::string text;
       EXPECT_TRUE(store.readClippingText(0, text));
@@ -254,6 +259,7 @@ TEST(ClippingStore, MovesFolderWithClipsAndDeletionJournalAndRollsBackFailure) {
       EXPECT_FALSE(Storage.exists("/renamed/sub/book.epub"));
       EXPECT_EQ(fake::files.at(oldStore)->bytes, original);
       EXPECT_EQ(fake::files.at(oldStore + ".deleted")->bytes, deleted);
+      EXPECT_TRUE(Storage.exists(contextPath.c_str()));
     }
   }
 }
@@ -276,7 +282,13 @@ TEST(ClippingStore, MoveRefusesExistingDestinationHistoryAndDeleteCleansSidecars
   fake::add(path + ".deleted", std::string(65, 'x'));
   fake::add(path + ".bak");
   fake::add(path + ".tmp");
+  fake::add(path + ".anchors", "context");
+  fake::add(path + ".anchors.bak", "context-backup");
+  fake::add(path + ".anchors.tmp", "context-temp");
   EXPECT_TRUE(ClippingStore::deleteForFilePath("/two.epub", "epub"));
+  EXPECT_FALSE(Storage.exists((path + ".anchors").c_str()));
+  EXPECT_FALSE(Storage.exists((path + ".anchors.bak").c_str()));
+  EXPECT_FALSE(Storage.exists((path + ".anchors.tmp").c_str()));
   EXPECT_FALSE(Storage.exists(path.c_str()));
   EXPECT_FALSE(Storage.exists((path + ".deleted").c_str()));
   EXPECT_FALSE(Storage.exists((path + ".bak").c_str()));

@@ -126,3 +126,77 @@ TEST(NativeNoteReanchor, AChangedTitleAltersMatchingCoordinatesWithoutMutation) 
   EXPECT_NE(before.start, after.start);
   EXPECT_EQ(before.end - before.start, after.end - after.start);
 }
+
+TEST(NativeNoteReanchor, ContextDistinguishesRepeatedQuotesAfterPreambleEdit) {
+  const std::string before =
+      "# Title\n\nThe early room has repeated passage near window.\n\n"
+      "The later room has repeated passage near fireplace.\n";
+  const std::string edited =
+      "# Much longer title and additional introduction\n\n"
+      "The early room has repeated passage near window.\n\n"
+      "The later room has repeated passage near fireplace.\n";
+  std::string originalVisible, newVisible;
+  ASSERT_TRUE(ybxnote::renderVisibleText(before, originalVisible));
+  ASSERT_TRUE(ybxnote::renderVisibleText(edited, newVisible));
+  const auto lastByte = originalVisible.rfind("repeated passage");
+  ASSERT_NE(lastByte, std::string::npos);
+  const uint32_t start = ybxnote::codepointCount(originalVisible.substr(0, lastByte));
+  const uint32_t end = start + ybxnote::codepointCount("repeated passage");
+  ybxnote::Context context;
+  ASSERT_TRUE(ybxnote::makeContext(originalVisible, "repeated passage", start, end, context));
+  EXPECT_EQ(ybxnote::findUnique(newVisible, "repeated passage").status, ybxnote::Match::Ambiguous);
+  const auto located = ybxnote::findWithContext(newVisible, "repeated passage", context);
+  ASSERT_EQ(located.status, ybxnote::Match::Found);
+  EXPECT_EQ(located.start, ybxnote::codepointCount(newVisible.substr(0, newVisible.rfind("repeated passage"))));
+  EXPECT_EQ(located.end - located.start, ybxnote::codepointCount("repeated passage"));
+}
+
+TEST(NativeNoteReanchor, ChangedSurroundingContextRefusesEvenUniqueQuote) {
+  std::string oldVisible, newVisible;
+  ASSERT_TRUE(ybxnote::renderVisibleText("# A\n\nAlpha surrounding unique passage afterword.\n", oldVisible));
+  ASSERT_TRUE(ybxnote::renderVisibleText("# A\n\nBravo surrounding unique passage afterword.\n", newVisible));
+  const auto pos = oldVisible.find("unique passage");
+  ASSERT_NE(pos, std::string::npos);
+  ybxnote::Context c;
+  const auto start = ybxnote::codepointCount(oldVisible.substr(0, pos));
+  ASSERT_TRUE(ybxnote::makeContext(oldVisible, "unique passage", start, start+14, c));
+  EXPECT_EQ(ybxnote::findUnique(newVisible, "unique passage").status, ybxnote::Match::Found);
+  EXPECT_EQ(ybxnote::findWithContext(newVisible, "unique passage", c).status, ybxnote::Match::Missing);
+}
+
+TEST(NativeNoteReanchor, DuplicateQuoteWithSameContextStaysAmbiguous) {
+  std::string visible;
+  ASSERT_TRUE(ybxnote::renderVisibleText(
+      "# Title\n\nThe exact contextual repeated phrase after it. trailing twenty characters.\n\n"
+      "The exact contextual repeated phrase after it. trailing twenty characters.\n", visible));
+  const auto pos = visible.find("repeated phrase");
+  ASSERT_NE(pos, std::string::npos);
+  ybxnote::Context c;
+  const auto start = ybxnote::codepointCount(visible.substr(0, pos));
+  ASSERT_TRUE(ybxnote::makeContext(visible, "repeated phrase", start, start+15, c));
+  EXPECT_EQ(ybxnote::findWithContext(visible, "repeated phrase", c).status, ybxnote::Match::Ambiguous);
+}
+
+TEST(NativeNoteReanchor, InvalidSourceCoordinatesNeverProduceAnchor) {
+  std::string visible;
+  ASSERT_TRUE(ybxnote::renderVisibleText("# A\n\nA unique passage.\n", visible));
+  ybxnote::Context c{"previous", "untouched"};
+  EXPECT_FALSE(ybxnote::makeContext(visible, "unique passage", UINT32_MAX, 32, c));
+  EXPECT_FALSE(ybxnote::makeContext(visible, "unique passage", 200, 210, c));
+  EXPECT_FALSE(ybxnote::makeContext(visible, "different passage", 7, 24, c));
+  EXPECT_EQ(c.prefix, "previous");  // failed extraction does not mutate
+}
+
+TEST(NativeNoteReanchor, UnicodeContextUsesWholeCodepoints) {
+  std::string visible;
+  ASSERT_TRUE(ybxnote::renderVisibleText("# Привет\n\nСтарое письмо 🍀 важная цитата рядом с деревом.\n", visible));
+  const auto at = visible.find("важная цитата");
+  ASSERT_NE(at, std::string::npos);
+  const uint32_t start = ybxnote::codepointCount(visible.substr(0, at));
+  ybxnote::Context c;
+  ASSERT_TRUE(ybxnote::makeContext(visible, "важная цитата", start,
+                                  start + ybxnote::codepointCount("важная цитата"), c));
+  EXPECT_TRUE(nativeapps::notes::isValidUtf8(c.prefix, true));
+  EXPECT_TRUE(nativeapps::notes::isValidUtf8(c.suffix, true));
+  EXPECT_EQ(ybxnote::findWithContext(visible, "важная цитата", c).status, ybxnote::Match::Found);
+}

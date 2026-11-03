@@ -60,7 +60,8 @@ bool copyBytes(HalFile& in, HalFile& out, uint16_t length) {
   }
   return true;
 }
-constexpr const char* STORE_SUFFIXES[] = {"", ".bak", ".tmp", ".deleted", ".migrate.bak"};
+constexpr const char* STORE_SUFFIXES[] = {"", ".bak", ".tmp", ".deleted", ".migrate.bak",
+                                          ".anchors", ".anchors.tmp", ".anchors.bak"};
 enum class MovePhase { Check, Move, Rollback };
 
 bool moveStoreFiles(const std::string& from, const std::string& to, const MovePhase phase) {

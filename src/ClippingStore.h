@@ -74,6 +74,11 @@ class ClippingStore {
   bool readClippingPreview(size_t index, char* out, size_t outSize, size_t& outLength) const;
   bool readClippingText(size_t index, std::string& out) const;
   bool readClippingText(const Clipping& clipping, std::string& out) const;
+  // Optional local context sidecar, keyed by the stable random clipping ID.
+  // Carries no server protocol or binary-format version changes.
+  std::string contextAnchorPath() const {
+    return loaded && !storeFilePath.empty() ? storeFilePath + ".anchors" : std::string{};
+  }
 
   static bool deleteForFilePath(const std::string& filePath, const std::string& bookType);
   // Move a book or folder together with its clipping stores and deletion journals.
