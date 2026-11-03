@@ -122,6 +122,9 @@ class EpubReaderActivity final : public ReaderActivity {
   void saveLinkStack() const;
   void loadLinkStack();
 
+  // Source-revision guard for managed Native Notes. Zero means unavailable:
+  // still show quotations in the list, but never paint stale coordinates.
+  uint32_t nativeNoteRevision = 0;
   uint16_t buildViewportWidth = 0;
   uint16_t buildViewportHeight = 0;
   bool partialRebuildStartFailed = false;

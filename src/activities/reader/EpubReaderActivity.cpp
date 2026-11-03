@@ -62,6 +62,8 @@
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 #include "util/YbxKosync.h"
+#include "util/YbxDocumentIdentity.h"
+#include "util/YbxNoteRevision.h"
 
 namespace {
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -241,6 +243,17 @@ EpubReaderActivity::~EpubReaderActivity() {
 }
 
 bool EpubReaderActivity::loadBook() {
+  nativeNoteRevision = 0;
+  if (ybxdocument::isManagedNote(bookPath)) {
+    std::string source;
+    // No unbounded allocation: Native Notes must fit the format's own
+    // 4 KiB body + title budget. Other Markdown files are not scanned here.
+    if (Storage.readFileToString("NOTE", bookPath, nativeapps::notes::kMaxFileBytes, source)) {
+      nativeNoteRevision = ybxnote::revisionSignature(source);
+    }
+    // Missing/corrupt/oversize note -> 0. Reading still works; highlighting
+    // old offsets is disabled rather than falsely using a layout signature.
+  }
   auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, "/.crosspoint");
   if (!loadedEpub) {
     LOG_ERR("ERS", "Failed to allocate EPUB object");
@@ -534,7 +547,8 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
     return;
   }
   const uint32_t layoutSignature =
-      readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
+      ybxdocument::isManagedNote(bookPath) ? nativeNoteRevision
+          : readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
 
   int marginTop, marginRight, marginBottom, marginLeft;
   renderer.getOrientedViewableTRBL(&marginTop, &marginRight, &marginBottom, &marginLeft);
@@ -2452,13 +2466,15 @@ void EpubReaderActivity::drawClippingHighlights(const Page& page, const int font
   size_t highlightedWords = 0;
   const uint16_t currentPage = static_cast<uint16_t>(section->currentPage);
   const uint32_t layoutSignature =
-      readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
+      ybxdocument::isManagedNote(bookPath) ? nativeNoteRevision
+          : readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
   const auto isHighlighted = [&](const uint16_t wordIndex, const TextBlock::SourceRange range) {
     // ponytail: scan at most 256 C3 / 1024 S3 clippings per word; index by chapter if this becomes slow.
     for (size_t index = 0; index < CLIPPINGS.clippingCount(); ++index) {
       const Clipping& clipping = *CLIPPINGS.clippingAt(index);
       if (clippingContainsWord(clipping, static_cast<uint16_t>(currentSpineIndex), currentPage, section->pageCount,
-                               layoutSignature, wordIndex, range.start, range.end))
+                               layoutSignature, wordIndex, range.start, range.end,
+                               ybxdocument::isManagedNote(bookPath)))
         return true;
     }
     return false;

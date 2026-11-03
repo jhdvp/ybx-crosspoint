@@ -53,6 +53,7 @@ harness = r"""
 #define LOG_DBG(module, ...) (void)std::snprintf(nullptr, 0, __VA_ARGS__)
 #include "clippings/ClippingText.h"
 #include "ClippingStore.h"
+#include "util/YbxDocumentIdentity.h"
 #include <Epub/ReaderRenderSpec.h>
 namespace BidiUtils { enum class BidiBaseDir : int8_t { AUTO = -1, LTR = 0, RTL = 1 }; }
 struct EpdFontFamily { enum Style { REGULAR, UNDERLINE = 4 }; };
@@ -227,6 +228,8 @@ struct EpubReaderActivity {
   struct Section { int currentPage = 0, pageCount = 1; } sectionData;
   Section* section = &sectionData;
   int currentSpineIndex = 0, buildViewportWidth = 480, buildViewportHeight = 800;
+  std::string bookPath = "/ordinary.epub";
+  uint32_t nativeNoteRevision = 0;
   int clippingAtPoint(const Page&, int, int) const;
   void drawClippingHighlights(const Page&, int, int, int) const;
 };
@@ -359,6 +362,19 @@ int main() {
     assert(activity.renderer.fills[0].width == width);
     assert(reader.clippingAtPoint(*activity.pages[0], width - 1, 8) == 0);
     assert(reader.clippingAtPoint(*activity.pages[0], width, 8) == -1);
+    // The exact production redraw path must never paint a clipping from
+    // another Native Note content revision at the same source offsets.
+    reader.bookPath = "/apps/notes/note-0123456789abcdef.md";
+    reader.nativeNoteRevision = 123456u;
+    savedClippings.clipping.layoutSignature = 987654u;
+    activity.renderer.fills.clear();
+    reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
+    assert(activity.renderer.fills.empty());
+    savedClippings.clipping.layoutSignature = 123456u;
+    activity.renderer.fills.clear();
+    reader.drawClippingHighlights(*activity.pages[0], 0, 0, 0);
+    assert(activity.renderer.fills.size() == 1);
+    reader.bookPath = "/ordinary.epub";
   }
   for (const auto& logical : {std::vector<std::string>{"אחד", "alpha", "beta", "שני"},
                               std::vector<std::string>{"واحد", "alpha", "beta", "اثنان"}}) {

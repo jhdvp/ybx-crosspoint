@@ -29,6 +29,7 @@
 #include "util/PluginEvents.h"
 #include "util/PluginHttp.h"
 #include "util/YbxKosync.h"
+#include "util/YbxDocumentIdentity.h"
 
 namespace fui = freeink::ui;
 
@@ -205,7 +206,13 @@ void KOReaderSyncActivity::performSync() {
       RenderLock lock;
       GfxRenderer::FrameBufferLoan loan(renderer);
 #endif
-      clippingsSynced = clippingSync::run(epubPath, documentHash);
+      // Native Notes use an opaque, immutable filename as the common
+      // clipping document key across edits and copied SD cards. Keep the
+      // user's normal content/filename choice for *progress* below: the
+      // page layout may differ between edited copies of one note.
+      const std::string clippingHash = ybxdocument::clippingDocumentKey(
+          epubPath, documentHash, [this] { return KOReaderDocumentId::calculateFromFilename(epubPath); });
+      clippingsSynced = !clippingHash.empty() && clippingSync::run(epubPath, clippingHash);
     }
     if (!clippingsSynced) {
       {

@@ -116,11 +116,21 @@ inline bool clippingStoredRangeMatchesLayout(const Clipping& clipping, const uin
 
 inline bool clippingContainsWord(const Clipping& clipping, const uint16_t spineIndex, const uint16_t page,
                                  const uint16_t pageCount, const uint32_t layoutSignature, const uint16_t wordIndex,
-                                 const uint32_t sourceStart, const uint32_t sourceEnd) {
+                                 const uint32_t sourceStart, const uint32_t sourceEnd,
+                                 const bool requireMatchingSourceRevision = false) {
   if (clipping.spineIndex != spineIndex) return false;
+  if (requireMatchingSourceRevision) {
+    // Native Notes share one stable document key across edits. A clipping
+    // from an older revision can still be listed/synced, but its old source
+    // offsets must NOT paint unrelated text in an edited document.
+    if (!layoutSignature || clipping.layoutSignature != layoutSignature ||
+        clipping.startOffset == UINT32_MAX || clipping.endOffset == UINT32_MAX)
+      return false;
+  }
   if (clipping.startOffset != UINT32_MAX && clipping.endOffset != UINT32_MAX) {
     return sourceStart != UINT32_MAX && sourceEnd > clipping.startOffset && sourceStart < clipping.endOffset;
   }
+  if (requireMatchingSourceRevision) return false;  // no page/word fallback
   return clippingStoredRangeMatchesLayout(clipping, pageCount, layoutSignature) && page >= clipping.startPage &&
          page <= clipping.endPage && (page != clipping.startPage || wordIndex >= clipping.startWordIndex) &&
          (page != clipping.endPage || wordIndex <= clipping.endWordIndex);
