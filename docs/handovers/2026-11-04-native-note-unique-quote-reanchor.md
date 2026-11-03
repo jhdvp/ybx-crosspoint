@@ -94,3 +94,32 @@ Remaining before release:
 
 Final test counts, firmware sizes and SHA-256 values are recorded after
 full QA and linked in the stacked draft PR.
+
+## Final verified builds and regression (2026-11-04)
+
+- **1218/1218 CMake/CTest full host PASS**, 19.91 seconds,
+  including the C++ production draw/tap-target extraction harness.
+- **9/9 new NativeNoteReanchor GTests PASS**, verifying exact
+  stream-to-XHTML characterData equality through Expat, Unicode
+  codepoint offsets, uniqueness, repeats, boundaries and failure.
+- Existing **YBX Site clipping protocol 19/19 pytest PASS**;
+  server schema/API/source unchanged.
+- **ESP32-C3 default X3/X4 PlatformIO PASS**:
+  flash **5,720,743 / 6,553,600 bytes (87.3%)**;
+  static RAM **66,904 / 327,680 bytes (20.4%)**;
+  firmware.bin **5,735,264 bytes**;
+  SHA256 **4aded7f2b6b52f79082f6059aa84c2798392ba614331b57f69e3354068393743**.
+- **ESP32-S3 x4pro X4 Pro PlatformIO PASS**:
+  flash **5,559,310 / 6,553,600 bytes (84.8%)**;
+  static RAM **111,956 / 327,680 bytes (34.2%)**;
+  firmware.bin **5,564,576 bytes**;
+  SHA256 **a7837dd833941536e73c5de6efeb79c35b4498eddeb8f993498e0272435ebed6**.
+- Relative to parent PR #19 flash grew **+5,306 B C3** and
+  **+4,912 B S3**; static RAM unchanged. Real heap/energy/SD
+  cold-open latency were NOT measured. The reader's per-instance
+  fixed in-memory relocation array uses around 192 bytes.
+- Full logs, firmware.bin images and sha256 files remain at
+  ~/Projects/Ybx/artifacts/ybx-note-unique-reanchor-20261104.
+  No flash to hardware, main merge, OTA, release or production deploy.
+- The freeink-sdk submodule appears modified by PlatformIO's
+  local patch step; those changes were deliberately not staged.
