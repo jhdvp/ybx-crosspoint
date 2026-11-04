@@ -91,12 +91,16 @@ bool readReaderKey(const std::string& dir, std::string& key) {
 // translates positions between copies of the same work using the extended position
 // and the book id the catalog recorded next to the downloaded file.
 bool writeConfiguration(const std::string& key) {
+  // Enable quote sync on a fresh QR pairing; never override a user's
+  // independent KOSync server or their later manual Sync Clippings opt-out.
+  const bool freshPair = !KOREADER_STORE.hasCredentials();
   KOREADER_STORE.setCredentials(YBX_SYNC_USER, key);
   KOREADER_STORE.setServerUrl(YBX_SYNC_URL);
   KOREADER_STORE.setMatchMethod(DocumentMatchMethod::BINARY);
   KOREADER_STORE.setSyncBehavior(KOReaderSyncBehavior::SMART);
   KOREADER_STORE.setSendMetadata(true);
   KOREADER_STORE.setServerType(KOReaderServerType::CROSSPOINT);
+  if (freshPair) KOREADER_STORE.setSyncClippings(true);
   if (!KOREADER_STORE.saveToFile()) {
     LOG_ERR("YBXK", "Failed to write the sync configuration");
     return false;
@@ -135,6 +139,8 @@ Action run(const bool forced) {
   state.tokenPresent = stateTokenPresent;
   state.provisioned = YBX_SYNC.provisioned;
   state.credentialsPresent = KOREADER_STORE.hasCredentials();
+  state.manualServerUrl = !KOREADER_STORE.getServerUrl().empty() &&
+                          KOREADER_STORE.getServerUrl() != YBX_SYNC_URL;
   state.pointsAtYbx = pointsAtYbx;
   state.keyFpMatches = YBX_SYNC.keyFp == fp;
   state.credentialCarriesKey = liveCarriesKey;
@@ -142,7 +148,8 @@ Action run(const bool forced) {
   Action action = decideAction(state);
   if (action == Action::KeepManual && forced) action = Action::Apply;
   // A hand-typed server while a key is on the card: the status row offers YBX.
-  stateManualConflict = state.enabled && stateTokenPresent && state.credentialsPresent && !pointsAtYbx;
+  stateManualConflict = state.enabled && stateTokenPresent &&
+                        (state.manualServerUrl || (state.credentialsPresent && !pointsAtYbx));
 
   switch (action) {
     case Action::None:
