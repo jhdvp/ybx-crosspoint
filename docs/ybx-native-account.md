@@ -30,6 +30,10 @@ YBX Native 1.9.1 SD plugin is still supported for stock CrossPoint migration.
   mirror fails the built-in account still works.
 - Native KOSync reads the same reader key. It respects the existing manual
   server override/opt-in rules; no forced server overwrite.
+- **My Account → Sync** opens the built-in KOReader synchronization settings.
+  YBX KOSync, Send Metadata, and Sync Clippings remain independently configurable:
+  key rotation or server re-provisioning must never silently enable metadata or
+  clippings. Clippings are opt-in and use verified HTTPS.
 - Native statistics/achievements use pinned YBX API routes and a separate
   reader-owned cache under `/.crosspoint/ybx/`, keyed by a SHA-256 binding
   to the reader token. A matching legacy plugin cache is read as fallback.
@@ -55,9 +59,11 @@ CrossPoint and any legacy plugin-specific events.
 - Portable policy + ProtectedPaths and full CTest suite; Python
   `test/test_ybx_builtin_catalog_manifest.py`.
 - ESP32-C3 and ESP32-S3 builds required from the same head commit.
-- Emulator acceptance: QR image visually verified, Wi-Fi and actual
-  device-code request/poll captured, do not claim pairing without
-  user authorization at the real web portal.
+- Emulator: QEMU 11.1.2 confirmed the My Account / Sign in / Catalogs UI
+  without an SD YBX plugin. Initial QR HTTPS request hit wolfSSL -232; the
+  SHA-384 rebuild passed CI, but **live QR and end-to-end pairing still need
+  a new QEMU and/or hardware test**. Do not claim user authorization was
+  granted or that clipping bidirectional sync was exercised.
 - Never publish QR codes, live tokens, secrets, or account-specific
   reading histories in logs/issues/commits.
 - Real X4 Pro hardware is required for power-button wake, long sessions,
