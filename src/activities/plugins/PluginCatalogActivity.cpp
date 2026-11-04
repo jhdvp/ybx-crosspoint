@@ -49,7 +49,10 @@
 #include "util/PluginUpdateCache.h"
 #include "util/QrUtils.h"
 #include "util/StringUtils.h"
+#include "util/YbxBuiltinCatalogManifest.h"
 #include "util/YbxKosync.h"
+#include "util/YbxNativeAuthPolicy.h"
+#include "util/YbxNativeSession.h"
 
 namespace fui = freeink::ui;
 
@@ -240,11 +243,15 @@ std::vector<PluginRef> discoverPlugins() {
 
 bool PluginCatalogActivity::loadManifest() {
   std::string raw;
-  if (!Storage.readFileToString("PCAT", manifestPath, MAX_MANIFEST_SIZE, raw)) return false;
+  if (nativeYbx) {
+    raw = ybxnative::kBuiltinCatalogManifest;
+  } else if (!Storage.readFileToString("PCAT", manifestPath, MAX_MANIFEST_SIZE, raw)) {
+    return false;
+  }
   JsonDocument doc;
   if (deserializeJson(doc, raw) != DeserializationError::Ok) return false;
 
-  const std::string pluginDir = manifestPath.substr(0, manifestPath.rfind('/'));
+  const std::string pluginDir = nativeYbx ? std::string() : manifestPath.substr(0, manifestPath.rfind('/'));
   manifest.tokenFile = pluginhttp::inPluginDir(pluginDir, doc["token"]["file"] | "");
   manifest.tokenPath = doc["token"]["path"] | "token";
   manifest.configFile = pluginhttp::inPluginDir(pluginDir, doc["config"]["file"] | "");
@@ -401,7 +408,9 @@ PluginCatalogActivity::ListIndexResult PluginCatalogActivity::loadBrowseListInde
 }
 
 bool PluginCatalogActivity::saveToken(const std::string& value) {
-  if (!pluginhttp::saveTokenToFile(manifest.tokenFile, manifest.tokenPath, value)) return false;
+  if (nativeYbx ? !ybxnative::saveToken(value)
+                : !pluginhttp::saveTokenToFile(manifest.tokenFile, manifest.tokenPath, value))
+    return false;
   // A fresh key on the card may complete a YBX pairing, so reconcile the built-in
   // sync here instead of waiting for the reader to open a sync screen.
   ybxkosync::refresh();
@@ -409,10 +418,17 @@ bool PluginCatalogActivity::saveToken(const std::string& value) {
 }
 
 bool PluginCatalogActivity::loadToken() {
-  return pluginhttp::loadTokenFromFile(manifest.tokenFile, manifest.tokenPath, token);
+  return nativeYbx ? ybxnative::loadToken(token)
+                   : pluginhttp::loadTokenFromFile(manifest.tokenFile, manifest.tokenPath, token);
 }
 
-void PluginCatalogActivity::loadConfig() { pluginhttp::loadConfigFile(manifest.configFile, config); }
+void PluginCatalogActivity::loadConfig() {
+  if (nativeYbx) {
+    config.clear();  // No untrusted SD configuration for the first-party catalog.
+  } else {
+    pluginhttp::loadConfigFile(manifest.configFile, config);
+  }
+}
 
 pluginhttp::Headers PluginCatalogActivity::substitutedHeaders(const pluginhttp::Headers& headers,
                                                               const Item* item) const {
@@ -465,10 +481,13 @@ std::string PluginCatalogActivity::substituted(std::string tpl, const Item* item
 std::string PluginCatalogActivity::downloadDir() const { return pluginhttp::pickDownloadDir(config, manifest.destDir); }
 
 PluginCatalogActivity::PluginCatalogActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                             const bool showOpds, const bool rootMode, std::string updateTarget)
-    : CatalogActivity("PluginCatalog", renderer, mappedInput, /*wantsTouchLongPress=*/true),
+                                             const bool showOpds, const bool rootMode, std::string updateTarget,
+                                             const bool builtinYbx)
+    : CatalogActivity(builtinYbx ? "YbxCatalog" : "PluginCatalog", renderer, mappedInput,
+                      /*wantsTouchLongPress=*/true),
       showOpds(showOpds),
       rootMode(rootMode),
+      nativeYbx(builtinYbx),
       updateTarget(std::move(updateTarget)) {}
 
 PluginCatalogActivity::~PluginCatalogActivity() = default;
@@ -479,6 +498,12 @@ int PluginCatalogActivity::apiRequest(const pluginhttp::RequestSpec& req, String
 
 void PluginCatalogActivity::onEnter() {
   CatalogActivity::onEnter();
+  if (nativeYbx) {
+    manifestPath = "builtin://ybx";
+    catalogTitle = tr(STR_YBX);
+    enterCatalog();
+    return;
+  }
   enterPluginPicker();
   openUpdateTarget();
 }
@@ -614,6 +639,10 @@ void PluginCatalogActivity::enterCatalog() {
 // pick connects instantly; onExit tears it down when the activity ends.
 void PluginCatalogActivity::exitCatalog() {
   updateTarget.clear();  // leaving abandons a Home update prompt
+  if (nativeYbx) {
+    onGoHome();
+    return;
+  }
   enterPluginPicker();
 }
 
@@ -1309,12 +1338,14 @@ void PluginCatalogActivity::beginAuth() {
   authDeviceCode = variantToString(resolvePath(root, manifest.authDeviceCodePath));
   const long interval = resolvePath(root, manifest.authIntervalPath) | 5L;
   const long expires = resolvePath(root, manifest.authExpiresPath) | 900L;
-  if (authUserCode.empty() || authDeviceCode.empty()) {
+  if (authUserCode.empty() || authDeviceCode.empty() ||
+      (nativeYbx &&
+       (!ybxnative::trustedVerifyUrl(authVerifyUrl) || authUserCode.size() > 64 || authDeviceCode.size() > 1024))) {
     fail(StrId::STR_PLUGIN_AUTH_FAILED);
     return;
   }
-  authIntervalMs = (interval < 3 ? 3 : interval) * 1000UL;
-  authDeadlineMs = millis() + (expires < 60 ? 60 : expires) * 1000UL;
+  authIntervalMs = nativeYbx ? ybxnative::pollSeconds(interval) * 1000UL : (interval < 3 ? 3 : interval) * 1000UL;
+  authDeadlineMs = millis() + (nativeYbx ? ybxnative::expiresSeconds(expires) : (expires < 60 ? 60 : expires)) * 1000UL;
   authNextPollMs = millis() + authIntervalMs;
   state = State::AUTH;
   requestUpdate();

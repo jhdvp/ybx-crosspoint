@@ -11,6 +11,7 @@
 
 #include "CrossPointSettings.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/ybx/YbxAccountActivity.h"
 #include "components/UITheme.h"
 #include "components/YbxReadingPanel.h"
 #include "util/YbxAwardsLayout.h"
@@ -44,10 +45,8 @@ void YbxStatisticsActivity::action(const fui::ActionEvent& event, void* user) {
 void YbxStatisticsActivity::refresh() {
   const auto ready = view == View::Statistics ? ybx::readingConnectionState() : ybx::awardsConnectionState();
   if (ready != ybx::ReadingResult::Ok || result == ybx::ReadingResult::NotConnected) {
-    if (SETTINGS.pluginsEnabled)
-      activityManager.goToPlugins(false);
-    else
-      activityManager.goToSettings();
+    auto account = makeUniqueNoThrow<YbxAccountActivity>(renderer, mappedInput);
+    if (account) activityManager.pushActivity(std::move(account));
     return;
   }
   if (WiFi.status() != WL_CONNECTED) {

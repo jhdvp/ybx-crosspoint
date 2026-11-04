@@ -9,6 +9,12 @@ TEST(ProtectedPaths, CredentialStoresAreSensitive) {
   EXPECT_TRUE(isSensitivePath("/.crosspoint/wifi.json"));
   EXPECT_TRUE(isSensitivePath("/.crosspoint/opds.json"));
   EXPECT_TRUE(isSensitivePath("/.crosspoint/koreader.json"));
+  EXPECT_TRUE(isSensitivePath("/.crosspoint/ybx-account.json"));
+  EXPECT_TRUE(isSensitivePath("/.crosspoint/ybx-account.json.tmp"));
+  EXPECT_TRUE(isSensitivePath("/.crosspoint/ybx-account.json.bak"));
+  EXPECT_TRUE(isSensitivePath("/.crosspoint/ybx/reading-summary.json"));
+  EXPECT_TRUE(isSensitivePath("/.crosspoint/ybx/achievements.json"));
+  EXPECT_TRUE(isSensitivePath("/CROSSP~1/YBX-AC~1.JSO"));
   EXPECT_TRUE(isSensitivePath("/.crosspoint/wifi.json.tmp"));
   EXPECT_TRUE(isSensitivePath("/.CrossPoint/WIFI.json"));
 }
@@ -42,6 +48,7 @@ TEST(ProtectedPaths, EverythingElseStaysReachable) {
 TEST(ProtectedPaths, PluginPathRules) {
   EXPECT_FALSE(isPluginPath("/.crosspoint/plugins/../wifi.json"));
   EXPECT_FALSE(isPluginPath("/.crosspoint/./koreader.json"));
+  EXPECT_FALSE(isPluginPath("/.crosspoint/ybx-account.json"));
   EXPECT_FALSE(isPluginPath("relative/path"));
   EXPECT_FALSE(isPluginPath("/"));
   EXPECT_TRUE(isPluginPath("/.crosspoint/month-wallpaper.json"));
