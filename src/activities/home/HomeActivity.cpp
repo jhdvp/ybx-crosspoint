@@ -27,6 +27,8 @@
 #include "activities/settings/PluginHubInstallActivity.h"
 #include "activities/ybx/YbxAccountActivity.h"
 #include "activities/ybx/YbxStatisticsActivity.h"
+#include "nativeapps/AppRegistry.h"
+#include "nativeapps/NativeAppsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/PluginHttp.h"
@@ -413,7 +415,17 @@ void HomeActivity::loop() {
     }
     // The account menu is native and read-only. Pairing remains in the
     // existing catalog flow, which owns the device token.
-    const int accountChoice = ybxShelfDir.empty() ? 3 : 4;
+    const bool hasNativeApps = nativeapps::availableCount() > 0;
+    const int nativeAppsChoice = ybxShelfDir.empty() ? 3 : 4;
+    if (hasNativeApps && choice == nativeAppsChoice) {
+      auto launcher = makeUniqueNoThrow<NativeAppsActivity>(renderer, mappedInput);
+      if (launcher)
+        activityManager.replaceActivity(std::move(launcher));
+      else
+        GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
+      return;
+    }
+    const int accountChoice = nativeAppsChoice + (hasNativeApps ? 1 : 0);
     if (choice == accountChoice) {
       auto account = makeUniqueNoThrow<YbxAccountActivity>(renderer, mappedInput);
       if (account)
@@ -761,16 +773,30 @@ void HomeActivity::onMoreOpen() {
     // (empty when the plugin is absent or the plugin system is disabled).
     ybxShelfDir = pluginhttp::catalogDownloadDir(PluginLocations::findPluginDir("ybx"));
   }
+  const bool hasNativeApps = nativeapps::availableCount() > 0;
   if (!ybxShelfDir.empty()) {
-    // "On Reader" leads to the YBX download folder: books are reachable
-    // (open/delete/rename) with no network, matching the clients' shelf.
-    static constexpr StrId OPTIONS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
-                                        StrId::STR_SETTINGS_TITLE, StrId::STR_OPDS_MY_ACCOUNT};
-    ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 5, 0, [this](int choice) { ybxMoreChoice = choice; });
+    // Keep all previous More actions in the same order. Only add the compiled
+    // native launcher when the current device has at least one available app.
+    static constexpr StrId WITH_APPS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES,
+                                          StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
+                                          StrId::STR_YBX_NATIVE_APPS, StrId::STR_OPDS_MY_ACCOUNT};
+    static constexpr StrId WITHOUT_APPS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES,
+                                             StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
+                                             StrId::STR_OPDS_MY_ACCOUNT};
+    if (hasNativeApps)
+      ybxMore->show(StrId::STR_TOOL_MORE, WITH_APPS, 6, 0, [this](int choice) { ybxMoreChoice = choice; });
+    else
+      ybxMore->show(StrId::STR_TOOL_MORE, WITHOUT_APPS, 5, 0, [this](int choice) { ybxMoreChoice = choice; });
   } else {
-    static constexpr StrId OPTIONS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
-                                        StrId::STR_OPDS_MY_ACCOUNT};
-    ybxMore->show(StrId::STR_TOOL_MORE, OPTIONS, 4, 0, [this](int choice) { ybxMoreChoice = choice; });
+    static constexpr StrId WITH_APPS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
+                                          StrId::STR_SETTINGS_TITLE, StrId::STR_YBX_NATIVE_APPS,
+                                          StrId::STR_OPDS_MY_ACCOUNT};
+    static constexpr StrId WITHOUT_APPS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
+                                             StrId::STR_SETTINGS_TITLE, StrId::STR_OPDS_MY_ACCOUNT};
+    if (hasNativeApps)
+      ybxMore->show(StrId::STR_TOOL_MORE, WITH_APPS, 5, 0, [this](int choice) { ybxMoreChoice = choice; });
+    else
+      ybxMore->show(StrId::STR_TOOL_MORE, WITHOUT_APPS, 4, 0, [this](int choice) { ybxMoreChoice = choice; });
   }
   requestUpdate();
 }

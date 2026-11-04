@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Validate C/C++ files modified by this PR/push, leaving pre-existing
+# unformatted files from other YBX agent branches untouched.
+set -euo pipefail
+
+if [[ -n "${GITHUB_BASE_REF:-}" ]]; then
+  base="origin/${GITHUB_BASE_REF}"
+else
+  base="HEAD^"
+fi
+git rev-parse --verify "$base" >/dev/null
+fmt="${CLANG_FORMAT_BIN:-clang-format-21}"
+"$fmt" --version
+checked=0
+while IFS= read -r -d '' file; do
+  [[ -f "$file" ]] || continue
+  case "$file" in
+    lib/EpdFont/builtinFonts/*|lib/Epub/Epub/hyphenation/generated/*|lib/uzlib/*|lib/miniz/third_party/*) continue ;;
+    *.c|*.cpp|*.h|*.hpp) ;;
+    *) continue ;;
+  esac
+  checked=$((checked + 1))
+  if ! "$fmt" -style=file "$file" | diff -u "$file" -; then
+    echo "clang-format mismatch: $file" >&2
+    exit 1
+  fi
+done < <(git diff --name-only --diff-filter=ACMR -z "$base" HEAD)
+echo "clang-format verified $checked changed C/C++ files (base $base)"

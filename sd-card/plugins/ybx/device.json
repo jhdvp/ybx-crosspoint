@@ -20,7 +20,8 @@
       "id": "id",
       "url": "download_url",
       "description": "description",
-      "detail_author": "author"
+      "detail_author": "author",
+      "folder_url": "folder_url"
     },
     "search": {
       "url": "https://my.ybx.app/api/v1/crosspoint/catalog/search/connected?q={query}&page={page}&limit={limit}"
@@ -31,7 +32,7 @@
     }
   },
   "download": {
-    "url": "https://my.ybx.app/api/v1/crosspoint/books/{id}/download?v=1.9.0",
+    "url": "https://my.ybx.app/api/v1/crosspoint/books/{id}/download?v=1.9.1",
     "require_url": true,
     "method": "GET",
     "headers": {
@@ -74,7 +75,7 @@
     "reader.open": {
       "request": {
         "method": "POST",
-        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.1",
         "headers": {
           "Authorization": "Bearer {token}",
           "Content-Type": "application/json"
@@ -85,7 +86,7 @@
     "reader.exit": {
       "request": {
         "method": "POST",
-        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.1",
         "headers": {
           "Authorization": "Bearer {token}",
           "Content-Type": "application/json"
@@ -96,7 +97,7 @@
     "reader.session": {
       "request": {
         "method": "POST",
-        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.1",
         "headers": {
           "Authorization": "Bearer {token}",
           "Content-Type": "application/json"
@@ -108,7 +109,7 @@
     "book.downloaded": {
       "request": {
         "method": "POST",
-        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/events?v=1.9.1",
         "headers": {
           "Authorization": "Bearer {token}",
           "Content-Type": "application/json"
@@ -119,7 +120,7 @@
     "sleep.enter": {
       "delivery": "latest",
       "download": {
-        "url": "https://my.ybx.app/api/v1/crosspoint/sleep-image?w={cfg.sleep_width}&h={cfg.sleep_height}&v=1.9.0",
+        "url": "https://my.ybx.app/api/v1/crosspoint/sleep-image?w={cfg.sleep_width}&h={cfg.sleep_height}&v=1.9.1",
         "headers": {
           "Authorization": "Bearer {token}"
         },
@@ -147,32 +148,62 @@
       {
         "title": "Ваше чтение",
         "widgets": [
-          { "type": "metric", "field": "total_seconds" },
-          { "type": "metric", "field": "sessions" },
-          { "type": "metric", "field": "active_days" },
-          { "type": "metric", "field": "latest_day_seconds" }
+          {
+            "type": "metric",
+            "field": "total_seconds"
+          },
+          {
+            "type": "metric",
+            "field": "sessions"
+          },
+          {
+            "type": "metric",
+            "field": "active_days"
+          },
+          {
+            "type": "metric",
+            "field": "latest_day_seconds"
+          }
         ]
       },
       {
         "title": "Неделя",
         "widgets": [
-          { "type": "week_bars" },
-          { "type": "metric", "field": "today_seconds" },
-          { "type": "metric", "field": "week_seconds" },
-          { "type": "metric", "field": "streak_days" }
+          {
+            "type": "week_bars"
+          },
+          {
+            "type": "metric",
+            "field": "today_seconds"
+          },
+          {
+            "type": "metric",
+            "field": "week_seconds"
+          },
+          {
+            "type": "metric",
+            "field": "streak_days"
+          }
         ]
       },
       {
         "title": "Календарь",
         "widgets": [
-          { "type": "heatmap_28" },
-          { "type": "metric", "field": "active_days" }
+          {
+            "type": "heatmap_28"
+          },
+          {
+            "type": "metric",
+            "field": "active_days"
+          }
         ]
       },
       {
         "title": "Книги",
         "widgets": [
-          { "type": "book_list" }
+          {
+            "type": "book_list"
+          }
         ]
       }
     ]

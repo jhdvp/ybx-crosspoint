@@ -12,6 +12,9 @@
 #include <cstring>
 
 #include "ClippingStore.h"
+#include "network/TlsTransport.h"
+#include "util/YbxDocumentIdentity.h"
+#include "util/YbxNoteContextStore.h"
 
 namespace {
 // One item per response: 4 KiB text may occupy 24 KiB when JSON-escaped.
@@ -19,7 +22,7 @@ namespace {
 constexpr size_t BUFFER_SIZE = 32 * 1024;
 
 bool request(freeink::SecureHttpClient& http, const std::string& url, char* buffer, JsonDocument& doc,
-             const bool upload = false) {
+             const bool upload = false, int* returnedStatus = nullptr) {
   size_t payloadSize = 0;
   if (upload) {
     if (doc.overflowed() || measureJson(doc) >= BUFFER_SIZE) {
@@ -47,6 +50,7 @@ bool request(freeink::SecureHttpClient& http, const std::string& url, char* buff
                                         received += length;
                                         return true;
                                       });
+  if (returnedStatus) *returnedStatus = status;
   if (status != 200 || !http.responseComplete()) {
     LOG_ERR("CLIP", "Clipping sync HTTP %d (complete=%d)", status, http.responseComplete());
     return false;
@@ -129,6 +133,96 @@ bool decode(JsonObjectConst item, Clipping& clipping, std::string& text, bool& d
   clipping.textLength = static_cast<uint16_t>(text.size());
   return true;
 }
+// The optional extension is intentionally outside sync_version=2. An older
+// server returns 404 on its first GET; ordinary clipping sync remains valid.
+bool syncNativeNoteAnchors(freeink::SecureHttpClient& http, const std::string& url,
+                           char* buffer, JsonDocument& doc) {
+  const std::string anchorUrl = url + "/anchors";
+  int status = 0;
+  if (!request(http, anchorUrl + "?cursor=0", buffer, doc, false, &status)) {
+    if (status == 404 && http.responseComplete()) {
+      LOG_INF("CLIP", "Server does not support optional quote context v1");
+      return true;
+    }
+    return false;
+  }
+  if (!doc["anchor_version"].is<unsigned>() || doc["anchor_version"].as<unsigned>() != 1)
+    return false;
+
+  const std::string sidecar = CLIPPINGS.contextAnchorPath();
+  if (sidecar.empty()) return false;
+  std::string quote;
+  for (size_t index = 0; index < CLIPPINGS.clippingCount(); ++index) {
+    const Clipping* clipping = CLIPPINGS.clippingAt(index);
+    if (!clipping || clipping->textLength < ybxnote::kMinQuoteBytes ||
+        clipping->textLength > ybxnote::kMaxQuoteBytes) continue;
+    if (!CLIPPINGS.readClippingText(index, quote)) return false;
+    ybxnote::Context context;
+    const auto state = ybxnote::contextstore::read(sidecar, clipping->id, quote, context);
+    if (state == ybxnote::contextstore::Status::Invalid) {
+      LOG_ERR("CLIP", "Cannot send damaged local quote context");
+      return false;
+    }
+    // An edit delivered by normal clipping v2 can invalidate the old
+    // captured context under the same ID. Ignore that stale anchor until
+    // explicit recapture, without failing primary sync or overwriting it.
+    if (state != ybxnote::contextstore::Status::Found) continue;
+
+    doc.clear();
+    doc["anchor_version"] = 1;
+    doc["id"] = clipping->id;
+    doc["text"] = quote.c_str();
+    doc["prefix"] = context.prefix.c_str();
+    doc["suffix"] = context.suffix.c_str();
+    if (!request(http, anchorUrl, buffer, doc, true)) return false;
+  }
+
+  // A stable, independent revision cursor. No writes to ClippingStore V4,
+  // no outbox mutation and no change to the normal v2 pagination cursor.
+  uint64_t cursor = 0;
+  do {
+    if (!request(http, anchorUrl + "?cursor=" + std::to_string(cursor), buffer, doc))
+      return false;
+    if (!doc["anchor_version"].is<unsigned>() || doc["anchor_version"].as<unsigned>() != 1 ||
+        !doc["cursor"].is<uint64_t>() || !doc["more"].is<bool>() || !doc["items"].is<JsonArray>())
+      return false;
+    const uint64_t next = doc["cursor"];
+    const JsonArrayConst items = doc["items"].as<JsonArrayConst>();
+    if (items.size() > 1 || next < cursor || (items.size() && next <= cursor) ||
+        (doc["more"].as<bool>() && !items.size())) return false;
+
+    for (JsonObjectConst item : items) {
+      const JsonString id = item["id"].as<JsonString>();
+      const JsonString text = item["text"].as<JsonString>();
+      const JsonString prefix = item["prefix"].as<JsonString>();
+      const JsonString suffix = item["suffix"].as<JsonString>();
+      if (id.isNull() || id.size() != 32 || text.isNull() ||
+          text.size() < ybxnote::kMinQuoteBytes || text.size() > ybxnote::kMaxQuoteBytes ||
+          prefix.isNull() || suffix.isNull() ||
+          prefix.size() > ybxnote::kMaxContextBytes || suffix.size() > ybxnote::kMaxContextBytes ||
+          (!prefix.size() && !suffix.size()) ||
+          !item["revision"].is<uint64_t>()) return false;
+      const std::string remoteId(id.c_str(), id.size());
+      const std::string remoteText(text.c_str(), text.size());
+      const ybxnote::Context remoteContext{std::string(prefix.c_str(), prefix.size()),
+                                           std::string(suffix.c_str(), suffix.size())};
+      bool locallyPresent = false;
+      for (size_t i = 0; i < CLIPPINGS.clippingCount(); ++i) {
+        const Clipping* clipping = CLIPPINGS.clippingAt(i);
+        if (!clipping || remoteId != clipping->id) continue;
+        if (!CLIPPINGS.readClippingText(i, quote)) return false;
+        if (quote != remoteText) return false;  // never accept a changed quote under the same ID
+        locallyPresent = true;
+        break;
+      }
+      if (locallyPresent && !ybxnote::contextstore::save(
+            sidecar, remoteId, remoteText, remoteContext)) return false;
+    }
+    cursor = next;
+  } while (doc["more"].as<bool>());
+  return true;
+}
+
 }  // namespace
 
 bool clippingSync::run(const std::string& bookPath, const std::string& documentHash) {
@@ -153,8 +247,14 @@ bool clippingSync::run(const std::string& bookPath, const std::string& documentH
     LOG_ERR("CLIP", "Insufficient heap for clipping sync");
     return false;
   }
-  http->setInsecure();
   const std::string url = KOREADER_STORE.getBaseUrl() + "/api/v1/clippings/" + documentHash;
+  // Clippings carry the account KOSync password hash and optional bearer
+  // credentials. Never send either over HTTP or unverified TLS; use the same
+  // clock + CA/hostname verification already enforced by YBX PluginHttp.
+  if (!tlspolicy::prepareHttpsClient(*http, url)) {
+    LOG_ERR("CLIP", "Verified HTTPS is required for clipping sync");
+    return false;
+  }
   JsonDocument doc;
   // Probe the extension before any upload, even when the user explicitly enabled it.
   if (!request(*http, url + "?cursor=0&limit=1&format=reader", buffer.get(), doc) ||
@@ -212,5 +312,9 @@ bool clippingSync::run(const std::string& bookPath, const std::string& documentH
     }
     cursor = next;
   } while (doc["more"].as<bool>());
+  // Optional extension only for generated Native Notes; EPUB, arbitrary MD
+  // and historical servers retain their exact existing clipping protocol.
+  if (ybxdocument::isManagedNote(bookPath))
+    return syncNativeNoteAnchors(*http, url, buffer.get(), doc);
   return true;
 }

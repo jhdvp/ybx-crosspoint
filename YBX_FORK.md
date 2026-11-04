@@ -37,7 +37,10 @@ installer preserves an existing `token.json` and `config.json`, detects the
 legacy plugin location, and replaces source files atomically. It stops if two
 YBX installations would make the target ambiguous. For manual copying, preserve
 both token and config files.
-The firmware must advertise `catalog.lists.auth` before installing this plugin.
+The firmware must advertise both `catalog.lists.auth` and `catalog.folders.json` before installing the bundled YBX 1.9.1 plugin.
+Authenticated source groups and per-book JSON folder links share the normal reader
+token, and folder links are restricted to the exact HTTPS origin of the current
+catalog endpoint so bearer credentials are never forwarded to a different host.
 
 The list index uses an explicit `browse.lists_headers` authorization header.
 The server builds its response from the current account's connected Yandex,

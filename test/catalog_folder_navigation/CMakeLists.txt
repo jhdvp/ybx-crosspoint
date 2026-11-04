@@ -1,0 +1,4 @@
+add_executable(CatalogFolderNavigationTest CatalogFolderNavigationTest.cpp)
+target_include_directories(CatalogFolderNavigationTest PRIVATE ${REPO_ROOT}/src)
+target_link_libraries(CatalogFolderNavigationTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(CatalogFolderNavigationTest)

@@ -1,7 +1,7 @@
 {
   "name": "ybx",
   "title": "YBX",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Подключённые книжные сервисы, EPUB и статистика чтения YBX.",
   "mount": "settings",
   "author": "YBX",
@@ -12,7 +12,8 @@
     ],
     "plugin_api_min": 1,
     "requires": [
-      "catalog.lists.auth"
+      "catalog.lists.auth",
+      "catalog.folders.json"
     ]
   },
   "files": [

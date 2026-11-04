@@ -15,26 +15,21 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 
-      - name: Install clang-format-21
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get update
-          sudo apt-get install -y clang-format-21
+      - name: Install pinned clang-format 21
+        run: python -m pip install --disable-pip-version-check clang-format==21.1.8
 
-      - name: Run clang-format
-        run: |
-          PATH="/usr/lib/llvm-21/bin:$PATH" ./bin/clang-format-fix
-          git diff --exit-code || (echo "Please run 'bin/clang-format-fix' to fix formatting issues" && exit 1)
+      - name: Check changed source files with clang-format
+        run: CLANG_FORMAT_BIN=clang-format ./bin/clang-format-check-changed
 
   cppcheck:
-    runs-on: ubuntu-latest
+    # Ubuntu 26.04 no longer includes libpcre3, required by pioarduino cppcheck.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:

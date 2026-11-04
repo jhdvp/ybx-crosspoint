@@ -1,3 +1,5 @@
+find_package(EXPAT REQUIRED)
+
 add_executable(TxtToHtmlTest
   TxtToHtmlTest.cpp
   ${REPO_ROOT}/lib/Txt/TxtToHtml.cpp
@@ -17,6 +19,7 @@ target_include_directories(TxtToHtmlTest PRIVATE
 target_link_libraries(TxtToHtmlTest PRIVATE
   crosspoint_test_common
   GTest::gtest_main
+  EXPAT::EXPAT
 )
 
 gtest_discover_tests(TxtToHtmlTest)

@@ -1,6 +1,7 @@
 #include <ClippingStore.h>
 #include <HalStorage.h>
 #include <gtest/gtest.h>
+#include <esp_random.h>
 
 namespace {
 using Result = ClippingStore::AddResult;
@@ -229,6 +230,8 @@ TEST(ClippingStore, MovesFolderWithClipsAndDeletionJournalAndRollsBackFailure) {
     ASSERT_EQ(add(store, "two"), Result::Added);
     ASSERT_TRUE(store.prepareSync());
     ASSERT_TRUE(store.removeClippingAt(0));
+    const std::string contextPath = store.contextAnchorPath();
+    fake::add(contextPath, "context-snapshot-for-move");
     store.unload();
     const auto oldStore = storePath();
     const auto original = fake::files.at(oldStore)->bytes;
@@ -239,7 +242,10 @@ TEST(ClippingStore, MovesFolderWithClipsAndDeletionJournalAndRollsBackFailure) {
       EXPECT_FALSE(Storage.exists("/books/sub/book.epub"));
       EXPECT_TRUE(Storage.exists("/renamed/sub/book.epub"));
       EXPECT_FALSE(Storage.exists(oldStore.c_str()));
+      EXPECT_FALSE(Storage.exists(contextPath.c_str()));
       ASSERT_TRUE(store.loadForBook("/renamed/sub/book.epub", "", "", "epub"));
+      EXPECT_EQ(fake::files.at(store.contextAnchorPath())->bytes,
+                std::vector<uint8_t>({'c','o','n','t','e','x','t','-','s','n','a','p','s','h','o','t','-','f','o','r','-','m','o','v','e'}));
       EXPECT_EQ(store.clippingCount(), 1u);
       std::string text;
       EXPECT_TRUE(store.readClippingText(0, text));
@@ -253,6 +259,7 @@ TEST(ClippingStore, MovesFolderWithClipsAndDeletionJournalAndRollsBackFailure) {
       EXPECT_FALSE(Storage.exists("/renamed/sub/book.epub"));
       EXPECT_EQ(fake::files.at(oldStore)->bytes, original);
       EXPECT_EQ(fake::files.at(oldStore + ".deleted")->bytes, deleted);
+      EXPECT_TRUE(Storage.exists(contextPath.c_str()));
     }
   }
 }
@@ -275,9 +282,79 @@ TEST(ClippingStore, MoveRefusesExistingDestinationHistoryAndDeleteCleansSidecars
   fake::add(path + ".deleted", std::string(65, 'x'));
   fake::add(path + ".bak");
   fake::add(path + ".tmp");
+  fake::add(path + ".anchors", "context");
+  fake::add(path + ".anchors.bak", "context-backup");
+  fake::add(path + ".anchors.tmp", "context-temp");
   EXPECT_TRUE(ClippingStore::deleteForFilePath("/two.epub", "epub"));
+  EXPECT_FALSE(Storage.exists((path + ".anchors").c_str()));
+  EXPECT_FALSE(Storage.exists((path + ".anchors.bak").c_str()));
+  EXPECT_FALSE(Storage.exists((path + ".anchors.tmp").c_str()));
   EXPECT_FALSE(Storage.exists(path.c_str()));
   EXPECT_FALSE(Storage.exists((path + ".deleted").c_str()));
   EXPECT_FALSE(Storage.exists((path + ".bak").c_str()));
   EXPECT_FALSE(Storage.exists((path + ".tmp").c_str()));
+}
+
+
+TEST(ClippingStore, NewClippingReceivesStableOpaqueIdBeforeAnySync) {
+  fake::reset();
+  ClippingStore store;
+  ASSERT_TRUE(store.loadForBook("/notes.md", "Notes", "", "epub"));
+  ASSERT_EQ(add(store, "first"), Result::Added);
+  ASSERT_EQ(add(store, "first"), Result::Added);  // distinct selections
+  ASSERT_EQ(store.clippingCount(), 2u);
+  const std::string firstId = store.clippingAt(0)->id;
+  const std::string secondId = store.clippingAt(1)->id;
+  ASSERT_EQ(firstId.size(), 32u);
+  ASSERT_EQ(secondId.size(), 32u);
+  EXPECT_NE(firstId, secondId);
+  for (const auto& id : {firstId, secondId}) {
+    for (const char c : id)
+      EXPECT_TRUE((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+  }
+  store.unload();
+  ASSERT_TRUE(store.loadForBook("/notes.md", "Notes", "", "epub"));
+  EXPECT_EQ(store.clippingAt(0)->id, firstId);
+  EXPECT_EQ(store.clippingAt(1)->id, secondId);
+  ASSERT_TRUE(store.prepareSync());
+  EXPECT_EQ(store.clippingAt(0)->id, firstId);
+  EXPECT_EQ(store.clippingAt(1)->id, secondId);
+}
+
+TEST(ClippingStore, OfflineDeleteUsesOriginalIdInTombstoneBeforeFirstSync) {
+  fake::reset();
+  ClippingStore store;
+  ASSERT_TRUE(store.loadForBook("/portable.md", "Document", "", "epub"));
+  ASSERT_EQ(add(store), Result::Added);
+  const std::string originalId = store.clippingAt(0)->id;
+  ASSERT_TRUE(store.removeClippingAt(0));
+  uint32_t offset = 0;
+  char deletionId[65];
+  ASSERT_TRUE(store.nextDeletion(offset, deletionId));
+  EXPECT_EQ(deletionId, originalId);
+  EXPECT_EQ(store.clippingCount(), 0u);
+  store.unload();
+  ASSERT_TRUE(store.loadForBook("/portable.md", "Document", "", "epub"));
+  offset = 0;
+  ASSERT_TRUE(store.nextDeletion(offset, deletionId));
+  EXPECT_EQ(deletionId, originalId);
+  EXPECT_EQ(store.clippingCount(), 0u);
+}
+
+TEST(ClippingStore, RepeatedEntropyCannotReuseExistingIdOrEraseCommittedQuote) {
+  fake::reset();
+  ClippingStore store;
+  ASSERT_TRUE(store.loadForBook("/collision.md", "Document", "", "epub"));
+  fake_random::forceCollision = true;
+  ASSERT_EQ(add(store), Result::Added);
+  const std::string id = store.clippingAt(0)->id;
+  ASSERT_EQ(id, std::string("a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"));
+  const auto before = fake::files.at(storePath())->bytes;
+  EXPECT_EQ(add(store, "different"), Result::SaveFailed);
+  EXPECT_EQ(store.clippingCount(), 1u);
+  EXPECT_EQ(store.clippingAt(0)->id, id);
+  EXPECT_EQ(fake::files.at(storePath())->bytes, before);
+  fake_random::forceCollision = false;
+  EXPECT_EQ(add(store, "different"), Result::Added);
+  EXPECT_NE(store.clippingAt(1)->id, id);
 }

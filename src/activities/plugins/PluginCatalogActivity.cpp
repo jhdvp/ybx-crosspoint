@@ -39,6 +39,7 @@
 #include "network/HttpDownloader.h"
 #include "network/ProtectedPaths.h"
 #include "util/BookCacheUtils.h"
+#include "util/CatalogFolderNavigation.h"
 #include "util/FirmwareIdentity.h"
 #include "util/PluginEvents.h"
 #include "util/PluginHttp.h"
@@ -256,6 +257,7 @@ bool PluginCatalogActivity::loadManifest() {
   manifest.authorPath = browse["fields"]["author"] | "";
   manifest.idPath = browse["fields"]["id"] | "";
   manifest.urlPath = browse["fields"]["url"] | "";
+  manifest.folderUrlPath = browse["fields"]["folder_url"] | "";
   manifest.versionPath = browse["fields"]["version"] | "";
   manifest.descriptionPath = browse["fields"]["description"] | "";
   manifest.detailAuthorPath = browse["fields"]["detail_author"] | "";
@@ -288,6 +290,8 @@ bool PluginCatalogActivity::loadManifest() {
     Manifest::BrowseList entry;
     entry.title = l["title"] | "";
     entry.url = l["url"] | "";
+    entry.id = l["id"] | "";
+    entry.parent = l["parent"] | "";
     entry.body = l["body"] | "";
     JsonVariantConst notice = l["notice"];
     entry.noticeTitle = notice["title"] | "";
@@ -378,13 +382,16 @@ PluginCatalogActivity::ListIndexResult PluginCatalogActivity::loadBrowseListInde
     Manifest::BrowseList entry;
     entry.title = l["title"] | "";
     entry.url = l["url"] | "";
+    entry.id = l["id"] | "";
+    entry.parent = l["parent"] | "";
     entry.body = l["body"] | "";
     JsonVariantConst notice = l["notice"];
     entry.noticeTitle = notice["title"] | "";
     entry.noticeMessage = notice["message"] | "";
     entry.noticeConfirm = notice["confirm"] | "";
     entry.noticeCancel = notice["cancel"] | "";
-    if (!entry.title.empty() && !entry.url.empty()) manifest.browseLists.push_back(std::move(entry));
+    if (!entry.title.empty() && (!entry.url.empty() || !entry.id.empty()))
+      manifest.browseLists.push_back(std::move(entry));
   }
   if (manifest.browseLists.empty()) {
     LOG_ERR("PCAT", "browse list index has no valid lists: %s", manifest.browseListsUrl.c_str());
@@ -638,6 +645,10 @@ void PluginCatalogActivity::resetBrowse() {
   page = 1;
   hasMore = false;
   currentList = -1;
+  currentGroup.clear();
+  groupTrail.clear();
+  folderLabel.clear();
+  folderLabelHistory.clear();
   searchActive = false;
   searchQuery.clear();
   releaseRows();
@@ -648,6 +659,23 @@ void PluginCatalogActivity::resetBrowse() {
 // picker, or leaves the catalog when this list is the only one.
 void PluginCatalogActivity::openList(const int index) {
   const auto& list = manifest.browseLists[index];
+  if (list.url.empty() && !list.id.empty()) {
+    // Malformed remote indexes must not recurse forever.
+    if (!catalogfolders::canEnter(groupTrail, list.id)) {
+      fail(StrId::STR_PARSE_FEED_FAILED);
+      return;
+    }
+    groupTrail.push_back(list.id);
+    currentGroup = list.id;
+    currentList = -1;
+    releaseRows();
+    startBrowse();
+    return;
+  }
+  browseHistory.clear();
+  browseCurrentUrl.clear();
+  folderLabel.clear();
+  folderLabelHistory.clear();
   if (!list.hasNotice()) {
     currentList = index;
     startBrowse();
@@ -675,6 +703,14 @@ void PluginCatalogActivity::openList(const int index) {
 
 bool PluginCatalogActivity::wantsListPicker() const {
   return !manifest.browseLists.empty() && !manifest.isXmlList() && currentList < 0;
+}
+
+int PluginCatalogActivity::visibleListCount() const {
+  return catalogfolders::visibleCount(manifest.browseLists, currentGroup);
+}
+
+int PluginCatalogActivity::visibleListIndex(const int ordinal) const {
+  return catalogfolders::indexAt(manifest.browseLists, currentGroup, ordinal);
 }
 
 void PluginCatalogActivity::onExit() {
@@ -716,8 +752,13 @@ void PluginCatalogActivity::startBrowse() {
   }
   // Browse lists apply to JSON catalogs; XML lists navigate by folder instead.
   if (wantsListPicker()) {
-    if (manifest.browseLists.size() == 1) {
-      openList(0);  // a one-entry picker is just an extra click
+    const int visible = visibleListCount();
+    if (visible == 0) {
+      fail(StrId::STR_PARSE_FEED_FAILED);
+      return;
+    }
+    if (visible == 1) {
+      openList(visibleListIndex(0));  // skip an unnecessary single-source folder
       return;
     }
     items.clear();
@@ -852,7 +893,7 @@ bool PluginCatalogActivity::nextRowVisible() const {
 int PluginCatalogActivity::rowCount() const {
   if (state == State::PLUGIN_PICKER)
     return static_cast<int>(installedPlugins.size()) + (showOpds ? 1 : 0) + (showPluginHubInstallRow ? 1 : 0);
-  if (state == State::LIST_PICKER) return static_cast<int>(manifest.browseLists.size());
+  if (state == State::LIST_PICKER) return visibleListCount();
   if (state != State::BROWSING) return 0;
   return static_cast<int>(items.size()) + (prevRowVisible() ? 1 : 0) + (nextRowVisible() ? 1 : 0);
 }
@@ -860,6 +901,7 @@ int PluginCatalogActivity::rowCount() const {
 const std::string& PluginCatalogActivity::activeBrowseUrl() const {
   // Search overrides the list view, reusing the browse url when unspecified.
   if (searchActive) return pick(manifest.searchUrl, manifest.browseReq.url);
+  if (!manifest.isXmlList() && !browseCurrentUrl.empty()) return browseCurrentUrl;
   if (currentList < 0 || currentList >= static_cast<int>(manifest.browseLists.size())) return manifest.browseReq.url;
   return pick(manifest.browseLists[currentList].url, manifest.browseReq.url);
 }
@@ -953,13 +995,23 @@ bool PluginCatalogActivity::parseBrowseResponse() {
     item.url = std::move(row.field[JsonListParser::F_URL]);
     item.version = std::move(row.field[JsonListParser::F_VERSION]);
     item.base = std::move(row.field[JsonListParser::F_BASE]);
+    if (!manifest.folderUrlPath.empty() && !manifest.isBundle() && !item.base.empty()) {
+      item.isDir = true;
+      item.url = item.base;  // folder target, never a downloadable file
+      item.base.clear();
+    }
     item.files = std::move(row.files);
     items.push_back(std::move(item));
   };
   // Streamed straight from the SD temp file: neither the raw response nor a
   // parsed document occupies DRAM, only the rows kept.
-  const std::string* const fields[] = {&manifest.titlePath, &manifest.authorPath,  &manifest.idPath,
-                                       &manifest.urlPath,   &manifest.versionPath, &manifest.bundleBasePath};
+  const std::string* const fields[] = {
+      &manifest.titlePath,
+      &manifest.authorPath,
+      &manifest.idPath,
+      &manifest.urlPath,
+      &manifest.versionPath,
+      (!manifest.isBundle() && !manifest.folderUrlPath.empty()) ? &manifest.folderUrlPath : &manifest.bundleBasePath};
   auto parser = makeUniqueNoThrow<JsonListParser>(
       manifest.itemsPath, fields, manifest.bundleFilesPath,
       [](void* context, JsonListParser::Row& row) { (*static_cast<decltype(append)*>(context))(row); }, &append);
@@ -1314,6 +1366,7 @@ void PluginCatalogActivity::pollAuth() {
 }
 
 bool PluginCatalogActivity::itemDownloadable(const Item& item) const {
+  if (item.isDir) return false;
   if (manifest.isBundle() && !item.files.empty()) return true;
   if (!manifest.dlUrlPath.empty()) return true;  // the API hop resolves the file URL
   // Only a manifest that declares require_url treats the url field as the row's
@@ -1704,14 +1757,38 @@ void PluginCatalogActivity::onBackButton() {
     startBrowse();
     return;
   }
-  if (manifest.isXmlList() && !browseHistory.empty()) {
+  if (!browseHistory.empty()) {
     browseCurrentUrl = browseHistory.back();
     browseHistory.pop_back();
+    if (!folderLabelHistory.empty()) {
+      folderLabel = folderLabelHistory.back();
+      folderLabelHistory.pop_back();
+    } else {
+      folderLabel.clear();
+    }
     beginLoading();
-    fetchPage(page);
+    fetchPage(manifest.isXmlList() ? page : 1);
   } else if (state == State::BROWSING && currentList >= 0 && manifest.browseLists.size() > 1) {
-    // Browsing a picked list: Back returns to the list picker, not out.
+    // Return from a selected shelf to its parent source directory.
     currentList = -1;
+    browseCurrentUrl.clear();
+    folderLabel.clear();
+    if (!currentGroup.empty() && visibleListCount() == 1) {
+      if (!groupTrail.empty()) groupTrail.pop_back();
+      currentGroup = groupTrail.empty() ? "" : groupTrail.back();
+      if (currentGroup.empty() && visibleListCount() == 1) {
+        exitCatalog();
+        return;
+      }
+    }
+    startBrowse();
+  } else if (state == State::LIST_PICKER && !currentGroup.empty()) {
+    if (!groupTrail.empty()) groupTrail.pop_back();
+    currentGroup = groupTrail.empty() ? "" : groupTrail.back();
+    if (currentGroup.empty() && visibleListCount() == 1) {
+      exitCatalog();
+      return;
+    }
     startBrowse();
   } else {
     exitCatalog();
@@ -1802,9 +1879,10 @@ void PluginCatalogActivity::activateIndex(const int index) {
     return;
   }
   if (state == State::LIST_PICKER) {
-    if (index < 0 || index >= static_cast<int>(manifest.browseLists.size())) return;
+    const int actualIndex = visibleListIndex(index);
+    if (actualIndex < 0) return;
     app.clearTapFlash();
-    openList(index);
+    openList(actualIndex);
     return;
   }
   // The pager rows bracket the items: "Previous page" ahead of them past
@@ -1823,11 +1901,21 @@ void PluginCatalogActivity::activateIndex(const int index) {
 void PluginCatalogActivity::activateItem(const int itemIndex) {
   if (itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
   const Item& item = items[itemIndex];
-  if (manifest.isXmlList() && item.isDir) {
+  if (item.isDir) {
+    // The book's bearer is reused for JSON folder requests. Never send it to
+    // a different authority, on HTTP, or to a malformed URL.
+    if (!manifest.isXmlList()) {
+      if (!catalogfolders::canFollowAuthenticatedFolder(substituted(activeBrowseUrl(), nullptr), item.url)) {
+        fail(StrId::STR_FETCH_FEED_FAILED);
+        return;
+      }
+    }
     browseHistory.push_back(browseCurrentUrl);
+    folderLabelHistory.push_back(folderLabel);
     browseCurrentUrl = item.url;
+    folderLabel = item.title;
     beginLoading();
-    fetchPage(page);
+    fetchPage(manifest.isXmlList() ? page : 1);
     return;
   }
   // Already on the shelf: tapping opens the book instead of downloading again
@@ -1942,7 +2030,9 @@ void PluginCatalogActivity::showItemDetails(const int itemIndex) {
   spec.hasPrimaryAction = downloadable;
   if (downloadable) {
     const bool updateAvailable = item.status == tr(STR_UPDATE_AVAILABLE);
-    spec.actionLabel = item.onReader ? tr(STR_OPEN) : updateAvailable ? tr(STR_UPDATE) : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH));
+    spec.actionLabel = item.onReader     ? tr(STR_OPEN)
+                       : updateAvailable ? tr(STR_UPDATE)
+                                         : (manifest.tracksInstalls() ? tr(STR_INSTALL) : tr(STR_FETCH));
   } else {
     // No download source: the card states that and offers no action to start one.
     spec.status = tr(STR_OPDS_UNAVAILABLE);
@@ -1988,8 +2078,9 @@ void PluginCatalogActivity::drawFooter() {
         confirmLabel = count > 0 ? tr(STR_OPEN) : "";
       } else {
         const bool onItem = itemSel >= 0 && itemSel < static_cast<int>(items.size());
-        const bool onDir = manifest.isXmlList() && onItem && items[itemSel].isDir;
-        const bool onDetails = !manifest.isXmlList() && onItem && (manifest.hasItemDetails() || !itemDownloadable(items[itemSel]));
+        const bool onDir = onItem && items[itemSel].isDir;
+        const bool onDetails = !manifest.isXmlList() && onItem && !onDir &&
+                               (manifest.hasItemDetails() || !itemDownloadable(items[itemSel]));
         const bool onShelf = onItem && items[itemSel].onReader;
         confirmLabel =
             count == 0 ? "" : (onDir || onShelf ? tr(STR_OPEN) : (onDetails ? tr(STR_DETAILS) : tr(STR_FETCH)));
@@ -2088,6 +2179,15 @@ std::string PluginCatalogActivity::browsingHeaderLabel() const {
   std::string label = catalogTitle;
   if (searchActive) {
     label = std::string(tr(STR_SEARCH)) + ": " + searchQuery;
+  } else if (state == State::LIST_PICKER && !currentGroup.empty()) {
+    for (const auto& group : manifest.browseLists) {
+      if (group.id == currentGroup && group.url.empty()) {
+        label = group.title;
+        break;
+      }
+    }
+  } else if (state == State::BROWSING && !folderLabel.empty()) {
+    label = folderLabel;
   } else if (state == State::BROWSING && currentList >= 0 &&
              currentList < static_cast<int>(manifest.browseLists.size())) {
     label = manifest.browseLists[currentList].title;
@@ -2184,13 +2284,17 @@ void PluginCatalogActivity::rebuildRowItems() {
       }
     }
   } else if (state == State::LIST_PICKER) {
-    for (const auto& list : manifest.browseLists) addRow(list.title.c_str());
+    for (const auto& list : manifest.browseLists) {
+      if (list.parent == currentGroup) addRow(list.title.c_str(), nullptr, list.url.empty() ? ">" : nullptr);
+    }
   } else {
     if (prevRowVisible()) addRow(tr(STR_PREV_PAGE), nullptr, ">");
     for (const auto& entry : items) {
-      const char* value = entry.isDir ? ">" :
-          (entry.onReader && entry.status.empty() ? tr(STR_ON_READER) :
-           (itemDownloadable(entry) ? entry.status.c_str() : tr(STR_OPDS_UNAVAILABLE)));
+      const char* value = entry.isDir
+                              ? ">"
+                              : (entry.onReader && entry.status.empty()
+                                     ? tr(STR_ON_READER)
+                                     : (itemDownloadable(entry) ? entry.status.c_str() : tr(STR_OPDS_UNAVAILABLE)));
       addRow(entry.title.c_str(), entry.author.c_str(), value);
     }
     if (nextRowVisible()) addRow(tr(STR_NEXT_PAGE), nullptr, ">");

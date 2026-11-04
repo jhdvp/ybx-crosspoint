@@ -42,6 +42,7 @@
 #include "WifiCredentialStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/home/NoSdRecoveryActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -69,6 +70,8 @@ ActivityManager activityManager(renderer, mappedInputManager);
 FontDecompressor fontDecompressor;
 SdCardFontSystem sdFontSystem;
 FontCacheManager fontCacheManager(renderer.getFontMap(), renderer.getSdCardFonts(), renderer.getTtfFonts());
+// Remain in a storage-free loop if boot failed before settings initialization.
+static bool sdRecoveryBootMode = false;
 static unsigned long allowSleepAt = 0;
 static unsigned long lastX4ProPowerClickAt = 0;
 
@@ -528,7 +531,7 @@ void enterDeepSleep(bool fromTimeout = false) {
   powerManager.startDeepSleep(gpio, wakeOnHeldButton);
 }
 
-void setupDisplayAndFonts(bool seamless = false) {
+void setupDisplayAndFonts(bool seamless = false, bool sdAvailable = true) {
 #if !FREEINK_MCU_C3
   // C3 resolves its controller in HalGPIO::begin() before SPI claims the
   // display pins. X4 Pro skips that C3-only path, so probe here before
@@ -563,8 +566,9 @@ void setupDisplayAndFonts(bool seamless = false) {
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
 
-  // Discover and load SD card fonts
-  sdFontSystem.begin(renderer);
+  // A missing card must not start the SD font scanner. Built-in fonts suffice
+  // for the recovery screen; a successful retry restarts the normal boot.
+  if (sdAvailable) sdFontSystem.begin(renderer);
 
   LOG_DBG("MAIN", "Fonts setup");
 }
@@ -642,9 +646,10 @@ void setup() {
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
-    LOG_ERR("MAIN", "SD card initialization failed");
-    setupDisplayAndFonts(isSilentReboot);
-    activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
+    LOG_ERR("MAIN", "SD card initialization failed; entering isolated recovery");
+    setupDisplayAndFonts(isSilentReboot, false);
+    sdRecoveryBootMode = true;
+    activityManager.replaceActivity(std::make_unique<NoSdRecoveryActivity>(renderer, mappedInputManager));
     return;
   }
 
@@ -852,6 +857,16 @@ void setup() {
 }
 
 void loop() {
+  if (sdRecoveryBootMode) {
+    // setup() returned before APP_STATE, SETTINGS, network and SD-backed
+    // services were initialized. No ordinary loop path may touch them.
+    mappedInputManager.update();
+    activityManager.loop();
+    powerManager.setPowerSaving(true);
+    delay(75);
+    return;
+  }
+
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;

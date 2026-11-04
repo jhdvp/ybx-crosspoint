@@ -13,6 +13,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <HalMemory.h>
 #include <TrustedTime.h>
 #include <WiFi.h>
 #include <esp_system.h>
@@ -37,6 +38,7 @@
 #include "EpubReaderFootnoteSelectActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
 #include "EpubReaderUtils.h"
+#include "MarkdownLegacyProgress.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
@@ -61,6 +63,9 @@
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 #include "util/YbxKosync.h"
+#include "util/YbxDocumentIdentity.h"
+#include "util/YbxNoteRevision.h"
+#include "util/YbxNoteContextStore.h"
 
 namespace {
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -240,10 +245,32 @@ EpubReaderActivity::~EpubReaderActivity() {
 }
 
 bool EpubReaderActivity::loadBook() {
+  nativeNoteRevision = 0;
+  nativeNoteReanchorCount = 0;
   auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, "/.crosspoint");
   if (!loadedEpub) {
     LOG_ERR("ERS", "Failed to allocate EPUB object");
     return false;
+  }
+
+  // Detect and snapshot an old pre-formatted Markdown position BEFORE
+  // Epub::load() rebuilds V1 cache metadata. If the snapshot cannot be
+  // verified, fail closed rather than overwrite the only copy on the next
+  // page render. EPUB and ordinary TXT do not run this migration.
+  markdownlegacy::Plan legacy;
+  if (FsHelpers::hasMarkdownExtension(bookPath)) {
+    HalFile source;
+    if (Storage.openFileForRead("MDP", bookPath, source)) {
+      const size_t length = source.size();
+      source.close();
+      legacy = markdownlegacy::prepare(
+          loadedEpub->getCachePath(), length > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(length));
+    }
+    if (legacy.action == markdownlegacy::Action::Failed) {
+      LOG_ERR("MDP", "Could not preserve legacy Markdown progress before reindexing");
+      GUI.drawPopup(renderer, tr(STR_SAVE_PROGRESS_FAILED));
+      return false;
+    }
   }
 
   const bool uncached = !Storage.exists((loadedEpub->getCachePath() + "/book.bin").c_str());
@@ -297,6 +324,25 @@ bool EpubReaderActivity::loadBook() {
     }
   }
 
+  if (legacy.action == markdownlegacy::Action::Approximate ||
+      legacy.action == markdownlegacy::Action::Restart) {
+    // The old visible-text offset is from a different parser; never reuse it.
+    // Preserve raw progress.md-v1.bin for manual recovery. A bounded document
+    // can be fully repaginated with the existing Go-to-% path. Larger MDs and
+    // 4-byte/no-total old progress start at page one, with a clear notice.
+    cachedVisibleTextOffset.reset();
+    cachedChapterTotalPageCount = 0;
+    currentSpineIndex = 0;
+    cachedSpineIndex = 0;
+    nextPageNumber = 0;
+    legacyMarkdownResumeNotice = true;
+    legacyMarkdownResumeApproximate = legacy.action == markdownlegacy::Action::Approximate;
+    if (legacyMarkdownResumeApproximate) {
+      pendingPercentJump = true;
+      pendingSpineProgress = legacy.fraction();
+    }
+  }
+
   if (currentSpineIndex == 0) {
     int textSpineIndex = epub->getSpineIndexForTextReference();
     if (textSpineIndex != 0) {
@@ -308,8 +354,53 @@ bool EpubReaderActivity::loadBook() {
 
   loadLinkStack();
   loadCachedBookmarks();
-  if (!CLIPPINGS.loadForBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), "epub")) {
-    LOG_ERR("CLIP", "Failed to load clippings for %s", epub->getPath().c_str());
+  const bool clippingsLoaded = CLIPPINGS.loadForBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), "epub");
+  if (!clippingsLoaded) LOG_ERR("CLIP", "Failed to load clippings for %s", epub->getPath().c_str());
+
+  if (ybxdocument::isManagedNote(bookPath)) {
+    std::string source;
+    nativeapps::notes::Document validated;
+    // Re-read after EPUB is loaded to avoid retaining a 4 KiB source buffer
+    // throughout potentially expensive index construction.
+    if (Storage.readFileToString("NOTE", bookPath, nativeapps::notes::kMaxFileBytes, source) &&
+        nativeapps::notes::decode(source, validated)) {
+      nativeNoteRevision = ybxnote::revisionSignature(source);
+      // C3: never spend our last contiguous heap block on best-effort
+      // relinking. Normal page display, clipping lists and sync win.
+      const auto heap = HalMemory::getDefaultHeap();
+      if (clippingsLoaded && CLIPPINGS.hasClippings() &&
+          heap.freeBytes >= 32 * 1024 && heap.largestBlockBytes >= 12 * 1024) {
+        std::string visible;
+        if (ybxnote::renderVisibleText(source, visible)) {
+          uint8_t attempts = 0;
+          for (size_t i = 0; i < CLIPPINGS.clippingCount() &&
+                             attempts < ybxnote::kMaxRelocations; ++i) {
+            const Clipping& clip = *CLIPPINGS.clippingAt(i);
+            if (clip.spineIndex != 0 || clip.layoutSignature == 0 ||
+                clip.layoutSignature == nativeNoteRevision ||
+                clip.textLength < ybxnote::kMinQuoteBytes ||
+                clip.textLength > ybxnote::kMaxQuoteBytes) continue;
+            ++attempts;
+            std::string quote;
+            if (!CLIPPINGS.readClippingText(i, quote)) continue;
+            ybxnote::Context savedContext;
+            const auto contextStatus = ybxnote::contextstore::read(
+                CLIPPINGS.contextAnchorPath(), clip.id, quote, savedContext);
+            // A stored context is authoritative for this local revision.
+            // A corrupt context store NEVER downgrades to text-only matching;
+            // older clippings without context retain PR #20's unique fallback.
+            const auto candidate =
+                ybxnote::contextstore::resolve(visible, quote, contextStatus, savedContext);
+            if (candidate.status == ybxnote::Match::Found) {
+              nativeNoteReanchors[nativeNoteReanchorCount++] =
+                  {static_cast<uint16_t>(i), candidate.start, candidate.end};
+            }
+          }
+        }
+      }
+    }
+    // An unreadable/corrupt note remains readable but old highlights are
+    // never painted or given tap targets without a valid source revision.
   }
   return true;
 }
@@ -494,7 +585,8 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
     return;
   }
   const uint32_t layoutSignature =
-      readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
+      ybxdocument::isManagedNote(bookPath) ? nativeNoteRevision
+          : readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
 
   int marginTop, marginRight, marginBottom, marginLeft;
   renderer.getOrientedViewableTRBL(&marginTop, &marginRight, &marginBottom, &marginLeft);
@@ -564,6 +656,26 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
         chapterTitle.c_str(), paragraphIndex, clipping.text, layoutSignature, clipping.startOffset, clipping.endOffset);
     bool exported = false;
     if (addResult == ClippingStore::AddResult::Added) {
+      if (ybxdocument::isManagedNote(bookPath) && nativeNoteRevision &&
+          clipping.startOffset != UINT32_MAX && clipping.endOffset != UINT32_MAX &&
+          clipping.text.size() >= ybxnote::kMinQuoteBytes &&
+          clipping.text.size() <= ybxnote::kMaxQuoteBytes) {
+        const auto heap = HalMemory::getDefaultHeap();
+        if (heap.freeBytes >= 32 * 1024 && heap.largestBlockBytes >= 12 * 1024) {
+          std::string source;
+          if (Storage.readFileToString("NCTX", bookPath, nativeapps::notes::kMaxFileBytes, source) &&
+              ybxnote::revisionSignature(source) == nativeNoteRevision) {
+            std::string visible;
+            ybxnote::Context context;
+            if (ybxnote::renderVisibleText(source, visible) &&
+                ybxnote::makeContext(visible, clipping.text, clipping.startOffset, clipping.endOffset, context)) {
+              const Clipping* saved = CLIPPINGS.clippingAt(CLIPPINGS.clippingCount() - 1);
+              if (saved && !ybxnote::contextstore::save(CLIPPINGS.contextAnchorPath(), saved->id, clipping.text, context))
+                LOG_ERR("NCTX", "Clipping saved, but optional context anchor was not persisted");
+            }
+          }
+        }
+      }
       exported = ClippingsManager::saveClipping(bookTitle, author, chapterTitle, startPage + 1, clipping.text);
     }
     clippingMessage = addResult == ClippingStore::AddResult::LimitReached ? StrId::STR_CLIPPING_LIMIT_REACHED
@@ -634,6 +746,13 @@ void EpubReaderActivity::openClippings() {
 }
 
 void EpubReaderActivity::loop() {
+  // Persist an idle page after the bounded coalescing window, even if no more
+  // page turns occur. Both the render task and this path use RenderLock.
+  {
+    RenderLock lock(RenderLock::Mode::Try);
+    if (lock.ownsLock() && progressWriteGate.due(millis())) persistPendingProgress();
+  }
+
   if (loadFailurePopup.isActive()) {
     loadFailurePopup.handleInput(mappedInput, [this] { requestUpdate(); });
     return;
@@ -1946,16 +2065,21 @@ void EpubReaderActivity::renderBook() {
     markPageRendered();
   }
 
-  if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
-      section->pageCount != lastSavedPageCount) {
-    if (saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
-      lastSavedSpineIndex = currentSpineIndex;
-      lastSavedPage = section->currentPage;
-      lastSavedPageCount = section->estimatedTotalPages();
-    }
-  }
+  // Reduce SD FAT operations while turning pages. The first page is saved at
+  // once; later pages are coalesced with an eight-turn/60-second cap. The
+  // lifecycle hooks force the final position before sleep, exit or a child UI.
+  const uint64_t progressKey = (static_cast<uint64_t>(static_cast<uint16_t>(currentSpineIndex)) << 32) |
+                               (static_cast<uint64_t>(static_cast<uint16_t>(section->currentPage)) << 16) |
+                               static_cast<uint16_t>(section->estimatedTotalPages());
+  if (progressWriteGate.observe(progressKey, millis())) persistPendingProgress();
 
   showPendingSyncSaveError();
+
+  if (legacyMarkdownResumeNotice) {
+    legacyMarkdownResumeNotice = false;
+    GUI.drawPopup(renderer, legacyMarkdownResumeApproximate ? tr(STR_MD_RESUME_APPROXIMATE)
+                                                            : tr(STR_MD_RESUME_RESTART));
+  }
 
   if (pendingScreenshot) {
     pendingScreenshot = false;
@@ -2044,6 +2168,35 @@ bool EpubReaderActivity::applyDeferredReposition() {
 void EpubReaderActivity::clearDeferredReposition() {
   cachedChapterTotalPageCount = 0;
   cachedVisibleTextOffset.reset();
+}
+
+void EpubReaderActivity::persistPendingProgress(const bool force) {
+  if (!progressWriteGate.needsFlush() || !epub) return;
+  const uint32_t now = millis();
+  if (!force && !progressWriteGate.due(now)) return;
+  const ChapterPosition pos = chapterPosition();
+  if (currentSpineIndex < 0 || pos.pageIndex < 0 || pos.totalPages < 0) return;
+  const bool saved = saveProgress(currentSpineIndex, pos.pageIndex, pos.totalPages);
+  progressWriteGate.complete(now, saved);
+  if (!saved) LOG_ERR("ERS", "Deferred reader progress write failed");
+}
+
+void EpubReaderActivity::onScreenCovered() {
+  // Called with the render lock already held by ActivityManager.
+  persistPendingProgress(true);
+  ReaderActivity::onScreenCovered();
+}
+
+void EpubReaderActivity::prepareForSleep() {
+  // ActivityManager owns RenderLock around this callback.
+  persistPendingProgress(true);
+  ReaderActivity::prepareForSleep();
+}
+
+void EpubReaderActivity::onExit() {
+  // onExit is called under RenderLock: do not lock again here.
+  persistPendingProgress(true);
+  ReaderActivity::onExit();
 }
 
 bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {
@@ -2325,8 +2478,10 @@ int EpubReaderActivity::clippingAtPoint(const Page& page, const int x, const int
   int top, right, bottom, left;
   renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
   const int fontId = SETTINGS.getReaderFontId();
+  const bool managedNote = ybxdocument::isManagedNote(bookPath);
   const uint32_t signature =
-      readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
+      managedNote ? nativeNoteRevision
+                  : readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
   uint16_t wordIndex = 0;
   for (const auto& element : page.elements) {
     if (element->getTag() != TAG_PageLine) continue;
@@ -2347,8 +2502,14 @@ int EpubReaderActivity::clippingAtPoint(const Page& page, const int x, const int
       const auto range = block->wordSourceRange(i);
       for (size_t j = 0; j < CLIPPINGS.clippingCount(); ++j) {
         if (clippingContainsWord(*CLIPPINGS.clippingAt(j), currentSpineIndex, section->currentPage, section->pageCount,
-                                 signature, index, range.start, range.end))
+                                 signature, index, range.start, range.end, managedNote))
           return static_cast<int>(j);
+      }
+      // Scan at most 16 resolved spans ONCE per word, not once per clip.
+      if (managedNote && currentSpineIndex == 0) {
+        for (uint8_t k = 0; k < nativeNoteReanchorCount; ++k)
+          if (ybxnote::contains(nativeNoteReanchors[k], nativeNoteReanchors[k].index, range.start, range.end))
+            return nativeNoteReanchors[k].index;
       }
     }
   }
@@ -2370,15 +2531,22 @@ void EpubReaderActivity::drawClippingHighlights(const Page& page, const int font
   const auto started = millis();
   size_t highlightedWords = 0;
   const uint16_t currentPage = static_cast<uint16_t>(section->currentPage);
+  const bool managedNote = ybxdocument::isManagedNote(bookPath);
   const uint32_t layoutSignature =
-      readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
+      managedNote ? nativeNoteRevision
+                  : readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
   const auto isHighlighted = [&](const uint16_t wordIndex, const TextBlock::SourceRange range) {
     // ponytail: scan at most 256 C3 / 1024 S3 clippings per word; index by chapter if this becomes slow.
     for (size_t index = 0; index < CLIPPINGS.clippingCount(); ++index) {
       const Clipping& clipping = *CLIPPINGS.clippingAt(index);
       if (clippingContainsWord(clipping, static_cast<uint16_t>(currentSpineIndex), currentPage, section->pageCount,
-                               layoutSignature, wordIndex, range.start, range.end))
+                               layoutSignature, wordIndex, range.start, range.end, managedNote))
         return true;
+    }
+    if (managedNote && currentSpineIndex == 0) {
+      for (uint8_t k = 0; k < nativeNoteReanchorCount; ++k)
+        if (ybxnote::contains(nativeNoteReanchors[k], nativeNoteReanchors[k].index, range.start, range.end))
+          return true;
     }
     return false;
   };

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <string>
@@ -247,11 +248,128 @@ TEST(ReadingStatsSessions, DedupeId) {
   EXPECT_FALSE(isRecorded(state, "a1b2c3d4-1730000001"));
   EXPECT_EQ(state.lastSessionEpoch, 1730000000u);
 
-  // The field keeps 19 characters; the real reader-session id format
-  // <8 hex>-<uptime ms> is exactly 19 characters and is stored whole.
+  // Truncated prefixes are unsafe deduplication keys. Reject IDs longer
+  // than the on-device event format rather than merging distinct sessions.
   noteSession(state, "0123456789abcdef-1234567890", 0);
-  EXPECT_TRUE(isRecorded(state, "0123456789abcdef-12"));
-  EXPECT_EQ(std::strlen(state.lastSessionId), size_t{MAX_ID_LENGTH});
+  EXPECT_FALSE(isRecorded(state, "0123456789abcdef-12"));
+  EXPECT_STREQ(state.lastSessionId, "a1b2c3d4-1730000000");
+  EXPECT_EQ(state.recentSessionCount, 1u);
+}
+
+// CPS2 keeps a bounded, persistent replay window instead of only lastSessionId.
+TEST(ReadingStatsReplay, OlderRecentIdDoesNotInflateTotalsAfterReload) {
+  useZone("UTC");
+  State state;
+  const int64_t start = utcEpoch(2026, 10, 28, 10, 0);
+  const char* firstId = "aaaaaaaa-1730000000";
+  const char* secondId = "bbbbbbbb-1730001000";
+  for (const char* id : {firstId, secondId}) {
+    ASSERT_FALSE(isRecorded(state, id));
+    addSession(state, start, 300);
+    noteSession(state, id, start);
+  }
+  EXPECT_EQ(state.totalSeconds, 600u);
+  EXPECT_EQ(state.totalSessions, 2u);
+  EXPECT_TRUE(isRecorded(state, firstId));
+  EXPECT_TRUE(isRecorded(state, secondId));
+
+  std::array<uint8_t, MAX_STATE_BYTES> raw{};
+  const size_t bytes = serializeState(state, raw.data(), raw.size());
+  ASSERT_GT(bytes, STATE_HEADER_BYTES);
+  State restored;
+  ASSERT_TRUE(parseState(raw.data(), bytes, restored));
+  EXPECT_EQ(restored.totalSeconds, state.totalSeconds);
+  EXPECT_EQ(restored.recentSessionCount, 2);
+  EXPECT_TRUE(isRecorded(restored, firstId));
+  EXPECT_TRUE(isRecorded(restored, secondId));
+
+  // Mirrors recordSession's dedup gate (the storage path is device-only).
+  if (!isRecorded(restored, firstId)) {
+    addSession(restored, start, 300);
+    noteSession(restored, firstId, start);
+  }
+  EXPECT_EQ(restored.totalSeconds, 600u);
+  EXPECT_EQ(restored.totalSessions, 2u);
+}
+
+TEST(ReadingStatsReplay, RingEvictsAfterWindowWithoutReorderingLastSession) {
+  State state;
+  for (int i = 0; i <= MAX_RECENT_SESSION_IDS; ++i) {
+    char id[MAX_ID_LENGTH + 1] = {};
+    std::snprintf(id, sizeof(id), "aabbccdd-%010d", i);
+    noteSession(state, id, 1730000000 + i);
+  }
+  EXPECT_EQ(state.recentSessionCount, MAX_RECENT_SESSION_IDS);
+  EXPECT_FALSE(isRecorded(state, "aabbccdd-0000000000"));
+  EXPECT_TRUE(isRecorded(state, "aabbccdd-0000000001"));
+  EXPECT_TRUE(isRecorded(state, "aabbccdd-0000000016"));
+  EXPECT_STREQ(state.lastSessionId, "aabbccdd-0000000016");
+  EXPECT_EQ(state.recentSessionNext, 1);
+}
+
+TEST(ReadingStatsReplay, LegacyCps1StateRetainsItsLastIdOnMigration) {
+  State state;
+  addSession(state, utcEpoch(2026, 10, 28, 10, 0), 60);
+  noteSession(state, "feedbeef-1730000000", 1730000000);
+  std::array<uint8_t, MAX_STATE_BYTES> buffer{};
+  const size_t bytes = serializeState(state, buffer.data(), buffer.size());
+  ASSERT_GT(bytes, RECENT_IDS_BYTES);
+  // A real CPS1 file has identical header/day payload, and no CPS2 trailer.
+  buffer[4] = 1;
+  const size_t oldBytes = bytes - RECENT_IDS_BYTES;
+  State restored;
+  ASSERT_TRUE(parseState(buffer.data(), oldBytes, restored));
+  EXPECT_EQ(restored.totalSeconds, state.totalSeconds);
+  EXPECT_EQ(restored.totalSessions, state.totalSessions);
+  EXPECT_EQ(restored.recentSessionCount, 1);
+  EXPECT_TRUE(isRecorded(restored, "feedbeef-1730000000"));
+  noteSession(restored, "baadf00d-1730000100", 1730000100);
+  EXPECT_TRUE(isRecorded(restored, "feedbeef-1730000000"));
+  EXPECT_TRUE(isRecorded(restored, "baadf00d-1730000100"));
+}
+
+TEST(ReadingStatsReplay, RejectsTruncatedOrMalformedReplayTrailer) {
+  State state;
+  noteSession(state, "feedbeef-1730000000", 1730000000);
+  std::array<uint8_t, MAX_STATE_BYTES> bytes{};
+  const size_t len = serializeState(state, bytes.data(), bytes.size());
+  ASSERT_GT(len, RECENT_IDS_BYTES);
+  State parsed;
+  EXPECT_FALSE(parseState(bytes.data(), len - 1, parsed));
+
+  auto invalid = bytes;
+  const size_t trailer = len - RECENT_IDS_BYTES;
+  invalid[trailer] = MAX_RECENT_SESSION_IDS + 1;
+  EXPECT_FALSE(parseState(invalid.data(), len, parsed));
+
+  invalid = bytes;
+  invalid[trailer + 1] = MAX_RECENT_SESSION_IDS; // illegal cursor
+  EXPECT_FALSE(parseState(invalid.data(), len, parsed));
+
+  invalid = bytes;
+  invalid[trailer + 4] = 0; // active slot may not be empty
+  EXPECT_FALSE(parseState(invalid.data(), len, parsed));
+
+  invalid = bytes;
+  invalid[trailer + 4 + MAX_ID_LENGTH] = 'x'; // no NUL terminator
+  EXPECT_FALSE(parseState(invalid.data(), len, parsed));
+}
+
+TEST(ReadingStatsReplay, BookTotalsAreOnlyAppliedForNewIds) {
+  State state;
+  std::array<Book, MAX_BOOKS> books{};
+  int count = 0;
+  const char* path = "/books/replay.epub";
+  for (const char* id : {"aaaaaaaa-1730000000", "bbbbbbbb-1730001000", "aaaaaaaa-1730000000"}) {
+    if (isRecorded(state, id)) continue;
+    addSession(state, 1730000000, 300);
+    noteSession(state, id, 1730000000);
+    addBook(books.data(), count, path, 300, 1, 20754);
+  }
+  ASSERT_EQ(count, 1);
+  EXPECT_EQ(books[0].seconds, 600u);
+  EXPECT_EQ(books[0].sessions, 2);
+  EXPECT_EQ(state.totalSeconds, 600u);
 }
 
 TEST(ReadingStatsText, CopyTextKeepsUtf8Intact) {
@@ -332,7 +450,7 @@ TEST(ReadingStatsState, RoundTripPreservesEverything) {
 
   std::array<uint8_t, MAX_STATE_BYTES> buffer{};
   const size_t length = serializeState(state, buffer.data(), buffer.size());
-  ASSERT_EQ(length, STATE_HEADER_BYTES + 2 * DAY_RECORD_BYTES);
+  ASSERT_EQ(length, STATE_HEADER_BYTES + 2 * DAY_RECORD_BYTES + RECENT_IDS_BYTES);
 
   State parsed;
   ASSERT_TRUE(parseState(buffer.data(), length, parsed));
@@ -371,7 +489,7 @@ TEST(ReadingStatsState, RejectsCorruptAndShortBuffers) {
   EXPECT_FALSE(parseState(corrupt.data(), length, parsed));
 
   corrupt = buffer;
-  corrupt[4] = 2;
+  corrupt[4] = 3;
   EXPECT_FALSE(parseState(corrupt.data(), length, parsed));
 
   corrupt = buffer;

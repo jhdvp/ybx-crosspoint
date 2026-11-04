@@ -1,0 +1,4 @@
+add_executable(ProgressWriteGateTest ProgressWriteGateTest.cpp)
+target_include_directories(ProgressWriteGateTest PRIVATE ${REPO_ROOT}/src)
+target_link_libraries(ProgressWriteGateTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(ProgressWriteGateTest)
