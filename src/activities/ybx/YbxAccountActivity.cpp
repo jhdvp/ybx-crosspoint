@@ -7,8 +7,8 @@
 #include <Logging.h>
 #include <WiFi.h>
 
-#include <cstdio>
 #include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <utility>
@@ -21,9 +21,9 @@
 #include "util/PluginHttp.h"
 #include "util/PluginLocations.h"
 #include "util/QrUtils.h"
+#include "util/YbxKosync.h"
 #include "util/YbxNativeAuthPolicy.h"
 #include "util/YbxNativeSession.h"
-#include "util/YbxKosync.h"
 
 namespace fui = freeink::ui;
 namespace {
@@ -185,12 +185,10 @@ void YbxAccountActivity::beginPairing() {
   requestUpdateAndWait();
   String response;
   const pluginhttp::Headers headers{{"Content-Type", "application/json"}};
-  const int status = pluginhttp::request(
-      nullptr, ybxnative::kDeviceUrl, "POST", "{\"client_id\":\"crosspoint\"}",
-      headers, response, kMaxAuthBytes, nullptr, nullptr, kRequestTimeoutMs);
+  const int status = pluginhttp::request(nullptr, ybxnative::kDeviceUrl, "POST", "{\"client_id\":\"crosspoint\"}",
+                                         headers, response, kMaxAuthBytes, nullptr, nullptr, kRequestTimeoutMs);
   JsonDocument doc;
-  const bool good = status >= 200 && status < 300 &&
-                    !deserializeJson(doc, response);
+  const bool good = status >= 200 && status < 300 && !deserializeJson(doc, response);
   if (!good) {
     // Log status only. Response body, verification URL and device code are
     // short-lived credentials and must never be printed.
@@ -204,8 +202,7 @@ void YbxAccountActivity::beginPairing() {
   authVerifyUrl_ = doc["verification_uri_complete"] | "";
   const long interval = doc["interval"] | 5L;
   const long expires = doc["expires_in"] | 900L;
-  if (authUserCode_.empty() || authUserCode_.size() > 64 ||
-      authDeviceCode_.empty() || authDeviceCode_.size() > 1024 ||
+  if (authUserCode_.empty() || authUserCode_.size() > 64 || authDeviceCode_.empty() || authDeviceCode_.size() > 1024 ||
       !ybxnative::trustedVerifyUrl(authVerifyUrl_)) {
     LOG_ERR("YBX", "Native device-code response rejected: invalid fields");
     authDeviceCode_.clear();
@@ -236,9 +233,8 @@ void YbxAccountActivity::pollPairing() {
   serializeJson(payload, body);
   const pluginhttp::Headers headers{{"Content-Type", "application/json"}};
   String response;
-  const int status = pluginhttp::request(
-      nullptr, ybxnative::kTokenUrl, "POST", body, headers,
-      response, kMaxAuthBytes, nullptr, nullptr, kRequestTimeoutMs);
+  const int status = pluginhttp::request(nullptr, ybxnative::kTokenUrl, "POST", body, headers, response, kMaxAuthBytes,
+                                         nullptr, nullptr, kRequestTimeoutMs);
   if (status < 0) return;  // offline; retry until expiry, never downgrade TLS
   JsonDocument doc;
   if (deserializeJson(doc, response)) {
@@ -266,8 +262,7 @@ void YbxAccountActivity::pollPairing() {
   const std::string error = doc["error"] | "";
   if (error == "slow_down") {
     authPollIntervalMs_ = std::min<uint32_t>(60000, authPollIntervalMs_ + 5000);
-  } else if (!ybxnative::pendingGrantError(error) &&
-             (ybxnative::terminalGrantError(error) || status < 500)) {
+  } else if (!ybxnative::pendingGrantError(error) && (ybxnative::terminalGrantError(error) || status < 500)) {
     authDeviceCode_.clear();
     state_ = State::PairingFailed;
     requestUpdate();
@@ -314,9 +309,8 @@ void YbxAccountActivity::activate(int value) {
   if (state_ == State::Loading) return;
   if (value == 0) activityManager.goHome();
   if (value == 1) {
-    if (state_ == State::NotConnected || state_ == State::InvalidToken ||
-        state_ == State::Unsupported || state_ == State::PairingFailed ||
-        state_ == State::Pairing) {
+    if (state_ == State::NotConnected || state_ == State::InvalidToken || state_ == State::Unsupported ||
+        state_ == State::PairingFailed || state_ == State::Pairing) {
       beginPairing();
     } else {
       refresh();
@@ -354,18 +348,15 @@ void YbxAccountActivity::draw(UiScreen& ui) {
     auto noteStyle = ui.theme().smallText;
     noteStyle.align = fui::TextAlign::Center;
     noteStyle.maxLines = 2;
-    ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 65),
-                      static_cast<int16_t>(width), 48},
+    ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 65), static_cast<int16_t>(width), 48},
                      tr(STR_PLUGIN_AUTH_WAITING), noteStyle);
-    ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 112),
-                      static_cast<int16_t>(width), 48},
+    ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 112), static_cast<int16_t>(width), 48},
                      authUserCode_.c_str(), codeStyle);
     const int qrSize = std::min(220, width - 32);
-    authQrRect_ = fui::Rect{static_cast<int16_t>(safe.x + (safe.width - qrSize) / 2),
-                           static_cast<int16_t>(safe.y + 185),
-                           static_cast<int16_t>(qrSize), static_cast<int16_t>(qrSize)};
-    ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 430),
-                      static_cast<int16_t>(width), 58},
+    authQrRect_ =
+        fui::Rect{static_cast<int16_t>(safe.x + (safe.width - qrSize) / 2), static_cast<int16_t>(safe.y + 185),
+                  static_cast<int16_t>(qrSize), static_cast<int16_t>(qrSize)};
+    ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 430), static_cast<int16_t>(width), 58},
                      authVerifyUrl_.c_str(), noteStyle);
   } else {
     const char* names[] = {tr(STR_YBX_ACCOUNT_YANDEX), tr(STR_YBX_ACCOUNT_WB), tr(STR_YBX_ACCOUNT_LITRES)};
@@ -386,8 +377,7 @@ void YbxAccountActivity::draw(UiScreen& ui) {
     if (state_ == State::NotConnected || state_ == State::InvalidToken) status = tr(STR_YBX_SYNC_NOT_PAIRED);
     if (state_ == State::Unsupported) status = tr(STR_YBX_PLUGIN_UPDATE);
     if (state_ == State::PairingFailed) status = tr(STR_PLUGIN_AUTH_FAILED);
-    ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 225),
-                      static_cast<int16_t>(width), 45},
+    ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 225), static_cast<int16_t>(width), 45},
                      status, text);
   }
   const int spacing = 8, cell = (width - spacing * 2) / 3;

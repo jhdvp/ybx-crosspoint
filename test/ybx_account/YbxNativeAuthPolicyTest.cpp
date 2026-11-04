@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include "util/YbxNativeAuthPolicy.h"
 
 TEST(YbxNativeAuthPolicy, FirstPartyQRCodeOnly) {

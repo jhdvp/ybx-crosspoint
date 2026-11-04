@@ -42,8 +42,7 @@ class PluginCatalogActivity final : public CatalogActivity {
   // updateTarget opens Plugin Hub straight into that plugin's update screen.
   // Out-of-line construction/destruction needs the complete SecureHttpClient type.
   explicit PluginCatalogActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool showOpds = false,
-                                 bool rootMode = false, std::string updateTarget = {},
-                                 bool nativeYbx = false);
+                                 bool rootMode = false, std::string updateTarget = {}, bool nativeYbx = false);
   ~PluginCatalogActivity() override;
 
   void onEnter() override;
@@ -161,7 +160,7 @@ class PluginCatalogActivity final : public CatalogActivity {
   std::string lastDownloadTitle;
   bool showOpds = false;
   bool rootMode = false;
-  bool nativeYbx = false; // native first-party catalog; no SD plugin picker
+  bool nativeYbx = false;  // native first-party catalog; no SD plugin picker
   // Plugin name to open in the hub catalog (Home update prompt), cleared once
   // found or abandoned.
   std::string updateTarget;

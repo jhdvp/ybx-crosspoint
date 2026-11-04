@@ -29,12 +29,11 @@ bool ybxnative::loadToken(std::string& out) {
 
   // Read existing installations even when the Plugin System is disabled.
   const std::string dir = PluginLocations::findPluginDirOnDisk("ybx");
-  if (!dir.empty() &&
-      pluginhttp::loadTokenFromFile(dir + "/token.json", "access_token", out) &&
-      !out.empty()) return true;
+  if (!dir.empty() && pluginhttp::loadTokenFromFile(dir + "/token.json", "access_token", out) && !out.empty())
+    return true;
   out.clear();
-  if (pluginhttp::loadTokenFromFile("/.crosspoint/plugin-data/ybx/token.json", "access_token", out) &&
-      !out.empty()) return true;
+  if (pluginhttp::loadTokenFromFile("/.crosspoint/plugin-data/ybx/token.json", "access_token", out) && !out.empty())
+    return true;
   out.clear();
   return false;
 }
@@ -54,8 +53,8 @@ bool ybxnative::saveToken(const std::string& token) {
   {
     HalFile file;
     if (!Storage.openFileForWrite("YBX", tmp, file)) return false;
-    const bool complete = file.write(reinterpret_cast<const uint8_t*>(serialized.data()), serialized.size()) ==
-                          serialized.size();
+    const bool complete =
+        file.write(reinterpret_cast<const uint8_t*>(serialized.data()), serialized.size()) == serialized.size();
     const bool closed = file.close();
     if (!complete || !closed) {
       Storage.remove(tmp);
@@ -77,8 +76,7 @@ bool ybxnative::saveToken(const std::string& token) {
   // Existing catalog plugin is only a compatibility consumer; the native
   // reader must continue to work even if this optional mirror fails.
   const std::string dir = PluginLocations::findPluginDirOnDisk("ybx");
-  if (!dir.empty() &&
-      !pluginhttp::saveTokenToFile(dir + "/token.json", "access_token", token)) {
+  if (!dir.empty() && !pluginhttp::saveTokenToFile(dir + "/token.json", "access_token", token)) {
     LOG_ERR("YBX", "Could not mirror reader key to optional catalog plugin");
   }
   return true;

@@ -27,10 +27,10 @@
 #include "activities/settings/PluginHubInstallActivity.h"
 #include "activities/ybx/YbxAccountActivity.h"
 #include "activities/ybx/YbxStatisticsActivity.h"
-#include "nativeapps/AppRegistry.h"
-#include "nativeapps/NativeAppsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "nativeapps/AppRegistry.h"
+#include "nativeapps/NativeAppsActivity.h"
 #include "util/PluginHttp.h"
 #include "util/PluginLocations.h"
 #include "util/PluginUpdateCache.h"
@@ -778,20 +778,18 @@ void HomeActivity::onMoreOpen() {
   if (!ybxShelfDir.empty()) {
     // Keep all previous More actions in the same order. Only add the compiled
     // native launcher when the current device has at least one available app.
-    static constexpr StrId WITH_APPS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES,
-                                          StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
+    static constexpr StrId WITH_APPS[] = {StrId::STR_ON_READER,       StrId::STR_BROWSE_FILES,
+                                          StrId::STR_FILE_TRANSFER,   StrId::STR_SETTINGS_TITLE,
                                           StrId::STR_YBX_NATIVE_APPS, StrId::STR_OPDS_MY_ACCOUNT};
-    static constexpr StrId WITHOUT_APPS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES,
-                                             StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
-                                             StrId::STR_OPDS_MY_ACCOUNT};
+    static constexpr StrId WITHOUT_APPS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
+                                             StrId::STR_SETTINGS_TITLE, StrId::STR_OPDS_MY_ACCOUNT};
     if (hasNativeApps)
       ybxMore->show(StrId::STR_TOOL_MORE, WITH_APPS, 6, 0, [this](int choice) { ybxMoreChoice = choice; });
     else
       ybxMore->show(StrId::STR_TOOL_MORE, WITHOUT_APPS, 5, 0, [this](int choice) { ybxMoreChoice = choice; });
   } else {
-    static constexpr StrId WITH_APPS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
-                                          StrId::STR_SETTINGS_TITLE, StrId::STR_YBX_NATIVE_APPS,
-                                          StrId::STR_OPDS_MY_ACCOUNT};
+    static constexpr StrId WITH_APPS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
+                                          StrId::STR_YBX_NATIVE_APPS, StrId::STR_OPDS_MY_ACCOUNT};
     static constexpr StrId WITHOUT_APPS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
                                              StrId::STR_SETTINGS_TITLE, StrId::STR_OPDS_MY_ACCOUNT};
     if (hasNativeApps)

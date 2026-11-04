@@ -66,4 +66,4 @@ inline constexpr const char* kBuiltinCatalogManifest = R"YBXJSON(
   }
 }
 )YBXJSON";
-} // namespace ybxnative
+}  // namespace ybxnative

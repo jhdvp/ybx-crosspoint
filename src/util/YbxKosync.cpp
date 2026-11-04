@@ -79,7 +79,6 @@ uint32_t keyFingerprint(const std::string& key) {
   return hash == 0 ? 1 : hash;
 }
 
-
 // YBX matches books by content hash like the other YBX clients, and the bridge
 // translates positions between copies of the same work using the extended position
 // and the book id the catalog recorded next to the downloaded file.

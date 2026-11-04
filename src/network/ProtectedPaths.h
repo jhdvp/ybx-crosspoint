@@ -13,8 +13,7 @@
 namespace protectedpaths {
 
 inline constexpr const char* SENSITIVE_FILES[] = {"/.crosspoint/wifi.json", "/.crosspoint/opds.json",
-                                                  "/.crosspoint/koreader.json",
-                                                  "/.crosspoint/ybx-account.json",
+                                                  "/.crosspoint/koreader.json", "/.crosspoint/ybx-account.json",
                                                   "/.crosspoint/ybx"};
 
 // SdFat also opens a name by its generated 8.3 alias (".crosspoint" is

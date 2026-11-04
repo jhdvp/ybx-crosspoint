@@ -14,8 +14,8 @@
 #include "PluginEventDeadline.h"
 #include "PluginHttp.h"
 #include "PluginLocations.h"
-#include "YbxNativeSession.h"
 #include "PluginQueueStorage.h"
+#include "YbxNativeSession.h"
 
 namespace {
 struct CacheFiles {
@@ -76,17 +76,16 @@ bool loadReadingSummary(ReadingSummary& out) {
   const std::string path = conn.dir + "/reading-summary.json";
   CacheFiles files;
   std::string raw;
-  if (pluginevents::recoverQueue(files, path) &&
-      Storage.readFileToString("YBX", path, 4096, raw) &&
-      parseCachedReadingSummary(raw, conn.binding, out)) return true;
+  if (pluginevents::recoverQueue(files, path) && Storage.readFileToString("YBX", path, 4096, raw) &&
+      parseCachedReadingSummary(raw, conn.binding, out))
+    return true;
   // Preserve the last good offline summary during migration. The digest binds
   // this file to the *same* reader key, so other users' caches never leak.
   const std::string legacy = PluginLocations::findPluginDirOnDisk("ybx");
   if (legacy.empty()) return false;
   raw.clear();
   const std::string oldPath = legacy + "/reading-summary.json";
-  return pluginevents::recoverQueue(files, oldPath) &&
-         Storage.readFileToString("YBX", oldPath, 4096, raw) &&
+  return pluginevents::recoverQueue(files, oldPath) && Storage.readFileToString("YBX", oldPath, 4096, raw) &&
          parseCachedReadingSummary(raw, conn.binding, out);
 }
 
@@ -127,10 +126,8 @@ ReadingResult refreshReadingSummary(ReadingSummary& out) {
   std::string serialized;
   serializeJson(doc, serialized);
   if (serialized.size() > 4096) return ReadingResult::StorageError;
-  if (!Storage.exists("/.crosspoint") && !Storage.mkdir("/.crosspoint"))
-    return ReadingResult::StorageError;
-  if (!Storage.exists(conn.dir.c_str()) && !Storage.mkdir(conn.dir.c_str()))
-    return ReadingResult::StorageError;
+  if (!Storage.exists("/.crosspoint") && !Storage.mkdir("/.crosspoint")) return ReadingResult::StorageError;
+  if (!Storage.exists(conn.dir.c_str()) && !Storage.mkdir(conn.dir.c_str())) return ReadingResult::StorageError;
   const std::string path = conn.dir + "/reading-summary.json";
   CacheFiles files;
   return pluginevents::replaceQueue(files, path, serialized) ? ReadingResult::Ok : ReadingResult::StorageError;
@@ -160,8 +157,7 @@ bool loadAwardsPage(AwardsPage& out, AwardSection section, size_t offset) {
     HalFile file = Storage.open(filename.c_str());
     if (!file || file.fileSize() > AWARDS_MAX_BYTES + 65) return false;
     char binding[65];
-    if (file.read(binding, 65) != 65 ||
-        !awardsCacheBinding(std::string_view(binding, 65), conn.binding)) return false;
+    if (file.read(binding, 65) != 65 || !awardsCacheBinding(std::string_view(binding, 65), conn.binding)) return false;
     return readAwards(file, out, section, offset);
   };
   if (openBoundPage(path)) return true;
@@ -176,10 +172,8 @@ ReadingResult refreshAwardsPage(AwardsPage& out, AwardSection section, size_t of
   if (ready != ReadingResult::Ok) return ready;
   pluginhttp::substituteAll(conn.request.url, "{token}", conn.token);
   for (auto& header : conn.request.headers) pluginhttp::substituteAll(header.second, "{token}", conn.token);
-  if (!Storage.exists("/.crosspoint") && !Storage.mkdir("/.crosspoint"))
-    return ReadingResult::StorageError;
-  if (!Storage.exists(conn.dir.c_str()) && !Storage.mkdir(conn.dir.c_str()))
-    return ReadingResult::StorageError;
+  if (!Storage.exists("/.crosspoint") && !Storage.mkdir("/.crosspoint")) return ReadingResult::StorageError;
+  if (!Storage.exists(conn.dir.c_str()) && !Storage.mkdir(conn.dir.c_str())) return ReadingResult::StorageError;
   const std::string path = conn.dir + "/achievements.json";
   const std::string response = path + ".response";
   const pluginevents::EventDeadline deadline(millis(), 12000);

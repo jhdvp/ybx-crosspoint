@@ -49,10 +49,10 @@
 #include "util/PluginUpdateCache.h"
 #include "util/QrUtils.h"
 #include "util/StringUtils.h"
-#include "util/YbxKosync.h"
-#include "util/YbxNativeSession.h"
-#include "util/YbxNativeAuthPolicy.h"
 #include "util/YbxBuiltinCatalogManifest.h"
+#include "util/YbxKosync.h"
+#include "util/YbxNativeAuthPolicy.h"
+#include "util/YbxNativeSession.h"
 
 namespace fui = freeink::ui;
 
@@ -408,8 +408,9 @@ PluginCatalogActivity::ListIndexResult PluginCatalogActivity::loadBrowseListInde
 }
 
 bool PluginCatalogActivity::saveToken(const std::string& value) {
-  if (nativeYbx ? !ybxnative::saveToken(value) :
-                  !pluginhttp::saveTokenToFile(manifest.tokenFile, manifest.tokenPath, value)) return false;
+  if (nativeYbx ? !ybxnative::saveToken(value)
+                : !pluginhttp::saveTokenToFile(manifest.tokenFile, manifest.tokenPath, value))
+    return false;
   // A fresh key on the card may complete a YBX pairing, so reconcile the built-in
   // sync here instead of waiting for the reader to open a sync screen.
   ybxkosync::refresh();
@@ -417,13 +418,13 @@ bool PluginCatalogActivity::saveToken(const std::string& value) {
 }
 
 bool PluginCatalogActivity::loadToken() {
-  return nativeYbx ? ybxnative::loadToken(token) :
-                     pluginhttp::loadTokenFromFile(manifest.tokenFile, manifest.tokenPath, token);
+  return nativeYbx ? ybxnative::loadToken(token)
+                   : pluginhttp::loadTokenFromFile(manifest.tokenFile, manifest.tokenPath, token);
 }
 
 void PluginCatalogActivity::loadConfig() {
   if (nativeYbx) {
-    config.clear(); // No untrusted SD configuration for the first-party catalog.
+    config.clear();  // No untrusted SD configuration for the first-party catalog.
   } else {
     pluginhttp::loadConfigFile(manifest.configFile, config);
   }
@@ -1338,15 +1339,13 @@ void PluginCatalogActivity::beginAuth() {
   const long interval = resolvePath(root, manifest.authIntervalPath) | 5L;
   const long expires = resolvePath(root, manifest.authExpiresPath) | 900L;
   if (authUserCode.empty() || authDeviceCode.empty() ||
-      (nativeYbx && (!ybxnative::trustedVerifyUrl(authVerifyUrl) ||
-                     authUserCode.size() > 64 || authDeviceCode.size() > 1024))) {
+      (nativeYbx &&
+       (!ybxnative::trustedVerifyUrl(authVerifyUrl) || authUserCode.size() > 64 || authDeviceCode.size() > 1024))) {
     fail(StrId::STR_PLUGIN_AUTH_FAILED);
     return;
   }
-  authIntervalMs = nativeYbx ? ybxnative::pollSeconds(interval) * 1000UL
-                             : (interval < 3 ? 3 : interval) * 1000UL;
-  authDeadlineMs = millis() + (nativeYbx ? ybxnative::expiresSeconds(expires)
-                                         : (expires < 60 ? 60 : expires)) * 1000UL;
+  authIntervalMs = nativeYbx ? ybxnative::pollSeconds(interval) * 1000UL : (interval < 3 ? 3 : interval) * 1000UL;
+  authDeadlineMs = millis() + (nativeYbx ? ybxnative::expiresSeconds(expires) : (expires < 60 ? 60 : expires)) * 1000UL;
   authNextPollMs = millis() + authIntervalMs;
   state = State::AUTH;
   requestUpdate();

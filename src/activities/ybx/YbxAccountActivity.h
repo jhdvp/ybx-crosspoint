@@ -23,8 +23,15 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
 
  private:
   enum class State {
-    NotConnected, Ready, Loading, Failed, InvalidToken, Unsupported,
-    PairingStarting, Pairing, PairingFailed
+    NotConnected,
+    Ready,
+    Loading,
+    Failed,
+    InvalidToken,
+    Unsupported,
+    PairingStarting,
+    Pairing,
+    PairingFailed
   };
   static void screen(UiScreen& screen, void* user);
   static void action(const freeink::ui::ActionEvent& event, void* user);
