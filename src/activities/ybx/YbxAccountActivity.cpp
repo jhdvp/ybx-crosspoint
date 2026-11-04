@@ -17,6 +17,7 @@
 #include "MappedInputManager.h"
 #include "activities/ActivityManager.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/settings/KOReaderSettingsActivity.h"
 #include "components/UITheme.h"
 #include "network/TlsTransport.h"
 #include "util/PluginHttp.h"
@@ -333,11 +334,11 @@ void YbxAccountActivity::loop() {
   const auto touch = routeTouch(mappedInput);
   if (touch.routed && app.invalidated()) requestUpdate();
   navigator_.onNext([this] {
-    selection_ = (selection_ + 1) % 3;
+    selection_ = (selection_ + 1) % 4;
     requestUpdate();
   });
   navigator_.onPrevious([this] {
-    selection_ = (selection_ + 2) % 3;
+    selection_ = (selection_ + 3) % 4;
     requestUpdate();
   });
   const int chosen = std::exchange(pending_, -1);
@@ -364,6 +365,15 @@ void YbxAccountActivity::activate(int value) {
     }
   }
   if (value == 2) openPluginCatalog();
+  if (value == 3) {
+    auto sync = makeUniqueNoThrow<KOReaderSettingsActivity>(renderer, mappedInput);
+    if (sync) {
+      startActivityForResult(std::move(sync), [this](const ActivityResult&) {
+        returnedFromChild_ = true;
+        requestUpdate();
+      });
+    }
+  }
 }
 void YbxAccountActivity::openPluginCatalog() { activityManager.goToYbxCatalog(); }
 void YbxAccountActivity::button(UiScreen& ui, fui::Rect bounds, int value, const char* label) {
@@ -429,7 +439,7 @@ void YbxAccountActivity::draw(UiScreen& ui) {
     ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 225), static_cast<int16_t>(width), 45},
                      status, text);
   }
-  const int spacing = 8, cell = (width - spacing * 2) / 3;
+  const int spacing = 8, cell = (width - spacing * 3) / 4;
   const int y = safe.y + safe.height - 64;
   button(ui, {static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 0, tr(STR_BACK));
   button(ui, {static_cast<int16_t>(x + cell + spacing), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 1,
@@ -438,6 +448,8 @@ void YbxAccountActivity::draw(UiScreen& ui) {
                                                                : tr(STR_PLUGIN_SIGN_IN));
   button(ui, {static_cast<int16_t>(x + (cell + spacing) * 2), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48},
          2, tr(STR_YBX_HOME_CATALOGS));
+  button(ui, {static_cast<int16_t>(x + (cell + spacing) * 3), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48},
+         3, tr(STR_YBX_SYNC));
 }
 void YbxAccountActivity::render(RenderLock&&) {
   renderer.clearScreen();
