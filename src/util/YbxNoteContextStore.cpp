@@ -165,7 +165,10 @@ Status read(const std::string& path, std::string_view id, std::string_view quote
   const auto result = scan(path, validId(id) ? id : std::string_view{});
   if (!result.ok) return Status::Invalid;
   if (!validId(id) || !result.found) return Status::Missing;
-  if (result.quoteHash != quoteFingerprint(quote)) return Status::Invalid;
+  // A remote clipping can change its quote under an existing ID. The old
+  // context must not be reused, but this is not an SD corruption and must
+  // not block the user's unrelated quote synchronization.
+  if (result.quoteHash != quoteFingerprint(quote)) return Status::Stale;
   out = result.context;
   return Status::Found;
 }

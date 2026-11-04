@@ -11,7 +11,7 @@ namespace ybxnote::contextstore {
 // store through built-in file/folder moves, but must be copied alongside it
 // for external SD transfers. Missing anchors use the previous PR's exact
 // unique-text fallback; corrupt anchors NEVER cause unsafe reattachment.
-enum class Status : uint8_t { Missing, Found, Invalid };
+enum class Status : uint8_t { Missing, Found, Invalid, Stale };
 
 Status read(const std::string& path, std::string_view clippingId,
             std::string_view quote, Context& out);

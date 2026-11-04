@@ -9,7 +9,11 @@
 
 namespace fake {
 inline std::vector<std::string> uploads;
+inline std::vector<std::string> anchorUploads;
 inline std::string remoteResponse;
+inline std::string anchorResponse = "{\"anchor_version\":1,\"cursor\":0,\"more\":false,\"items\":[]}";
+inline bool anchorsSupported = true;
+inline int anchorRequests = 0;
 inline int requests = 0;
 inline int failHttpAt = -1;
 inline bool incomplete = false;
@@ -38,11 +42,17 @@ class SecureHttpClient {
 #endif
     if (fake::requests++ == fake::failHttpAt) return 500;
     const bool upload = std::string(method) == "PUT";
-    if (upload) fake::uploads.emplace_back(reinterpret_cast<const char*>(data), length);
-    const std::string response = upload                                        ? "{\"accepted\":1}"
+    const bool anchor = url_.find("/anchors") != std::string::npos;
+    if (anchor) ++fake::anchorRequests;
+    complete_ = !fake::incomplete;
+    if (anchor && !fake::anchorsSupported) return 404;
+    if (upload && anchor) fake::anchorUploads.emplace_back(reinterpret_cast<const char*>(data), length);
+    else if (upload) fake::uploads.emplace_back(reinterpret_cast<const char*>(data), length);
+    const std::string response = anchor
+                                     ? (upload ? "{\"accepted\":1,\"revision\":1}" : fake::anchorResponse)
+                                 : upload                                        ? "{\"accepted\":1}"
                                  : url_.find("?cursor=0") != std::string::npos ? "{\"sync_version\":2}"
                                                                                : fake::remoteResponse;
-    complete_ = !fake::incomplete;
     for (size_t offset = 0; offset < response.size(); offset += 97) {
       const size_t chunk = std::min<size_t>(97, response.size() - offset);
       if (!sink(reinterpret_cast<const uint8_t*>(response.data() + offset), chunk)) {

@@ -154,7 +154,7 @@ TEST_F(NativeNoteContextStore, CorruptAnchorNeverDowngradesToTextOnlyMatch) {
 TEST_F(NativeNoteContextStore, RemoteQuoteUpdateWithSameIdCannotUseOldContext) {
   ASSERT_TRUE(ctx::save(path, id1, quote1, a));
   ybxnote::Context c;
-  EXPECT_EQ(ctx::read(path, id1, "edited quotation", c), ctx::Status::Invalid);
+  EXPECT_EQ(ctx::read(path, id1, "edited quotation", c), ctx::Status::Stale);
   EXPECT_FALSE(ctx::save(path, id1, "edited quotation", a));
   EXPECT_EQ(ctx::read(path, id1, quote1, c), ctx::Status::Found);
   EXPECT_EQ(c.prefix, a.prefix);

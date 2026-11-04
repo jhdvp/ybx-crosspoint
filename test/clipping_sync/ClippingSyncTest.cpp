@@ -13,6 +13,7 @@
 #include "BuildScratch.h"
 #include "clippings/ClippingSync.h"
 #include "network/TlsTransport.h"
+#include "util/YbxNoteContextStore.h"
 
 namespace {
 constexpr const char* book = "/book.epub";
@@ -28,6 +29,10 @@ void reset() {
 #endif
   fake::syncBufferAllocated = false;
   fake::uploads.clear();
+  fake::anchorUploads.clear();
+  fake::anchorRequests = 0;
+  fake::anchorsSupported = true;
+  fake::anchorResponse = "{\"anchor_version\":1,\"cursor\":0,\"more\":false,\"items\":[]}";
   fake::requests = 0;
   fake::failHttpAt = -1;
   fake::incomplete = false;
@@ -89,11 +94,132 @@ void maximumTextRoundTrip() {
   assert(stored == text);
   CLIPPINGS.unload();
 }
+constexpr const char* nativeBook = "/apps/notes/note-0123456789abcdef.md";
+constexpr const char* nativeText = "A complete unique selection.";
+
+std::string addNative(bool localContext) {
+  assert(CLIPPINGS.loadForBook(nativeBook, "Native", "", "epub"));
+  assert(CLIPPINGS.addClipping(0, 0, 0, 1, 0, 0, 4, "Note", 0,
+                              nativeText, 112233, 0, 27) == ClippingStore::AddResult::Added);
+  const Clipping* clip = CLIPPINGS.clippingAt(0);
+  assert(clip);
+  std::string id = clip->id;
+  if (localContext)
+    assert(ybxnote::contextstore::save(CLIPPINGS.contextAnchorPath(), id, nativeText,
+                                      {"Before ", " after."}));
+  CLIPPINGS.unload();
+  return id;
+}
+
+void compatibleOldServerKeepsPrimaryClippingSync() {
+  reset();
+  addNative(true);
+  fake::anchorsSupported = false;
+  assert(clippingSync::run(nativeBook, "filename-md5"));
+  assert(fake::uploads.size() == 1);
+  assert(fake::anchorUploads.empty());
+  assert(fake::anchorRequests == 1);
+  assert(fake::authHeaders >= 2);
+  released();
+}
+
+void sendsLocalContextAfterPrimaryQuoteAndAcceptsIdempotentRetry() {
+  reset();
+  const std::string id = addNative(true);
+  assert(clippingSync::run(nativeBook, "filename-md5"));
+  assert(fake::uploads.size() == 1);
+  assert(fake::anchorUploads.size() == 1);
+  JsonDocument parsed;
+  assert(!deserializeJson(parsed, fake::anchorUploads[0]));
+  assert(parsed["anchor_version"].as<unsigned>() == 1);
+  assert(parsed["id"].as<std::string>() == id);
+  assert(parsed["text"].as<std::string>() == nativeText);
+  assert(parsed["prefix"].as<std::string>() == "Before ");
+  assert(clippingSync::run(nativeBook, "filename-md5"));
+  assert(fake::uploads.size() == 1);  // clipping revision is unchanged
+  assert(fake::anchorUploads.size() == 2);  // anchor PUT is idempotent
+  released();
+}
+
+void savesFetchedContextForQuoteAlreadySyncedViaV2() {
+  reset();
+  const std::string id = addNative(false);
+  JsonDocument response;
+  response["anchor_version"] = 1;
+  response["cursor"] = 1;
+  response["more"] = false;
+  JsonObject item = response["items"].to<JsonArray>().add<JsonObject>();
+  item["id"] = id;
+  item["text"] = nativeText;
+  item["prefix"] = "Prelude ";
+  item["suffix"] = " tail";
+  item["revision"] = 1;
+  serializeJson(response, fake::anchorResponse);
+  assert(clippingSync::run(nativeBook, "filename-md5"));
+  assert(fake::anchorUploads.empty());
+  assert(CLIPPINGS.loadForBook(nativeBook, "", "", "epub"));
+  ybxnote::Context result;
+  assert(ybxnote::contextstore::read(CLIPPINGS.contextAnchorPath(), id, nativeText, result) ==
+         ybxnote::contextstore::Status::Found);
+  assert(result.prefix == "Prelude ");
+  CLIPPINGS.unload();
+  released();
+}
+
+void skipsStaleLocalQuoteContextWithoutBlockingClippingSync() {
+  reset();
+  const std::string id = addNative(true);
+  // Change the existing clipping content with the same ID as an incoming
+  // v2 revision would; the captured sidecar is now intentionally stale.
+  assert(CLIPPINGS.loadForBook(nativeBook, "Native", "", "epub"));
+  Clipping newer = *CLIPPINGS.clippingAt(0);
+  newer.syncRevision = 2;
+  assert(CLIPPINGS.applyRemote(newer, "A different quote after editing.", false));
+  CLIPPINGS.unload();
+  assert(clippingSync::run(nativeBook, "filename-md5"));
+  assert(fake::anchorUploads.empty());
+  assert(CLIPPINGS.loadForBook(nativeBook, "", "", "epub"));
+  std::string text;
+  assert(CLIPPINGS.readClippingText(0, text) && text == "A different quote after editing.");
+  ybxnote::Context previous;
+  assert(ybxnote::contextstore::read(CLIPPINGS.contextAnchorPath(), id, text, previous) ==
+         ybxnote::contextstore::Status::Stale);
+  CLIPPINGS.unload();
+  released();
+}
+
+void refusesRemoteAnchorForEditedQuoteButKeepsLocalClip() {
+  reset();
+  const std::string id = addNative(false);
+  JsonDocument response;
+  response["anchor_version"] = 1;
+  response["cursor"] = 1;
+  response["more"] = false;
+  JsonObject item = response["items"].to<JsonArray>().add<JsonObject>();
+  item["id"] = id;
+  item["text"] = "Another changed selected quote.";
+  item["prefix"] = "Prelude ";
+  item["suffix"] = " tail";
+  item["revision"] = 1;
+  serializeJson(response, fake::anchorResponse);
+  assert(!clippingSync::run(nativeBook, "filename-md5"));
+  assert(CLIPPINGS.loadForBook(nativeBook, "", "", "epub"));
+  std::string current;
+  assert(CLIPPINGS.readClippingText(0, current) && current == nativeText);
+  CLIPPINGS.unload();
+  released();
+}
+
 }  // namespace
 
 int main() {
   buildscratch::lend(framebuffer.data(), framebuffer.size());
   maximumTextRoundTrip();
+  compatibleOldServerKeepsPrimaryClippingSync();
+  sendsLocalContextAfterPrimaryQuoteAndAcceptsIdempotentRetry();
+  savesFetchedContextForQuoteAlreadySyncedViaV2();
+  refusesRemoteAnchorForEditedQuoteButKeepsLocalClip();
+  skipsStaleLocalQuoteContextWithoutBlockingClippingSync();
   for (int failure = 0; failure < 3; ++failure) {
     reset();
 #if defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3
