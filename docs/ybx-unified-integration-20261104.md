@@ -23,6 +23,19 @@ Status: integrated REVIEW candidate, not a release. Never assume all
   and its own nested-catalog #10. Do NOT merge it wholesale onto the
   native candidate. Treat stock and native variants separately.
 
+## Unified candidate QA (2026-11-04)
+
+The exact merged-source host suite **1241/1241 PASS**, native
+plugin installer **9/9 PASS**, JS syntax and item-downloadability PASS.
+PlatformIO compiled both boards: C3 flash 87.4%, static RAM 20.4%;
+S3 flash 85.0%, static RAM 34.2%. See
+docs/handovers/2026-11-04-unified-firmware-qa.md for binary SHA256,
+local artifacts and upstream blockers.
+
+The upstream merge simulation detects 11 conflicted files and a
+hypothetical PluginHost ABI invariant failure. No upstream merge
+was performed. GitHub Actions and actual devices are separate gates.
+
 ## 17 packages — verified source scope vs missing acceptance
 
 A package can contain code in this candidate and still be incomplete
