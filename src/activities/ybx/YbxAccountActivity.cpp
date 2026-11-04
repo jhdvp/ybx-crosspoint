@@ -18,9 +18,11 @@
 #include "activities/ActivityManager.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
+#include "network/TlsTransport.h"
 #include "util/PluginHttp.h"
 #include "util/PluginLocations.h"
 #include "util/QrUtils.h"
+#include "util/TlsFailureText.h"
 #include "util/YbxKosync.h"
 #include "util/YbxNativeAuthPolicy.h"
 #include "util/YbxNativeSession.h"
@@ -54,6 +56,7 @@ void YbxAccountActivity::onEnter() {
   authUserCode_.clear();
   authVerifyUrl_.clear();
   authDeviceCode_.clear();
+  transportFailureText_ = nullptr;
   authQrRect_ = {};
   resetUi();
   app.on(1, &YbxAccountActivity::action, this);
@@ -129,6 +132,7 @@ void YbxAccountActivity::refresh() {
     activityManager.goHome();
     return;
   }
+  transportFailureText_ = code < 0 ? tlsui::failureDetail(tlspolicy::lastFailure()) : nullptr;
   State next = State::Failed;
   ybxaccount::Summary incoming;
   if (code == 401 || code == 403) {
@@ -161,6 +165,7 @@ void YbxAccountActivity::refresh() {
   requestUpdate();
 }
 void YbxAccountActivity::beginPairing() {
+  transportFailureText_ = nullptr;
   authUserCode_.clear();
   authVerifyUrl_.clear();
   authDeviceCode_.clear();
@@ -193,6 +198,7 @@ void YbxAccountActivity::beginPairing() {
     // Log status only. Response body, verification URL and device code are
     // short-lived credentials and must never be printed.
     LOG_ERR("YBX", "Native device-code request failed: status=%d", status);
+    transportFailureText_ = tlsui::failureDetail(tlspolicy::lastFailure());
     state_ = State::PairingFailed;
     requestUpdate();
     return;
@@ -235,7 +241,11 @@ void YbxAccountActivity::pollPairing() {
   String response;
   const int status = pluginhttp::request(nullptr, ybxnative::kTokenUrl, "POST", body, headers, response, kMaxAuthBytes,
                                          nullptr, nullptr, kRequestTimeoutMs);
-  if (status < 0) return;  // offline; retry until expiry, never downgrade TLS
+  if (status < 0) {
+    transportFailureText_ = tlsui::failureDetail(tlspolicy::lastFailure());
+    return;  // offline; retry until expiry, never downgrade TLS
+  }
+  transportFailureText_ = nullptr;
   JsonDocument doc;
   if (deserializeJson(doc, response)) {
     if (status >= 500) return;
@@ -376,7 +386,9 @@ void YbxAccountActivity::draw(UiScreen& ui) {
     if (state_ == State::Loading || state_ == State::PairingStarting) status = tr(STR_LOADING_POPUP);
     if (state_ == State::NotConnected || state_ == State::InvalidToken) status = tr(STR_YBX_SYNC_NOT_PAIRED);
     if (state_ == State::Unsupported) status = tr(STR_YBX_PLUGIN_UPDATE);
-    if (state_ == State::PairingFailed) status = tr(STR_PLUGIN_AUTH_FAILED);
+    if (state_ == State::PairingFailed)
+      status = transportFailureText_ ? transportFailureText_ : tr(STR_PLUGIN_AUTH_FAILED);
+    if (state_ == State::Failed && transportFailureText_) status = transportFailureText_;
     ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 225), static_cast<int16_t>(width), 45},
                      status, text);
   }
