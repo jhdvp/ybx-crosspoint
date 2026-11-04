@@ -46,6 +46,16 @@ class BuiltinCatalogTests(unittest.TestCase):
         self.assertIn("-DWOLFSSL_SHA512", flags)
         self.assertNotIn("setInsecure(", (ROOT / "src/activities/ybx/YbxAccountActivity.cpp").read_text())
 
+    def test_native_sync_keeps_metadata_and_clippings_independent(self):
+        sync = (ROOT / "src/util/YbxKosync.cpp").read_text()
+        settings = (ROOT / "src/activities/settings/KOReaderSettingsActivity.cpp").read_text()
+        account = (ROOT / "src/activities/ybx/YbxAccountActivity.cpp").read_text()
+        self.assertNotIn("KOREADER_STORE.setSendMetadata(true)", sync)
+        self.assertNotIn("KOREADER_STORE.setSyncClippings(true)", sync)
+        self.assertIn("KOREADER_STORE.setSendMetadata(!KOREADER_STORE.getSendMetadata())", settings)
+        self.assertIn("KOREADER_STORE.setSyncClippings(!KOREADER_STORE.getSyncClippings())", settings)
+        self.assertIn("KOReaderSettingsActivity", account)
+
     def test_no_plugin_sd_manifest_required_for_native_constructor(self):
         source = (ROOT / "src/activities/plugins/PluginCatalogActivity.cpp").read_text()
         self.assertIn("raw = ybxnative::kBuiltinCatalogManifest;", source)
