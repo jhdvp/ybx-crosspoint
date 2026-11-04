@@ -19,7 +19,7 @@ TEST(YbxNativeAuthPolicy, RejectsMalformedDeviceChallenge) {
   EXPECT_FALSE(ybxnative::validDeviceChallenge("ABCDE", "", goodUrl));
   EXPECT_FALSE(ybxnative::validDeviceChallenge(std::string(65, 'A'), "opaque-device-code", goodUrl));
   EXPECT_FALSE(ybxnative::validDeviceChallenge("ABCDE", std::string(1025, 'a'), goodUrl));
-  EXPECT_FALSE(ybxnative::validDeviceChallenge("ABC\\nDEF", "opaque-device-code", goodUrl));
+  EXPECT_FALSE(ybxnative::validDeviceChallenge("ABC\nDEF", "opaque-device-code", goodUrl));
   EXPECT_FALSE(ybxnative::validDeviceChallenge("ABCDE", "opaque-device-code",
                                                 "https://my.ybx.app.evil.example/pair"));
 }
