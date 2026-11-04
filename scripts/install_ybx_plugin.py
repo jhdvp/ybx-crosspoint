@@ -21,6 +21,19 @@ def install(sd_root: Path, source: Path = SOURCE) -> dict:
     if not target.resolve().is_relative_to(root):
         raise ValueError('Plugin destination escapes the selected SD root')
     manifest = json.loads((source / 'manifest.json').read_text())
+    plugin = json.loads((source / 'plugin.json').read_text())
+    device = json.loads((source / 'device.json').read_text())
+    required = {'catalog.lists.auth', 'catalog.folders.json'}
+    # Editions share legacy plugin ID/token storage, so we must reject the
+    # upstream-compatible Stock payload before modifying the mounted SD card.
+    if (manifest.get('name') != 'ybx'
+            or plugin.get('id') != 'ybx'
+            or plugin.get('version') != manifest.get('version')
+            or not required.issubset(set(manifest.get('compatibility', {}).get('requires', [])))
+            or not required.issubset(set(plugin.get('compatibility', {}).get('requires', [])))
+            or not device.get('browse', {}).get('lists_url')
+            or device.get('browse', {}).get('fields', {}).get('folder_url') != 'folder_url'):
+        raise ValueError('This installer accepts YBX Native only; stock CrossPoint plugin rejected')
     names = manifest['files']
     for name in names:
         if not isinstance(name, str) or Path(name).name != name or name in ('.', '..'):

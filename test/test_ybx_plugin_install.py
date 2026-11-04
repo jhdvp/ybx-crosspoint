@@ -21,11 +21,28 @@ class YbxPluginInstall(unittest.TestCase):
         target = self.root / 'plugins/ybx'
         manifest = json.loads((target / 'manifest.json').read_text())
         device = json.loads((target / 'device.json').read_text())
-        self.assertEqual(manifest['version'], '1.9.0')
+        self.assertEqual(manifest['version'], '1.9.1')
         self.assertIn('catalog.lists.auth', manifest['compatibility']['requires'])
+        self.assertIn('catalog.folders.json', manifest['compatibility']['requires'])
+        self.assertEqual(device['browse']['fields']['folder_url'], 'folder_url')
+        self.assertEqual(device['browse']['lists_headers']['Authorization'], 'Bearer {token}')
+
         self.assertIn('/catalog/lists', device['browse']['lists_url'])
         self.assertFalse((target / 'token.json').exists())
         self.assertIn('config.json', result['installed'])
+
+    def test_nested_folder_extension_preserves_native_ybx_features(self):
+        manifest = json.loads((installer.SOURCE / 'manifest.json').read_text())
+        device = json.loads((installer.SOURCE / 'device.json').read_text())
+        metadata = json.loads((installer.SOURCE / 'plugin.json').read_text())
+        self.assertIn('catalog.folders.json', metadata['compatibility']['requires'])
+        self.assertEqual(metadata['version'], manifest['version'])
+        self.assertEqual(device['download']['dest_dir'], '/books/ybx')
+        self.assertTrue(device['download']['require_url'])
+        self.assertIn('reading_summary', device['ybx'])
+        self.assertIn('achievements', device['ybx'])
+        self.assertEqual(device['auth']['token_path'], 'access_token')
+        self.assertEqual(device['token']['file'], 'token.json')
 
     def test_existing_credentials_and_custom_config_are_preserved(self):
         target = self.root / 'plugins/ybx'
@@ -48,6 +65,41 @@ class YbxPluginInstall(unittest.TestCase):
         installer.install(self.root)
         self.assertTrue((legacy / 'manifest.json').is_file())
         self.assertFalse((self.root / 'plugins/ybx').exists())
+
+    def test_stock_edition_is_rejected_before_any_sd_writes(self):
+        import shutil
+        stock = self.root / 'stock-variant'
+        shutil.copytree(installer.SOURCE, stock)
+        for filename in ('manifest.json', 'plugin.json'):
+            path = stock / filename
+            doc = json.loads(path.read_text())
+            doc['compatibility'].pop('requires', None)
+            path.write_text(json.dumps(doc))
+        device_path = stock / 'device.json'
+        device = json.loads(device_path.read_text())
+        device['browse'].pop('lists_url', None)
+        device['browse']['fields'].pop('folder_url', None)
+        device_path.write_text(json.dumps(device))
+
+        sd = self.root / 'card'
+        sd.mkdir()
+        with self.assertRaisesRegex(ValueError, 'YBX Native only'):
+            installer.install(sd, source=stock)
+        self.assertFalse((sd / 'plugins').exists())
+
+    def test_mixed_edition_metadata_is_rejected_before_any_sd_writes(self):
+        import shutil
+        source = self.root / 'mixed'
+        shutil.copytree(installer.SOURCE, source)
+        metadata = source / 'plugin.json'
+        obj = json.loads(metadata.read_text())
+        obj['compatibility']['requires'].remove('catalog.folders.json')
+        metadata.write_text(json.dumps(obj))
+        sd = self.root / 'card'
+        sd.mkdir()
+        with self.assertRaisesRegex(ValueError, 'YBX Native only'):
+            installer.install(sd, source=source)
+        self.assertFalse((sd / 'plugins').exists())
 
     def test_two_installations_stop_before_writing(self):
         first = self.root / 'plugins/ybx'
