@@ -54,6 +54,41 @@ installable 1.9.1 plugin at source time. The native identity still belongs
 to the firmware. The compatibility plugin remains optional for stock
 CrossPoint and any legacy plugin-specific events.
 
+## QEMU 11.1.2 native sign-in evidence (2026-11-04)
+
+The official GitHub Actions firmware artifact from [CI run #75](https://github.com/jhdvp/ybx-crosspoint/actions/runs/41826248682)
+on commit `551f530b22bddebcca3a051bcbf89280ac77b694` has SHA-256
+`03bbb39c3a5986d01ef331854dcc30a7f461f822f89eec25fc90553d333ab05a`
+(`firmware.bin`, X4 Pro). It is **not** the locally built image.
+
+- Pinned QEMU 11.1.2 / eink-qemu 0.9.2: release SHA verification passed.
+- Constructed a disposable 16 MiB Flash image from the CI application and
+  verified factory bootloader/partition files; kept production emulator,
+  stable reader state, and OTA untouched.
+- Used a separately constructed FAT16 SD test image containing only a synthetic
+  `PICSimLabWifi` open-network credential. The SD contains **no YBX plugin**,
+  account token, provider credential or real user book.
+- In guest: Home → More → My Account → Sign in. The guest joined Wi-Fi
+  via the saved open SSID, completed real DHCP and an HTTPS TLS **1.3**
+  handshake with `TLS_AES_128_GCM_SHA256` (certificate verification enabled).
+  The earlier wolfSSL `HASH_TYPE_E (-232)` no longer occurs.
+- The first-party device-code POST returned real challenge data; the genuine
+  E-Ink screen displayed a QR, an alphanumeric pairing code, and a URL under
+  `https://my.ybx.app/pair`. Do not attach live QR/screenshots or expired
+  secret codes to public PRs; they are temporary authentication material.
+- Native screen and QR are confirmed **without optional SD plugin**. Full
+  user-approved pairing, subsequent token persistence, authenticated catalogs,
+  and bidirectional KOSync/metadata/clipping exchange remain open acceptance
+  items; a pending grant is not a successful account login.
+- Native CMake/CTest: 1245/1246 in parallel; the lone unrelated
+  `FlowBoundaries/ParserStopTest.PageCallbackStopsParsingAndClosesFile`
+  succeeded when its four cases were rerun in isolation. GitHub CI unit-tests
+  and all firmware target builds passed, while cppcheck has existing
+  low-style warnings also present on the parent PR.
+- QEMU Wi-Fi list touch has a separate input-routing issue: a row visually
+  selects but does not always activate. The test-only preseeded open-network
+  fixture bypassed this GUI problem; it is **not** a production workaround.
+
 ## Test status and limits
 
 - Portable policy + ProtectedPaths and full CTest suite; Python

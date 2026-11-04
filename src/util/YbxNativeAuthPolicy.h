@@ -18,7 +18,8 @@ constexpr bool trustedVerifyUrl(std::string_view url) {
 constexpr bool validDeviceChallenge(std::string_view userCode, std::string_view deviceCode,
                                     std::string_view verifyUrl) {
   if (userCode.empty() || userCode.size() > 64 || deviceCode.empty() || deviceCode.size() > 1024 ||
-      !trustedVerifyUrl(verifyUrl)) return false;
+      !trustedVerifyUrl(verifyUrl))
+    return false;
   for (const char ch : userCode) {
     if (static_cast<unsigned char>(ch) < 0x20) return false;
   }

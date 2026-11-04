@@ -198,7 +198,8 @@ void YbxAccountActivity::beginPairing() {
     if (now - polledAt >= 50) {
       polledAt = now;
       mappedInput.update(true);
-      cancelled = cancelled || mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture();
+      cancelled =
+          cancelled || mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture();
     }
     return cancelled;
   };
@@ -261,7 +262,8 @@ void YbxAccountActivity::pollPairing() {
     if (now - polledAt >= 50) {
       polledAt = now;
       mappedInput.update(true);
-      cancelled = cancelled || mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture();
+      cancelled =
+          cancelled || mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture();
     }
     return cancelled;
   };
@@ -442,9 +444,9 @@ void YbxAccountActivity::draw(UiScreen& ui) {
   const int y = safe.y + safe.height - 64;
   button(ui, {static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 0, tr(STR_BACK));
   button(ui, {static_cast<int16_t>(x + cell + spacing), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 1,
-         state_ == State::Pairing ? tr(STR_CANCEL)
+         state_ == State::Pairing                             ? tr(STR_CANCEL)
          : state_ == State::Ready || state_ == State::Loading ? tr(STR_UPDATE)
-                                                               : tr(STR_PLUGIN_SIGN_IN));
+                                                              : tr(STR_PLUGIN_SIGN_IN));
   button(ui, {static_cast<int16_t>(x + (cell + spacing) * 2), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48},
          2, tr(STR_YBX_HOME_CATALOGS));
   button(ui, {static_cast<int16_t>(x + (cell + spacing) * 3), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48},
