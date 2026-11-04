@@ -190,8 +190,23 @@ void YbxAccountActivity::beginPairing() {
   requestUpdateAndWait();
   String response;
   const pluginhttp::Headers headers{{"Content-Type", "application/json"}};
+  bool cancelled = false;
+  uint32_t polledAt = millis() - 50;
+  const auto shouldAbort = [&] {
+    const uint32_t now = millis();
+    if (now - polledAt >= 50) {
+      polledAt = now;
+      mappedInput.update(true);
+      cancelled = cancelled || mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture();
+    }
+    return cancelled;
+  };
   const int status = pluginhttp::request(nullptr, ybxnative::kDeviceUrl, "POST", "{\"client_id\":\"crosspoint\"}",
-                                         headers, response, kMaxAuthBytes, nullptr, nullptr, kRequestTimeoutMs);
+                                         headers, response, kMaxAuthBytes, nullptr, shouldAbort, kRequestTimeoutMs);
+  if (cancelled) {
+    activityManager.goHome();
+    return;
+  }
   JsonDocument doc;
   const bool good = status >= 200 && status < 300 && !deserializeJson(doc, response);
   if (!good) {
@@ -239,8 +254,24 @@ void YbxAccountActivity::pollPairing() {
   serializeJson(payload, body);
   const pluginhttp::Headers headers{{"Content-Type", "application/json"}};
   String response;
+  bool cancelled = false;
+  uint32_t polledAt = millis() - 50;
+  const auto shouldAbort = [&] {
+    const uint32_t now = millis();
+    if (now - polledAt >= 50) {
+      polledAt = now;
+      mappedInput.update(true);
+      cancelled = cancelled || mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture();
+    }
+    return cancelled;
+  };
   const int status = pluginhttp::request(nullptr, ybxnative::kTokenUrl, "POST", body, headers, response, kMaxAuthBytes,
-                                         nullptr, nullptr, kRequestTimeoutMs);
+                                         nullptr, shouldAbort, kRequestTimeoutMs);
+  if (cancelled) {
+    authDeviceCode_.clear();
+    activityManager.goHome();
+    return;
+  }
   if (status < 0) {
     transportFailureText_ = tlsui::failureDetail(tlspolicy::lastFailure());
     return;  // offline; retry until expiry, never downgrade TLS
@@ -319,8 +350,14 @@ void YbxAccountActivity::activate(int value) {
   if (state_ == State::Loading) return;
   if (value == 0) activityManager.goHome();
   if (value == 1) {
-    if (state_ == State::NotConnected || state_ == State::InvalidToken || state_ == State::Unsupported ||
-        state_ == State::PairingFailed || state_ == State::Pairing) {
+    if (state_ == State::Pairing) {
+      authDeviceCode_.clear();
+      authVerifyUrl_.clear();
+      authUserCode_.clear();
+      state_ = State::NotConnected;
+      requestUpdate();
+    } else if (state_ == State::NotConnected || state_ == State::InvalidToken || state_ == State::Unsupported ||
+               state_ == State::PairingFailed) {
       beginPairing();
     } else {
       refresh();
@@ -396,7 +433,9 @@ void YbxAccountActivity::draw(UiScreen& ui) {
   const int y = safe.y + safe.height - 64;
   button(ui, {static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 0, tr(STR_BACK));
   button(ui, {static_cast<int16_t>(x + cell + spacing), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 1,
-         state_ == State::Ready || state_ == State::Loading ? tr(STR_UPDATE) : tr(STR_PLUGIN_SIGN_IN));
+         state_ == State::Pairing ? tr(STR_CANCEL)
+         : state_ == State::Ready || state_ == State::Loading ? tr(STR_UPDATE)
+                                                               : tr(STR_PLUGIN_SIGN_IN));
   button(ui, {static_cast<int16_t>(x + (cell + spacing) * 2), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48},
          2, tr(STR_YBX_HOME_CATALOGS));
 }
