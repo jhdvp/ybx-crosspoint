@@ -87,7 +87,8 @@ bool writeConfiguration(const std::string& key) {
   KOREADER_STORE.setServerUrl(YBX_SYNC_URL);
   KOREADER_STORE.setMatchMethod(DocumentMatchMethod::BINARY);
   KOREADER_STORE.setSyncBehavior(KOReaderSyncBehavior::SMART);
-  KOREADER_STORE.setSendMetadata(true);
+  // Metadata and clippings have independent user switches in KOReader Settings.
+  // Never silently re-enable either when the reader key rotates.
   KOREADER_STORE.setServerType(KOReaderServerType::CROSSPOINT);
   if (!KOREADER_STORE.saveToFile()) {
     LOG_ERR("YBXK", "Failed to write the sync configuration");
