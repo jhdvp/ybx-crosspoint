@@ -95,6 +95,7 @@ class ActivityManager {
   void goToLibrary();
   void goToBrowser();
   void goToPlugins(bool showOpds, std::string updateTarget = {});
+  void goToYbxCatalog(); // built into YBX Reader; independent of SD plugins
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);
   void goToBoot();

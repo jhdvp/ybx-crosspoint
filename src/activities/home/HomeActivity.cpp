@@ -413,8 +413,8 @@ void HomeActivity::loop() {
       onYbxShelfOpen();
       return;
     }
-    // The account menu is native and read-only. Pairing remains in the
-    // existing catalog flow, which owns the device token.
+    // The native account owns device-code pairing and directs Catalogs to
+    // the built-in YBX reader catalog (not the optional SD plugin).
     const bool hasNativeApps = nativeapps::availableCount() > 0;
     const int nativeAppsChoice = ybxShelfDir.empty() ? 3 : 4;
     if (hasNativeApps && choice == nativeAppsChoice) {
@@ -769,9 +769,10 @@ void HomeActivity::onMoreOpen() {
   ybxMoreChoice = -1;
   if (!ybxShelfResolved) {
     ybxShelfResolved = true;
-    // Offline shelf entry: the folder the YBX plugin downloads books into
-    // (empty when the plugin is absent or the plugin system is disabled).
+    // Built-in YBX Reader downloads to /books/ybx even without the optional
+    // SD catalog plugin. Do not hide that shelf when Plugins is disabled.
     ybxShelfDir = pluginhttp::catalogDownloadDir(PluginLocations::findPluginDir("ybx"));
+    if (ybxShelfDir.empty() && Storage.exists("/books/ybx")) ybxShelfDir = "/books/ybx";
   }
   const bool hasNativeApps = nativeapps::availableCount() > 0;
   if (!ybxShelfDir.empty()) {

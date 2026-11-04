@@ -10,6 +10,7 @@
 #include "KOReaderCredentialStore.h"
 #include "util/PluginHttp.h"
 #include "util/PluginLocations.h"
+#include "util/YbxNativeSession.h"
 
 namespace {
 
@@ -26,10 +27,7 @@ constexpr char YBX_SYNC_URL[] = "https://my.ybx.app/api/v1/crosspoint/kosync";
 constexpr char YBX_SYNC_USER[] = "ybx";
 // The key's file name is part of the plugin's published contract: the browser page
 // and the installer keep it across updates.
-constexpr char TOKEN_FILE[] = "token.json";
-constexpr char TOKEN_PATH[] = "access_token";
 // Installs that predate the plugin folder kept the key here.
-constexpr char LEGACY_TOKEN_FILE[] = "/.crosspoint/plugin-data/ybx/token.json";
 
 // Switch, history and a fingerprint of the key written last. The key itself is
 // stored once only: obfuscated as the KOSync password in koreader.json.
@@ -81,11 +79,6 @@ uint32_t keyFingerprint(const std::string& key) {
   return hash == 0 ? 1 : hash;
 }
 
-bool readReaderKey(const std::string& dir, std::string& key) {
-  if (!pluginhttp::loadTokenFromFile(pluginhttp::inPluginDir(dir, TOKEN_FILE), TOKEN_PATH, key)) key.clear();
-  if (key.empty() && !pluginhttp::loadTokenFromFile(LEGACY_TOKEN_FILE, TOKEN_PATH, key)) key.clear();
-  return !key.empty();
-}
 
 // YBX matches books by content hash like the other YBX clients, and the bridge
 // translates positions between copies of the same work using the extended position
@@ -120,7 +113,7 @@ Action run(const bool forced) {
   const bool installed = !dir.empty() || !PluginLocations::findPluginDirOnDisk(YBX_PLUGIN).empty();
 
   std::string key;
-  stateTokenPresent = !dir.empty() && readReaderKey(dir, key);
+  stateTokenPresent = ybxnative::loadToken(key);
   const uint32_t fp = stateTokenPresent ? keyFingerprint(key) : 0;
 
   const bool pointsAtYbx = KOREADER_STORE.hasCredentials() && KOREADER_STORE.getServerUrl() == YBX_SYNC_URL &&
@@ -131,7 +124,7 @@ Action run(const bool forced) {
 
   ProvisionState state;
   state.enabled = YBX_SYNC.enabled;
-  state.pluginInstalled = installed;
+  state.pluginInstalled = installed || stateTokenPresent;  // native account needs no plugin
   state.tokenPresent = stateTokenPresent;
   state.provisioned = YBX_SYNC.provisioned;
   state.credentialsPresent = KOREADER_STORE.hasCredentials();

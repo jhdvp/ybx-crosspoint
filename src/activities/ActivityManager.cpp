@@ -328,6 +328,13 @@ void ActivityManager::goToPlugins(bool showOpds, std::string updateTarget) {
                                                           std::move(updateTarget)));
 }
 
+void ActivityManager::goToYbxCatalog() {
+  auto catalog = makeUniqueNoThrow<PluginCatalogActivity>(
+      renderer, mappedInput, false, true, std::string{}, true);
+  if (!catalog) return;
+  replaceActivity(std::move(catalog));
+}
+
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {
   if (path.empty()) {
     goToFileBrowser("/");

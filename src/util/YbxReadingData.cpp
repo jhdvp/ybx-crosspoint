@@ -14,6 +14,7 @@
 #include "PluginEventDeadline.h"
 #include "PluginHttp.h"
 #include "PluginLocations.h"
+#include "YbxNativeSession.h"
 #include "PluginQueueStorage.h"
 
 namespace {
@@ -35,30 +36,25 @@ struct Connection {
 };
 
 ybx::ReadingResult connection(Connection& out, const char* resource = "reading_summary") {
-  if (!SETTINGS.pluginsEnabled) return ybx::ReadingResult::NotConnected;
-  out.dir = PluginLocations::findPluginDir("ybx");
-  if (out.dir.empty()) return ybx::ReadingResult::NotConnected;
-  std::string manifest;
-  if (!Storage.readFileToString("YBX", out.dir + "/device.json", 8192, manifest))
-    return ybx::ReadingResult::ManifestUnsupported;
-  JsonDocument filter;
-  filter["token"] = true;
-  filter["ybx"][resource] = true;
-  JsonDocument doc;
-  if (deserializeJson(doc, manifest, DeserializationOption::Filter(filter)))
-    return ybx::ReadingResult::ManifestUnsupported;
-  const std::string tokenFile = pluginhttp::inPluginDir(out.dir, doc["token"]["file"] | "");
-  if (!pluginhttp::loadTokenFromFile(tokenFile, doc["token"]["path"] | "token", out.token) || out.token.empty())
-    return ybx::ReadingResult::NotConnected;
+  // Native-first identity. Neither the Plugin System switch nor an SD plugin
+  // manifest may gate YBX Reader's own account and reading statistics.
+  if (!ybxnative::loadToken(out.token)) return ybx::ReadingResult::NotConnected;
+  out.dir = ybxnative::kCacheRoot;
   uint8_t hash[32];
   if (mbedtls_sha256(reinterpret_cast<const uint8_t*>(out.token.data()), out.token.size(), hash, 0) != 0)
     return ybx::ReadingResult::NotConnected;
   char hex[65];
   for (size_t i = 0; i < sizeof(hash); ++i) snprintf(hex + 2 * i, 3, "%02x", hash[i]);
   out.binding = hex;
-  pluginhttp::readRequest(doc["ybx"][resource], "GET", out.request);
-  if (out.request.method != "GET" || out.request.url.compare(0, 8, "https://") != 0)
+  if (strcmp(resource, "reading_summary") == 0) {
+    out.request.url = ybxnative::kSummaryUrl;
+  } else if (strcmp(resource, "achievements") == 0) {
+    out.request.url = ybxnative::kAwardsUrl;
+  } else {
     return ybx::ReadingResult::ManifestUnsupported;
+  }
+  out.request.method = "GET";
+  out.request.headers.emplace_back("Authorization", "Bearer " + out.token);
   return ybx::ReadingResult::Ok;
 }
 void nullable(JsonVariant value, int32_t number) {
@@ -79,10 +75,19 @@ bool loadReadingSummary(ReadingSummary& out) {
   if (connection(conn) != ReadingResult::Ok) return false;
   const std::string path = conn.dir + "/reading-summary.json";
   CacheFiles files;
-  if (!pluginevents::recoverQueue(files, path)) return false;
   std::string raw;
-  if (!Storage.readFileToString("YBX", path, 4096, raw)) return false;
-  return parseCachedReadingSummary(raw, conn.binding, out);
+  if (pluginevents::recoverQueue(files, path) &&
+      Storage.readFileToString("YBX", path, 4096, raw) &&
+      parseCachedReadingSummary(raw, conn.binding, out)) return true;
+  // Preserve the last good offline summary during migration. The digest binds
+  // this file to the *same* reader key, so other users' caches never leak.
+  const std::string legacy = PluginLocations::findPluginDirOnDisk("ybx");
+  if (legacy.empty()) return false;
+  raw.clear();
+  const std::string oldPath = legacy + "/reading-summary.json";
+  return pluginevents::recoverQueue(files, oldPath) &&
+         Storage.readFileToString("YBX", oldPath, 4096, raw) &&
+         parseCachedReadingSummary(raw, conn.binding, out);
 }
 
 ReadingResult refreshReadingSummary(ReadingSummary& out) {
@@ -122,6 +127,10 @@ ReadingResult refreshReadingSummary(ReadingSummary& out) {
   std::string serialized;
   serializeJson(doc, serialized);
   if (serialized.size() > 4096) return ReadingResult::StorageError;
+  if (!Storage.exists("/.crosspoint") && !Storage.mkdir("/.crosspoint"))
+    return ReadingResult::StorageError;
+  if (!Storage.exists(conn.dir.c_str()) && !Storage.mkdir(conn.dir.c_str()))
+    return ReadingResult::StorageError;
   const std::string path = conn.dir + "/reading-summary.json";
   CacheFiles files;
   return pluginevents::replaceQueue(files, path, serialized) ? ReadingResult::Ok : ReadingResult::StorageError;
@@ -147,11 +156,19 @@ bool loadAwardsPage(AwardsPage& out, AwardSection section, size_t offset) {
   const std::string path = conn.dir + "/achievements.json";
   CacheFiles files;
   if (!pluginevents::recoverQueue(files, path)) return false;
-  HalFile file = Storage.open(path.c_str());
-  if (!file || file.fileSize() > AWARDS_MAX_BYTES + 65) return false;
-  char binding[65];
-  if (file.read(binding, 65) != 65 || !awardsCacheBinding(std::string_view(binding, 65), conn.binding)) return false;
-  return readAwards(file, out, section, offset);
+  auto openBoundPage = [&](const std::string& filename) {
+    HalFile file = Storage.open(filename.c_str());
+    if (!file || file.fileSize() > AWARDS_MAX_BYTES + 65) return false;
+    char binding[65];
+    if (file.read(binding, 65) != 65 ||
+        !awardsCacheBinding(std::string_view(binding, 65), conn.binding)) return false;
+    return readAwards(file, out, section, offset);
+  };
+  if (openBoundPage(path)) return true;
+  const std::string legacy = PluginLocations::findPluginDirOnDisk("ybx");
+  if (legacy.empty()) return false;
+  const std::string oldPath = legacy + "/achievements.json";
+  return pluginevents::recoverQueue(files, oldPath) && openBoundPage(oldPath);
 }
 ReadingResult refreshAwardsPage(AwardsPage& out, AwardSection section, size_t offset) {
   Connection conn;
@@ -159,6 +176,10 @@ ReadingResult refreshAwardsPage(AwardsPage& out, AwardSection section, size_t of
   if (ready != ReadingResult::Ok) return ready;
   pluginhttp::substituteAll(conn.request.url, "{token}", conn.token);
   for (auto& header : conn.request.headers) pluginhttp::substituteAll(header.second, "{token}", conn.token);
+  if (!Storage.exists("/.crosspoint") && !Storage.mkdir("/.crosspoint"))
+    return ReadingResult::StorageError;
+  if (!Storage.exists(conn.dir.c_str()) && !Storage.mkdir(conn.dir.c_str()))
+    return ReadingResult::StorageError;
   const std::string path = conn.dir + "/achievements.json";
   const std::string response = path + ".response";
   const pluginevents::EventDeadline deadline(millis(), 12000);

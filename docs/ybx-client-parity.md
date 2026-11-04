@@ -25,8 +25,8 @@ local candidate. This matrix records the remaining implementation scope.
 | Book-level reading statistics | Existing book identity / metadata sidecars | Native per-book stats and reliable shared identity |
 | Goals / streaks | Server profile data | Display actual shared goals and server streak semantics, unknown != zero |
 | Received and pending achievements | Existing YBX achievement API/model contract | Native awards screen, progress/date, offline cache and pagination |
-| Reader pairing / unlink | Existing device-code auth and scoped token | Native account status/repair/unlink and consentful settings flows |
-| Connected sources / link / disconnect | Existing server-owned credentials and provider lists | Native source management with phone/QR for external provider sign-in |
+| Reader pairing / unlink | Existing device-code auth and scoped token | Native QR device-code pairing and account status; native unlink/provider OAuth still pending |
+| Connected sources / link / disconnect | Existing server-owned credentials and provider lists | Native catalog list and first-party device QR; provider link/unlink remains web-cabinet-owned |
 | Settings / language / theme / sync / folders | Firmware Settings and UI translation system | YBX-specific controls/labels and client-parity validation |
 | Updates / About | YBX OTA channel and version branding implemented | First accepted release, compatibility, recovery and update-state testing |
 | Support / diagnostics | Existing server support-log API; firmware logs | Native explicit redacted-log submission and receipt, no automatic private-book upload |
