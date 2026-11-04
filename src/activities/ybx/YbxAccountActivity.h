@@ -53,6 +53,7 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
   uint32_t authNextPollMs_ = 0;
   uint32_t authDeadlineMs_ = 0;
   std::string authUserCode_, authVerifyUrl_, authDeviceCode_;
+  const char* transportFailureText_ = nullptr;  // I18N flash-resident pointer, never a response body
   freeink::ui::Rect authQrRect_{};
   bool returnedFromChild_ = false;
   int selection_ = 1;
