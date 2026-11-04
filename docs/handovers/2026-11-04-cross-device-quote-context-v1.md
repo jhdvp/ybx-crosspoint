@@ -84,3 +84,41 @@ Open acceptance:
 
 No main merge, production server schema change, firmware device flash,
 OTA, release or production deployment.
+
+## Final validated evidence · 2026-11-04
+
+- **1237/1237 full host CMake/CTest PASS** (36.44 s) after the
+  stale context status change, with existing rendering, clipping,
+  identity, YAML, Markdown and runtime regressions.
+- **C3 + S3 ClippingSync standalone host PASS** (both exact architecture
+  compile targets): old-server 404 fallback; verified TLS only;
+  local anchor upload and idempotent repeat; remote anchor pull;
+  edited/mismatched quote rejection; stale local context skipping
+  without blocking other clipping sync; invalid version, cursor
+  and revision; maximum legacy v2 quote and C3 framebuffer loan.
+- **Server PR #40** SQLite/auth/API/schema suite: 92 passed,
+  90 skipped (opt-in PostgreSQL local staging). Staging PG V22
+  upgrade and audit have NOT been exercised.
+- **ESP32-C3 default/X3-X4 PlatformIO PASS**, final re-run:
+  flash 5,728,515 / 6,553,600 B (**87.4%**);
+  static RAM 66,904 / 327,680 B (**20.4%**);
+  firmware.bin **5,743,040 B**;
+  SHA256 **a203aff9c324c4425a4c978db693b212cd676aea9a7e63c88c2e7d30d54cea66**.
+- **ESP32-S3 x4pro/X4 Pro PlatformIO PASS**, final re-run:
+  flash 5,567,570 / 6,553,600 B (**85.0%**);
+  static RAM 111,956 / 327,680 B (**34.2%**);
+  firmware.bin **5,572,832 B**;
+  SHA256 **69dbc4b595c871e53545c465428762430b5529c5482fe8f77266f6b5e52944ee**.
+- Relative to parent PR #21 linked flash grows +2,322 B C3 and
+  +2,548 B S3; static RAM unchanged. These are linked metrics,
+  not measured live heap/battery or cold-open latency.
+- The first C3 build emitted a different SHA for a same-size image
+  on a later clean/incremental toolchain pass. No deterministic
+  reproducibility claim: final SHA above identifies the exact
+  retained file after the LAST successful PlatformIO run.
+- Artifacts/logs remain on the Mac at
+  ~/Projects/Ybx/artifacts/ybx-note-anchor-sync-20261104.
+  PlatformIO's freeink-sdk local patch marked the submodule dirty;
+  those SDK modifications were NOT staged or committed.
+- Main, OTA, physical device flash, production deployments and
+  any DB migrations remain untouched.
