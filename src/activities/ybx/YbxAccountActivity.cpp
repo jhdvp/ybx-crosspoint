@@ -224,8 +224,7 @@ void YbxAccountActivity::beginPairing() {
   authVerifyUrl_ = doc["verification_uri_complete"] | "";
   const long interval = doc["interval"] | 5L;
   const long expires = doc["expires_in"] | 900L;
-  if (authUserCode_.empty() || authUserCode_.size() > 64 || authDeviceCode_.empty() || authDeviceCode_.size() > 1024 ||
-      !ybxnative::trustedVerifyUrl(authVerifyUrl_)) {
+  if (!ybxnative::validDeviceChallenge(authUserCode_, authDeviceCode_, authVerifyUrl_)) {
     LOG_ERR("YBX", "Native device-code response rejected: invalid fields");
     authDeviceCode_.clear();
     authVerifyUrl_.clear();
