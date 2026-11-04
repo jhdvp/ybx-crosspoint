@@ -329,8 +329,7 @@ void ActivityManager::goToPlugins(bool showOpds, std::string updateTarget) {
 }
 
 void ActivityManager::goToYbxCatalog() {
-  auto catalog = makeUniqueNoThrow<PluginCatalogActivity>(
-      renderer, mappedInput, false, true, std::string{}, true);
+  auto catalog = makeUniqueNoThrow<PluginCatalogActivity>(renderer, mappedInput, false, true, std::string{}, true);
   if (!catalog) return;
   replaceActivity(std::move(catalog));
 }
