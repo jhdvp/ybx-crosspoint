@@ -166,6 +166,26 @@ void savesFetchedContextForQuoteAlreadySyncedViaV2() {
   released();
 }
 
+void refusesInvalidAnchorVersionOrNonAdvancingCursor() {
+  for (const char* badResponse : {
+       "{\"anchor_version\":2,\"cursor\":0,\"more\":false,\"items\":[]}",
+       "{\"anchor_version\":1,\"cursor\":0,\"more\":true,\"items\":[]}",
+       "{\"anchor_version\":1,\"cursor\":0,\"more\":true,\"items\":["
+         "{\"id\":\"0123456789abcdef0123456789abcdef\",\"text\":\"A complete unique selection.\","
+         "\"prefix\":\"pre\",\"suffix\":\"after\",\"revision\":1}]}",
+       "{\"anchor_version\":1,\"cursor\":1,\"more\":false,\"items\":["
+         "{\"id\":\"0123456789abcdef0123456789abcdef\",\"text\":\"A complete unique selection.\","
+         "\"prefix\":\"pre\",\"suffix\":\"after\",\"revision\":\"bad\"}]}",
+  }) {
+    reset();
+    addNative(false);
+    fake::anchorResponse = badResponse;
+    assert(!clippingSync::run(nativeBook, "filename-md5"));
+    assert(fake::anchorUploads.empty());
+    released();
+  }
+}
+
 void skipsStaleLocalQuoteContextWithoutBlockingClippingSync() {
   reset();
   const std::string id = addNative(true);
@@ -220,6 +240,7 @@ int main() {
   savesFetchedContextForQuoteAlreadySyncedViaV2();
   refusesRemoteAnchorForEditedQuoteButKeepsLocalClip();
   skipsStaleLocalQuoteContextWithoutBlockingClippingSync();
+  refusesInvalidAnchorVersionOrNonAdvancingCursor();
   for (int failure = 0; failure < 3; ++failure) {
     reset();
 #if defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3
