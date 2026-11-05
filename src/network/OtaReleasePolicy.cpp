@@ -1,6 +1,7 @@
 #include "OtaReleasePolicy.h"
 
 #include <cstring>
+#include <iterator>
 #include <numeric>
 
 namespace ota_policy {

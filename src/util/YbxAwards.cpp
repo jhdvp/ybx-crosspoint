@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 
 namespace ybx {
 namespace {
