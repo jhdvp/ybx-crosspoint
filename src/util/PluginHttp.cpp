@@ -11,22 +11,35 @@
 #include <cstring>
 
 #include "network/ProtectedPaths.h"
+#include "network/TlsTransport.h"
 #include "network/WifiPowerSaveGuard.h"
 
 namespace {
 constexpr size_t MAX_TOKEN_FILE_SIZE = 2 * 1024;
+constexpr size_t MAX_DEVICE_MANIFEST_SIZE = 8 * 1024;
 
 // Resolves the caller's reused TLS session (or `tmp`) into a configured,
-// connected client, or nullptr if begin() failed.
+// connected client, or nullptr if begin() or the connection failed.
 freeink::SecureHttpClient* openClient(freeink::SecureHttpClient* session, freeink::SecureHttpClient& tmp,
-                                      const std::string& url, const pluginhttp::Headers& headers) {
+                                      const std::string& url, const pluginhttp::Headers& headers,
+                                      const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
+  if (timeoutMs == 0 || (shouldAbort && shouldAbort())) return nullptr;
   freeink::SecureHttpClient& http = session ? *session : tmp;
-  http.setUserAgent("CrossPoint");
-  // Same trust posture as every other SecureNet consumer: no CA bundle ships
-  // with the transport, so verification is skipped; traffic stays encrypted.
-  http.setInsecure();
-  http.setTimeout(30000);
-  if (!http.begin(url)) return nullptr;
+  http.setUserAgent("YBX");
+  http.setTimeout(timeoutMs);
+  if (!http.begin(pluginhttp::escapeUrl(url))) return nullptr;
+  // Plugin endpoints carry the reader's YBX token: https only, with the peer
+  // chain and host name verified against the firmware CA bundle, and only
+  // once the clock can validate certificate dates.
+  if (!tlspolicy::prepareHttpsClient(http, url, timeoutMs, shouldAbort)) return nullptr;
+  // Handshake first: the client's copy of a large header (a session cookie can
+  // be several KB) would otherwise take heap the handshake needs.
+  if (!http.connect(shouldAbort)) {
+    if (!http.aborted()) {
+      tlspolicy::recordFailure(tlspolicy::failureFromConnect(http.connectFailure()));
+    }
+    return nullptr;
+  }
   for (const auto& h : headers) http.addHeader(h.first, h.second);
   return &http;
 }
@@ -118,6 +131,24 @@ std::string urlEncodeQuery(const std::string& s) {
   return out;
 }
 
+std::string escapeUrl(const std::string& url) {
+  const auto kept = [](const unsigned char c) { return c > 0x20 && c < 0x7F; };
+  const size_t escaped =
+      std::count_if(url.begin(), url.end(), [&](const char c) { return !kept(static_cast<unsigned char>(c)); });
+  std::string out;
+  out.reserve(url.size() + 2 * escaped);
+  for (const unsigned char c : url) {
+    if (kept(c)) {
+      out += static_cast<char>(c);
+    } else {
+      char buf[4];
+      snprintf(buf, sizeof(buf), "%%%02X", c);
+      out += buf;
+    }
+  }
+  return out;
+}
+
 std::string inPluginDir(const std::string& pluginDir, const char* path) {
   if (!path || !path[0] || path[0] == '/') return path ? path : "";
   return pluginDir + "/" + path;
@@ -185,12 +216,41 @@ void loadConfigFile(const std::string& file, Headers& out) {
   }
 }
 
+std::string pickDownloadDir(const Headers& config, const std::string& manifestDestDir) {
+  for (const auto& kv : config) {
+    if (kv.first != "dest_dir" || kv.second.empty()) continue;
+    std::string dir = kv.second.front() == '/' ? kv.second : "/" + kv.second;
+    while (dir.size() > 1 && dir.back() == '/') dir.pop_back();
+    if (dir == "/") return "";  // SD root
+    if (protectedpaths::isPluginPath(dir)) return dir;
+    LOG_ERR("PHTP", "config dest_dir rejected: %s", kv.second.c_str());
+  }
+  return manifestDestDir;
+}
+
+std::string catalogDownloadDir(const std::string& pluginDir) {
+  if (pluginDir.empty()) return "";
+  std::string raw;
+  if (!Storage.readFileToString("PHTP", pluginDir + "/device.json", MAX_DEVICE_MANIFEST_SIZE, raw)) return "";
+  JsonDocument doc;
+  if (deserializeJson(doc, raw) != DeserializationError::Ok) return "";
+  std::string manifestDir = inPluginDir(pluginDir, doc["download"]["dest_dir"] | "");
+  if (!manifestDir.empty() && !protectedpaths::isPluginPath(manifestDir)) {
+    LOG_ERR("PHTP", "device.json dest_dir outside plugin space: %s", manifestDir.c_str());
+    manifestDir.clear();
+  }
+  Headers config;
+  loadConfigFile(inPluginDir(pluginDir, doc["config"]["file"] | ""), config);
+  return pickDownloadDir(config, manifestDir);
+}
+
 int request(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
             const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
-            Headers* responseHeaders, const std::function<bool()>& shouldAbort) {
+            Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
   WifiPowerSaveGuard psGuard;
+  tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
-  freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers);
+  freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
   if (!httpPtr) return -1;
   freeink::SecureHttpClient& http = *httpPtr;
 
@@ -226,10 +286,12 @@ int request(freeink::SecureHttpClient* session, const std::string& url, const st
 }
 
 int requestToFile(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
-                  const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse) {
+                  const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
+                  const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
   WifiPowerSaveGuard psGuard;
+  tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
-  freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers);
+  freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
   if (!httpPtr) return -1;
   freeink::SecureHttpClient& http = *httpPtr;
 
@@ -239,21 +301,24 @@ int requestToFile(freeink::SecureHttpClient* session, const std::string& url, co
   {
     HalFile file;
     if (!Storage.openFileForWrite("PHTP", destPath, file)) return -1;
-    status = http.sendRequest(method.c_str(), reinterpret_cast<const uint8_t*>(body.data()), body.size(),
-                              [&](const uint8_t* data, size_t len) {
-                                if (written + len > maxResponse) {
-                                  writeOk = false;
-                                  return false;
-                                }
-                                if (file.write(data, len) != len) {
-                                  writeOk = false;
-                                  return false;
-                                }
-                                written += len;
-                                return true;
-                              });
+    status = http.sendRequest(
+        method.c_str(), reinterpret_cast<const uint8_t*>(body.data()), body.size(),
+        [&](const uint8_t* data, size_t len) {
+          if (written + len > maxResponse) {
+            writeOk = false;
+            return false;
+          }
+          if (file.write(data, len) != len) {
+            writeOk = false;
+            return false;
+          }
+          written += len;
+          return true;
+        },
+        shouldAbort);
     file.flush();
-    // file closed at scope exit, before any Storage.remove of destPath
+    if (!file.close()) writeOk = false;
+    // Close before checking/removing the temp file or committing the download.
   }
   if (!writeOk || status < 0 || !http.responseComplete()) {
     LOG_ERR("PHTP", "API request (to file) failed: status=%d writeOk=%d complete=%d %s", status, writeOk,
@@ -266,10 +331,11 @@ int requestToFile(freeink::SecureHttpClient* session, const std::string& url, co
 
 bool mintPasswordToken(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
                        const std::string& body, const Headers& headers, const std::string& tokenPath,
-                       std::string& outToken) {
+                       std::string& outToken, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
   String response;
   constexpr size_t MAX_AUTH_RESPONSE = 8 * 1024;
-  const int status = request(session, url, method, body, headers, response, MAX_AUTH_RESPONSE);
+  const int status =
+      request(session, url, method, body, headers, response, MAX_AUTH_RESPONSE, nullptr, shouldAbort, timeoutMs);
   if (status < 200 || status >= 300) return false;
   JsonDocument doc;
   if (deserializeJson(doc, response) != DeserializationError::Ok) return false;
