@@ -138,7 +138,8 @@ void ActivityManager::loop() {
       // The header back button shares this band; its taps stay Back.
       statusBarTap = mappedInput.wasScreenTapped(tx, ty) && ty < 44 && !HeaderBackTapTarget::contains(tx, ty);
     }
-    if (currentActivity->name != "FrontlightPanel" && (statusBarTap || mappedInput.wasLightPanelGesture())) {
+    if (mappedInput.hasTouch() && currentActivity->name != "FrontlightPanel" &&
+        (statusBarTap || mappedInput.wasLightPanelGesture())) {
       haptic_feedback::touchAction();
       pushActivity(std::make_unique<FrontlightPanelActivity>(renderer, mappedInput));
       return;
@@ -215,6 +216,8 @@ void ActivityManager::loop() {
           stackActivities.pop_back();
         }
       } else if (pendingAction == PendingAction::Push) {
+        // The covered screen stops owning the page here: the reader closes its
+        // reading interval so the pushed screen's time is never counted.
         if (currentActivity) currentActivity->onScreenCovered();
         // Move current activity to stack
         stackActivities.push_back(std::move(currentActivity));
@@ -320,8 +323,9 @@ void ActivityManager::goToBrowser() {
   }
 }
 
-void ActivityManager::goToPlugins(bool showOpds) {
-  replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, showOpds, /*rootMode=*/true));
+void ActivityManager::goToPlugins(bool showOpds, std::string updateTarget) {
+  replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, showOpds, /*rootMode=*/true,
+                                                          std::move(updateTarget)));
 }
 
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {

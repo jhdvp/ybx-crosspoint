@@ -1,17 +1,38 @@
 #pragma once
+#include <cstdint>
 #include <functional>
+#include <string>
 #include <vector>
 
 #include "./FileBrowserActivity.h"
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
 #include "components/CoverGridHomeUi.h"
+#include "components/OptionPopup.h"
+#include "components/YbxHomeUi.h"
 #include "util/ButtonNavigator.h"
 
 struct Rect;
 
 class HomeActivity final : public Activity {
   std::unique_ptr<CoverGridHomeUi> coverGridUi;
+  std::unique_ptr<YbxHomeUi> ybxHomeUi;
+  std::unique_ptr<OptionPopup> ybxMore;
+  int ybxMoreChoice = -1;
+  // YBX plugin's download folder ("" = no plugin/feature); first More option.
+  // Resolved lazily on the first More press and cached for this home instance:
+  // resolving reads device.json + config.json from SD, which does not belong
+  // on every home enter (each child-activity return re-runs onEnter).
+  std::string ybxShelfDir;
+  bool ybxShelfResolved = false;
+  // One "update available" prompt per new cached plugin version; the popup is
+  // drawn over whichever home layout is active.
+  std::unique_ptr<OptionPopup> updateToast;
+  int updateToastChoice = -1;
+  std::string updateToastName;
+  std::string updateToastMessage;
+  uint16_t pluginUpdateCount = 0;
+  std::string pluginsMenuLabel;
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
   bool recentsLoading = false;
@@ -70,6 +91,9 @@ class HomeActivity final : public Activity {
   void onFileTransferOpen();
   void onOpdsBrowserOpen();
   void onPluginsOpen();
+  void onMoreOpen();
+  void onYbxShelfOpen();
+  void showUpdatePrompt();
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image

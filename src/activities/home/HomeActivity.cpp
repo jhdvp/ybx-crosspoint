@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "CrossPointSettings.h"
@@ -23,8 +24,16 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
+#include "activities/settings/PluginHubInstallActivity.h"
+#include "activities/ybx/YbxAccountActivity.h"
+#include "activities/ybx/YbxStatisticsActivity.h"
+#include "nativeapps/AppRegistry.h"
+#include "nativeapps/NativeAppsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/PluginHttp.h"
+#include "util/PluginLocations.h"
+#include "util/PluginUpdateCache.h"
 
 int HomeActivity::getMenuItemCount() const {
   int count = 4;  // File Browser, Library, File transfer, Settings
@@ -169,8 +178,10 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
   for (RecentBook& book : recentBooks) {
     // The cover grid shares one slot size; generating at any other height
     // would rescale the dithered thumb at draw time and alias badly.
-    const int thumbHeight = coverGridUi ? coverGridUi->thumbHeightFor() : coverHeight;
-    if (coverGridUi) {
+    const int thumbHeight = ybxHomeUi     ? ybxHomeUi->thumbHeightFor(progress)
+                            : coverGridUi ? coverGridUi->thumbHeightFor()
+                                          : coverHeight;
+    if (coverGridUi || ybxHomeUi) {
       loadGridCover(book, thumbHeight, showingLoading, popupRect);
       ++progress;
       if (showingLoading) GUI.fillPopupProgress(renderer, popupRect, progress * 100 / recentBooks.size());
@@ -234,14 +245,43 @@ void HomeActivity::onEnter() {
   // even when no SD plugins are installed yet so Plugin Hub can be installed
   // from inside the Plugins screen (or users can sideload plugins manually).
   hasPlugins = SETTINGS.pluginsEnabled != 0;
+  pluginUpdateCount = 0;
+  pluginsMenuLabel.clear();
+  if (hasPlugins) {
+    pluginsMenuLabel = tr(STR_PLUGINS);
+    const uint16_t updates = pluginupdates::cachedCount();
+    // Only Plugin Hub can apply an update. A cache left behind by a hub that
+    // was since removed would badge and prompt for a row nothing can open.
+    if (updates > 0 && PluginHubInstallActivity::isAvailable()) {
+      updateToast = makeUniqueNoThrow<OptionPopup>();
+      if (updateToast) showUpdatePrompt();
+      pluginUpdateCount = pluginupdates::cachedCount();
+    }
+    if (pluginUpdateCount > 0) {
+      pluginsMenuLabel += " · ";
+      pluginsMenuLabel += std::to_string(pluginUpdateCount);
+    }
+  }
 
   const auto& metrics = UITheme::getInstance().getMetrics();
-  if (UITheme::getInstance().hasCoverGridHome()) {
+#if FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3 || FREEINK_DEVICE_X4PRO
+  ybxHomeUi = makeUniqueNoThrow<YbxHomeUi>(renderer);
+  if (ybxHomeUi) ybxMore = makeUniqueNoThrow<OptionPopup>();
+  if (!ybxMore) {
+    ybxHomeUi.reset();
+    LOG_ERR("HOME", "OOM: YBX home; using standard home");
+  }
+#endif
+  if (!ybxHomeUi && UITheme::getInstance().hasCoverGridHome()) {
     // Screen-lifetime interaction tables and component properties exceed the stack budget.
     coverGridUi = makeUniqueNoThrow<CoverGridHomeUi>(renderer);
     if (!coverGridUi) LOG_ERR("HOME", "OOM: cover grid UI; using standard home");
   }
-  loadRecentBooks(coverGridUi ? CoverGridHomeUi::MAX_BOOKS : metrics.homeRecentBooksCount);
+  // The prompt outlives the first render; showing it also records the version
+  // as notified, so it appears once per new catalog version.
+  loadRecentBooks(ybxHomeUi     ? ybxhome::MAX_BOOKS
+                  : coverGridUi ? CoverGridHomeUi::MAX_BOOKS
+                                : metrics.homeRecentBooksCount);
   hasContinueReading = !recentBooks.empty();
   if (coverGridUi) {
     fillCoverGridFromLibrary();
@@ -249,8 +289,18 @@ void HomeActivity::onEnter() {
     coverGridUi->begin(recentBooks, hasLibrarySlot(), hasContinueReading);
   }
 
+  if (ybxHomeUi) {
+    resolveGridCoverPaths();
+    ybxHomeUi->begin(recentBooks, hasLibrarySlot(), pluginUpdateCount);
+  }
+
   const auto base = static_cast<int>(recentBooks.size());
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasLibrarySlot());
+
+  if (ybxHomeUi && initialMenuItem == HomeMenuItem::NONE)
+    selectorIndex = base == 0 ? 1 : ybxhome::actionForPosition(base, hasLibrarySlot(), 0);
+
+  if (ybxHomeUi) selectorIndex = ybxhome::visibleSelection(selectorIndex, base, hasLibrarySlot());
 
   // Trigger first update
   requestUpdate();
@@ -260,6 +310,9 @@ void HomeActivity::onExit() {
   Activity::onExit();
 
   coverGridUi.reset();
+  ybxHomeUi.reset();
+  ybxMore.reset();
+  updateToast.reset();
 
   // Free the stored cover buffer if any
   freeCoverBuffer();
@@ -306,6 +359,18 @@ void HomeActivity::loop() {
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   auto activateSelection = [this] {
+    if (ybxHomeUi && selectorIndex == ybxhome::statisticsAction(recentBooks.size(), hasLibrarySlot())) {
+      auto statistics = makeUniqueNoThrow<YbxStatisticsActivity>(renderer, mappedInput);
+      if (statistics)
+        activityManager.replaceActivity(std::move(statistics));
+      else
+        GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
+      return;
+    }
+    if (ybxHomeUi && selectorIndex == ybxhome::moreAction(recentBooks.size(), hasLibrarySlot())) {
+      onMoreOpen();
+      return;
+    }
     if (selectorIndex < recentBooks.size()) {
       onRecentBookSelected(recentBooks[selectorIndex].path);
       return;
@@ -331,6 +396,77 @@ void HomeActivity::loop() {
         break;
     }
   };
+
+  if (updateToast && updateToast->isActive()) {
+    updateToast->handleInput(mappedInput, [this] { requestUpdate(); });
+    const int choice = std::exchange(updateToastChoice, -1);
+    if (updateToast->isActive()) return;
+    const std::string target = std::exchange(updateToastName, std::string{});
+    if (choice == 1 && !target.empty()) activityManager.goToPlugins(hasOpdsServers, target);
+    return;
+  }
+
+  if (ybxMore && ybxMore->isActive()) {
+    ybxMore->handleInput(mappedInput, [this] { requestUpdate(); });
+    int choice = std::exchange(ybxMoreChoice, -1);
+    if (choice == 0 && !ybxShelfDir.empty()) {
+      onYbxShelfOpen();
+      return;
+    }
+    // The account menu is native and read-only. Pairing remains in the
+    // existing catalog flow, which owns the device token.
+    const bool hasNativeApps = nativeapps::availableCount() > 0;
+    const int nativeAppsChoice = ybxShelfDir.empty() ? 3 : 4;
+    if (hasNativeApps && choice == nativeAppsChoice) {
+      auto launcher = makeUniqueNoThrow<NativeAppsActivity>(renderer, mappedInput);
+      if (launcher)
+        activityManager.replaceActivity(std::move(launcher));
+      else
+        GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
+      return;
+    }
+    const int accountChoice = nativeAppsChoice + (hasNativeApps ? 1 : 0);
+    if (choice == accountChoice) {
+      auto account = makeUniqueNoThrow<YbxAccountActivity>(renderer, mappedInput);
+      if (account)
+        activityManager.replaceActivity(std::move(account));
+      else
+        GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
+      return;
+    }
+    if (!ybxShelfDir.empty()) choice -= 1;  // menu shifted by the shelf entry
+    const int destination = ybxhome::moreChoiceAction(recentBooks.size(), hasLibrarySlot(), choice);
+    if (destination >= 0) {
+      selectorIndex = destination;
+      activateSelection();
+    }
+    return;
+  }
+
+  if (ybxHomeUi) {
+    const auto move = [this](int direction) {
+      selectorIndex = ybxhome::moveSelection(selectorIndex, recentBooks.size(), hasLibrarySlot(), direction);
+      requestUpdate();
+    };
+    buttonNavigator.onNext([&move] { move(1); });
+    buttonNavigator.onPrevious([&move] { move(-1); });
+    const auto swipe = mappedInput.wasSwipe();
+    if (swipe == MappedInputManager::SwipeDir::Up) move(1);
+    if (swipe == MappedInputManager::SwipeDir::Down) move(-1);
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back) && hasContinueReading) {
+      onRecentBookSelected(recentBooks.front().path);
+      return;
+    }
+    const int touched = ybxHomeUi->selectedAction(mappedInput);
+    if (ybxHomeUi->app.invalidated()) requestUpdate();
+    if (touched >= 0 && touched <= ybxhome::statisticsAction(recentBooks.size(), hasLibrarySlot())) {
+      selectorIndex = touched;
+      activateSelection();
+      return;
+    }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) activateSelection();
+    return;
+  }
 
   // Cover grid home splits navigation by button group (see below); the flat
   // next/previous cycle is for the classic list home only.
@@ -472,14 +608,43 @@ void HomeActivity::render(RenderLock&&) {
   const Rect content = UITheme::getInstance().getContentArea(renderer);
 
   renderer.clearScreen();
+  if (ybxHomeUi) {
+    ybxHomeUi->setSelection(selectorIndex);
+    ybxHomeUi->renderUi();
+    if (ybxMore && ybxMore->isActive()) ybxMore->render(renderer);
+    if (updateToast && updateToast->isActive()) updateToast->render(renderer);
+    const auto labels = updateToast && updateToast->isActive()
+                            ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
+                            : mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT),
+                                                    tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    if (!mappedInput.hasTouch()) GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH
+                                                                   : HalDisplay::FAST_REFRESH);
+    if (ybxHomeUi->takeThumbHeightChanged()) {
+      ybxHomeUi->refreshCoverPaths();
+      recentsLoaded = false;
+    }
+    if (!firstRenderDone) {
+      firstRenderDone = true;
+      requestUpdate();
+    } else if (!recentsLoaded && !recentsLoading) {
+      loadRecentCovers(1);  // Each YBX slot records its exact thumbnail height during render.
+      ybxHomeUi->refreshCoverPaths();
+      requestUpdate();
+    }
+    return;
+  }
   if (coverGridUi) {
     coverGridUi->setSelection(selectorIndex);
     UITheme::getInstance().drawCoverGridHome(*coverGridUi);
+    if (updateToast && updateToast->isActive()) updateToast->render(renderer);
     // Front Left/Right walk the tabs, so their hints read Left/Right; the
     // side page buttons (unhinted) walk the covers.
-    const auto labels = mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT),
-                                              tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    const auto labels = updateToast && updateToast->isActive()
+                            ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
+                            : mappedInput.mapLabels(hasContinueReading ? tr(STR_RESUME) : "", tr(STR_SELECT),
+                                                    tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+    if (!mappedInput.hasTouch()) GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH
                                                                    : HalDisplay::FAST_REFRESH);
     // Slot heights are recorded during the draw above; a change (first layout
@@ -529,7 +694,7 @@ void HomeActivity::render(RenderLock&&) {
   std::vector<UIIcon> menuIcons = {Folder, Library, Transfer, Settings};
 
   if (hasLibrarySlot()) {
-    menuItems.insert(menuItems.begin() + 2, hasPlugins ? tr(STR_PLUGINS) : tr(STR_OPDS_BROWSER));
+    menuItems.insert(menuItems.begin() + 2, hasPlugins ? pluginsMenuLabel.c_str() : tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + 2, Plugins);
   }
 
@@ -549,8 +714,12 @@ void HomeActivity::render(RenderLock&&) {
       [&menuItems](int index) { return std::string(menuItems[index]); },
       [&menuIcons](int index) { return menuIcons[index]; });
 
-  const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
-                                            tr(STR_DIR_DOWN));
+  if (updateToast && updateToast->isActive()) updateToast->render(renderer);
+
+  const auto labels = updateToast && updateToast->isActive()
+                          ? mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
+                          : mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT),
+                                                  tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
@@ -578,3 +747,66 @@ void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
 
 void HomeActivity::onPluginsOpen() { activityManager.goToPlugins(hasOpdsServers); }
+
+void HomeActivity::showUpdatePrompt() {
+  if (!updateToast) return;
+  pluginupdates::Entry entry;
+  if (!pluginupdates::takePrompt(entry)) return;
+  updateToastName = entry.name;
+  updateToastMessage = entry.title;
+  if (!entry.version.empty()) {
+    updateToastMessage += " · ";
+    updateToastMessage += entry.version;
+  }
+  const char* options[] = {tr(STR_CANCEL), tr(STR_UPDATE_AVAILABLE)};
+  updateToastChoice = -1;
+  updateToast->showMessage(tr(STR_PLUGIN_UPDATE_AVAILABLE), updateToastMessage.c_str(), options, 2, 1,
+                           [this](const int choice) { updateToastChoice = choice; });
+}
+
+void HomeActivity::onMoreOpen() {
+  if (!ybxMore) return;
+  ybxMoreChoice = -1;
+  if (!ybxShelfResolved) {
+    ybxShelfResolved = true;
+    // Offline shelf entry: the folder the YBX plugin downloads books into
+    // (empty when the plugin is absent or the plugin system is disabled).
+    ybxShelfDir = pluginhttp::catalogDownloadDir(PluginLocations::findPluginDir("ybx"));
+  }
+  const bool hasNativeApps = nativeapps::availableCount() > 0;
+  if (!ybxShelfDir.empty()) {
+    // Keep all previous More actions in the same order. Only add the compiled
+    // native launcher when the current device has at least one available app.
+    static constexpr StrId WITH_APPS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES,
+                                          StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
+                                          StrId::STR_YBX_NATIVE_APPS, StrId::STR_OPDS_MY_ACCOUNT};
+    static constexpr StrId WITHOUT_APPS[] = {StrId::STR_ON_READER, StrId::STR_BROWSE_FILES,
+                                             StrId::STR_FILE_TRANSFER, StrId::STR_SETTINGS_TITLE,
+                                             StrId::STR_OPDS_MY_ACCOUNT};
+    if (hasNativeApps)
+      ybxMore->show(StrId::STR_TOOL_MORE, WITH_APPS, 6, 0, [this](int choice) { ybxMoreChoice = choice; });
+    else
+      ybxMore->show(StrId::STR_TOOL_MORE, WITHOUT_APPS, 5, 0, [this](int choice) { ybxMoreChoice = choice; });
+  } else {
+    static constexpr StrId WITH_APPS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
+                                          StrId::STR_SETTINGS_TITLE, StrId::STR_YBX_NATIVE_APPS,
+                                          StrId::STR_OPDS_MY_ACCOUNT};
+    static constexpr StrId WITHOUT_APPS[] = {StrId::STR_BROWSE_FILES, StrId::STR_FILE_TRANSFER,
+                                             StrId::STR_SETTINGS_TITLE, StrId::STR_OPDS_MY_ACCOUNT};
+    if (hasNativeApps)
+      ybxMore->show(StrId::STR_TOOL_MORE, WITH_APPS, 5, 0, [this](int choice) { ybxMoreChoice = choice; });
+    else
+      ybxMore->show(StrId::STR_TOOL_MORE, WITHOUT_APPS, 4, 0, [this](int choice) { ybxMoreChoice = choice; });
+  }
+  requestUpdate();
+}
+
+void HomeActivity::onYbxShelfOpen() {
+  auto shelf = makeUniqueNoThrow<FileBrowserActivity>(renderer, mappedInput, ybxShelfDir,
+                                                      FileBrowserActivity::Mode::Books, ybxShelfDir);
+  if (!shelf) {
+    LOG_ERR("HOME", "OOM: on-reader shelf");
+    return;
+  }
+  startActivityForResult(std::move(shelf), [this](const ActivityResult&) { requestUpdate(); });
+}
