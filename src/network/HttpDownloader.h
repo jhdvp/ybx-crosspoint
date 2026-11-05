@@ -8,9 +8,10 @@
 #include <vector>
 
 /**
- * HTTP client utility for fetching content and downloading files. Built on
- * esp_http_client: https is verified against the CA bundle, plain http is
- * used for local servers (transport is chosen from the URL scheme).
+ * HTTP client utility for fetching content and downloading files. https goes
+ * through the wolfSSL transport with the firmware CA bundle (peer chain and
+ * host name verified); plain http is used only for explicitly configured
+ * local servers, never as a fallback or redirect target.
  */
 class HttpDownloader {
  public:
@@ -25,6 +26,7 @@ class HttpDownloader {
     FILE_ERROR,
     ABORTED,
     UNAUTHORIZED,  // 401/403: callers holding a refreshable credential can retry
+    TLS_ERROR,     // certificate/clock/host-name verification or redirect policy
   };
 
   // Pre-flight floor for starting a TLS transfer. Below this the session or
@@ -86,6 +88,12 @@ class HttpDownloader {
     std::vector<Header> headers;
     int* statusOut = nullptr;
     bool captureErrorBody = false;
+    // Per-socket timeout in ms; 0 keeps the default. A bounded catalog
+    // operation passes its remaining budget instead of the global default.
+    uint32_t timeoutMs = 0;
+    // Polled by the HTTP layer while connecting and reading; true aborts the
+    // request. Lets a user cancel or an absolute deadline end a fetch.
+    std::function<bool()> shouldAbort;
   };
 
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const FetchOptions& options);
@@ -96,21 +104,23 @@ class HttpDownloader {
    * capped at a few KB. Returns true when the response status is 2xx.
    */
   static bool postForm(const std::string& url, const std::string& formBody, std::string& outResponse,
-                       int* statusOut = nullptr);
+                       int* statusOut = nullptr, uint32_t timeoutMs = 0,
+                       const std::function<bool()>& shouldAbort = {});
 
   /**
    * Download a file to the SD card with optional credentials. `headers` are
    * added to the request (e.g. a Bearer Authorization), alongside any Basic
    * auth derived from username/password.
    *
-   * downgradeRedirectsToHttp rewrites followed redirect targets from https to
-   * http so the bulk transfer skips a second TLS session (and its ~17KB record
-   * buffer — the OOM site on low-heap C3 boards).
+   * https downloads verify the peer chain and host name against the firmware
+   * CA bundle and are refused until the clock can validate certificate dates;
+   * a redirect that steps down to plain http is refused, never followed.
    */
   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
                                       ProgressCallback progress = nullptr, const bool* cancelFlag = nullptr,
                                       const std::string& username = "", const std::string& password = "",
-                                      const std::vector<Header>& headers = {}, bool downgradeRedirectsToHttp = false);
+                                      const std::vector<Header>& headers = {},
+                                      uint32_t timeoutMs = 0, const std::function<bool()>& shouldAbort = {});
 
   /**
    * POST a body (e.g. an LCP license to the fulfillment service) and stream

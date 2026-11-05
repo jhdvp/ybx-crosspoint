@@ -590,11 +590,10 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
           }
           requestUpdate(true);
         },
-        // Bulk font transfers follow GitHub's release-asset redirect over plain
-        // HTTP: the CRC check below (manifest fetched over TLS) covers
-        // integrity, and skipping the second TLS session keeps the C3 heap out
-        // of MEMORY_E territory.
-        &cancelRequested_, "", "", /*headers=*/{}, /*downgradeRedirectsToHttp=*/true);
+        // Bulk font transfers follow GitHub's release-asset redirect over
+        // verified https: the CA bundle covers both github.com and the
+        // release-assets host, so no transport downgrade is needed.
+        &cancelRequested_, "", "", /*headers=*/{});
 
     if (result == HttpDownloader::ABORTED) {
       fontInstaller_.deleteFamily(str(family.name));
