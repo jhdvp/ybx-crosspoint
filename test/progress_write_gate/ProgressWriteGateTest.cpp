@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include "activities/reader/ProgressWriteGate.h"
 
 using readerprogress::ProgressWriteGate;
@@ -14,7 +15,7 @@ TEST(ProgressWriteGate, CoalescesSevenPagesAndWritesOnEighth) {
   ProgressWriteGate gate;
   ASSERT_TRUE(gate.observe(1, 10));
   gate.complete(10, true);
-  for (uint64_t key=2; key<=8; ++key) EXPECT_FALSE(gate.observe(key, 20 + key));
+  for (uint64_t key = 2; key <= 8; ++key) EXPECT_FALSE(gate.observe(key, 20 + key));
   EXPECT_TRUE(gate.observe(9, 29));
   gate.complete(29, true);
   EXPECT_FALSE(gate.needsFlush());
@@ -52,14 +53,14 @@ TEST(ProgressWriteGate, HandlesMillisWraparound) {
   const uint32_t nearWrap = UINT32_MAX - 900;
   ASSERT_TRUE(gate.observe(1, nearWrap));
   gate.complete(nearWrap, true);
-  EXPECT_FALSE(gate.observe(2, nearWrap+100));
+  EXPECT_FALSE(gate.observe(2, nearWrap + 100));
   EXPECT_TRUE(gate.due(59099));
 }
 TEST(ProgressWriteGate, RepeatedSamePositionDoesNotCountTurns) {
   ProgressWriteGate gate;
   ASSERT_TRUE(gate.observe(1, 123));
   gate.complete(123, true);
-  for (int i=0;i<100;i++) EXPECT_FALSE(gate.observe(1, 124+i));
+  for (int i = 0; i < 100; i++) EXPECT_FALSE(gate.observe(1, 124 + i));
   EXPECT_FALSE(gate.needsFlush());
 }
 TEST(ProgressWriteGate, FailedExplicitFlushDoesNotDiscardPosition) {

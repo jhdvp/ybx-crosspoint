@@ -1,6 +1,7 @@
 #pragma once
 
 #include <HalStorage.h>
+
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -16,10 +17,10 @@ inline constexpr char kBackupSuffix[] = "/progress.md-v1.bin";
 inline constexpr uint32_t kApproximateMaxSourceBytes = 64 * 1024;
 
 enum class Action : uint8_t {
-  None,          // No legacy cache or no progress file
-  Approximate,   // Verified backup + usable old page fraction
-  Restart,       // Verified backup, but safe ratio is not available/too expensive
-  Failed         // Refuse to replace legacy cache without a verified backup
+  None,         // No legacy cache or no progress file
+  Approximate,  // Verified backup + usable old page fraction
+  Restart,      // Verified backup, but safe ratio is not available/too expensive
+  Failed        // Refuse to replace legacy cache without a verified backup
 };
 
 struct Plan {

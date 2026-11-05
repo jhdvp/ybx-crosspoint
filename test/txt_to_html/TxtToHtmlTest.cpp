@@ -1,16 +1,16 @@
-#include <gtest/gtest.h>
 #include <expat.h>
+#include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstring>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <algorithm>
-#include <cstring>
 
+#include "MarkdownSourceFingerprint.h"
+#include "MarkdownStream.h"
 #include "Print.h"
 #include "TxtToHtml.h"
-#include "MarkdownStream.h"
-#include "MarkdownSourceFingerprint.h"
 
 namespace {
 
@@ -82,7 +82,8 @@ TEST(MarkdownToHtmlTest, HeadingsHaveDeterministicAnchors) {
 }
 
 TEST(MarkdownToHtmlTest, FormattingListsAndCodeEscapeRawHtml) {
-  const auto html = markdown("Text **bold** and *italic* and `code` <script>\n\n- first\n- second\n\n1. step\n2. step\n\n```cpp\n<b>&\n```");
+  const auto html = markdown(
+      "Text **bold** and *italic* and `code` <script>\n\n- first\n- second\n\n1. step\n2. step\n\n```cpp\n<b>&\n```");
   EXPECT_NE(html.find("<strong>bold</strong>"), std::string::npos);
   EXPECT_NE(html.find("<em>italic</em>"), std::string::npos);
   EXPECT_NE(html.find("<code>code</code>"), std::string::npos);
@@ -124,7 +125,10 @@ TEST(MarkdownToHtmlTest, LongLineDoesNotAllocateFullLineOrEmitRawHtml) {
 
 TEST(MarkdownToHtmlTest, HeadingScannerMatchesHtmlIdsAcrossChunkBoundaries) {
   const std::string input = "\xEF\xBB\xBF# Привет\n\n```\n# no-heading\n```\n## Next **chapter**";
-  struct Reader { std::string_view data; size_t index = 0; } reader{input};
+  struct Reader {
+    std::string_view data;
+    size_t index = 0;
+  } reader{input};
   auto readOne = [](void* p, uint8_t* buffer, size_t) {
     auto& r = *static_cast<Reader*>(p);
     if (r.index == r.data.size()) return 0;
@@ -174,10 +178,15 @@ TEST(MarkdownToHtmlTest, ReadChunksFitEmbeddedStackBudget) {
 }
 
 TEST(MarkdownToHtmlTest, ReaderErrorIsReported) {
-  struct Reader { int readCount = 0; } reader;
+  struct Reader {
+    int readCount = 0;
+  } reader;
   auto fail = [](void* p, uint8_t* buffer, size_t) {
     auto& r = *static_cast<Reader*>(p);
-    if (++r.readCount == 1) { buffer[0] = '#'; return 1; }
+    if (++r.readCount == 1) {
+      buffer[0] = '#';
+      return 1;
+    }
     return -1;
   };
   StringPrint out;
@@ -185,8 +194,7 @@ TEST(MarkdownToHtmlTest, ReaderErrorIsReported) {
 }
 
 TEST(MarkdownToHtmlTest, PlainTextRendererUnchanged) {
-  EXPECT_EQ(convert("# Not a heading\n- no list"),
-            kHeader + "# Not a heading<br />- no list" + kFooter);
+  EXPECT_EQ(convert("# Not a heading\n- no list"), kHeader + "# Not a heading<br />- no list" + kFooter);
 }
 
 }  // namespace
@@ -234,7 +242,10 @@ TEST(MarkdownToHtmlTest, GeneratedDocumentParsesAsStrictXml) {
 TEST(MarkdownToHtmlTest, TOCIsBoundedTo128Headings) {
   std::string input;
   for (unsigned i = 0; i < 1000; ++i) input += "# Chapter\n";
-  struct Reader { std::string_view bytes; size_t offset = 0; } reader{input};
+  struct Reader {
+    std::string_view bytes;
+    size_t offset = 0;
+  } reader{input};
   auto read = [](void* data, uint8_t* buf, size_t len) {
     auto& r = *static_cast<Reader*>(data);
     if (r.offset == r.bytes.size()) return 0;
@@ -245,9 +256,7 @@ TEST(MarkdownToHtmlTest, TOCIsBoundedTo128Headings) {
   };
   auto noop = [](std::string_view) {};
   unsigned headings = 0;
-  auto onHeading = [&](unsigned ordinal, uint8_t, const std::string&) {
-    EXPECT_EQ(++headings, ordinal);
-  };
+  auto onHeading = [&](unsigned ordinal, uint8_t, const std::string&) { EXPECT_EQ(++headings, ordinal); };
   EXPECT_TRUE(MarkdownStream::process(&reader, read, noop, onHeading, false));
   EXPECT_EQ(headings, MarkdownStream::kMaxTocHeadings);
   EXPECT_EQ(MarkdownStream::anchorFor(128), "md-h0128");

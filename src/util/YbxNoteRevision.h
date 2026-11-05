@@ -13,8 +13,14 @@ namespace ybxnote {
 inline uint32_t revisionSignature(std::string_view source) {
   uint32_t hash = 2166136261u;
   constexpr std::string_view domain = "ybx-native-note-md-v2:";
-  for (const unsigned char c : domain) { hash ^= c; hash *= 16777619u; }
-  for (const unsigned char c : source) { hash ^= c; hash *= 16777619u; }
+  for (const unsigned char c : domain) {
+    hash ^= c;
+    hash *= 16777619u;
+  }
+  for (const unsigned char c : source) {
+    hash ^= c;
+    hash *= 16777619u;
+  }
   return hash ? hash : 1u;
 }
 

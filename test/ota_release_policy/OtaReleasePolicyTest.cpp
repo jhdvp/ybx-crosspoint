@@ -37,13 +37,13 @@ std::string espImagePrefix(uint8_t magic, uint16_t chipId) {
 // --- Rule: updates come from the YBX fork's releases only -------------------
 
 TEST(OtaReleasePolicy, FeedIsTheForkLatestRelease) {
-  EXPECT_STREQ(ota_policy::kReleaseFeedUrl,
-               "https://api.github.com/repos/jhdvp/ybx-crosspoint/releases/latest");
+  EXPECT_STREQ(ota_policy::kReleaseFeedUrl, "https://api.github.com/repos/jhdvp/ybx-crosspoint/releases/latest");
   EXPECT_TRUE(ota_policy::releaseFeedAllowed(ota_policy::kReleaseFeedUrl));
 }
 
 TEST(OtaReleasePolicy, UpstreamAndOtherFeedUrlsAreRefused) {
-  EXPECT_FALSE(ota_policy::releaseFeedAllowed("https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest"));
+  EXPECT_FALSE(ota_policy::releaseFeedAllowed(
+      "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest"));
   EXPECT_FALSE(ota_policy::releaseFeedAllowed("http://api.github.com/repos/jhdvp/ybx-crosspoint/releases/latest"));
   EXPECT_FALSE(ota_policy::releaseFeedAllowed("https://api.github.com/repos/jhdvp/ybx-crosspoint/releases"));
   EXPECT_FALSE(ota_policy::releaseFeedAllowed("https://api.github.com/repos/jhdvp/other/releases/latest"));
@@ -64,21 +64,21 @@ TEST(OtaReleasePolicy, AssetDownloadRejectsOtherOrigins) {
       "http://github.com/jhdvp/ybx-crosspoint/releases/download/2.0.2/ybx-2.0.2-x3-x4.bin"));
   EXPECT_FALSE(ota_policy::assetDownloadAllowed(
       "https://github.com/crosspoint-reader/crosspoint-reader/releases/download/2.0.2/firmware.bin"));
-  EXPECT_FALSE(ota_policy::assetDownloadAllowed(
-      "https://github.com/jhdvp/other/releases/download/2.0.2/ybx-2.0.2-x3-x4.bin"));
+  EXPECT_FALSE(
+      ota_policy::assetDownloadAllowed("https://github.com/jhdvp/other/releases/download/2.0.2/ybx-2.0.2-x3-x4.bin"));
   // Same repo name, different path: the API URL is not an asset download.
   EXPECT_FALSE(ota_policy::assetDownloadAllowed("https://api.github.com/repos/jhdvp/ybx-crosspoint/releases/latest"));
   // Port, path prefix and look-alike hosts must not pass the host check.
-  EXPECT_FALSE(ota_policy::assetDownloadAllowed(
-      "https://github.com:8443/jhdvp/ybx-crosspoint/releases/download/2.0.2/a.bin"));
+  EXPECT_FALSE(
+      ota_policy::assetDownloadAllowed("https://github.com:8443/jhdvp/ybx-crosspoint/releases/download/2.0.2/a.bin"));
   EXPECT_FALSE(ota_policy::assetDownloadAllowed(
       "https://github.com.example.com/jhdvp/ybx-crosspoint/releases/download/2.0.2/a.bin"));
   EXPECT_FALSE(ota_policy::assetDownloadAllowed(
       "https://example.com/github.com/jhdvp/ybx-crosspoint/releases/download/2.0.2/a.bin"));
-  EXPECT_FALSE(ota_policy::assetDownloadAllowed(
-      "https://github.com/jhdvp/ybx-crosspoint.evil/releases/download/2.0.2/a.bin"));
-  EXPECT_FALSE(ota_policy::assetDownloadAllowed(
-      "https://github.com/jhdvp/ybx-crosspoint/releases/downloaded/2.0.2/a.bin"));
+  EXPECT_FALSE(
+      ota_policy::assetDownloadAllowed("https://github.com/jhdvp/ybx-crosspoint.evil/releases/download/2.0.2/a.bin"));
+  EXPECT_FALSE(
+      ota_policy::assetDownloadAllowed("https://github.com/jhdvp/ybx-crosspoint/releases/downloaded/2.0.2/a.bin"));
   EXPECT_FALSE(ota_policy::assetDownloadAllowed("https://objects.githubusercontent.com.evil.com/a.bin"));
   EXPECT_FALSE(ota_policy::assetDownloadAllowed("https://example.com/ybx-2.0.2-x3-x4.bin"));
   EXPECT_FALSE(ota_policy::assetDownloadAllowed(nullptr));
@@ -120,8 +120,8 @@ TEST(OtaReleasePolicy, VersionTagRejectsEmptyAndOverflow) {
 }
 
 TEST(OtaReleasePolicy, BoardSuffixIsThePublishedAssetSuffix) {
-  EXPECT_EQ(suffixFor("x4"), "x3-x4");      // combined X3/X4 ESP32-C3 image
-  EXPECT_EQ(suffixFor("x4pro"), "x4pro");   // ESP32-S3 board: never shares the C3 asset
+  EXPECT_EQ(suffixFor("x4"), "x3-x4");     // combined X3/X4 ESP32-C3 image
+  EXPECT_EQ(suffixFor("x4pro"), "x4pro");  // ESP32-S3 board: never shares the C3 asset
   EXPECT_EQ(suffixFor("x4c"), "x4c");
   EXPECT_EQ(suffixFor("papermono"), "papermono");
   EXPECT_EQ(suffixFor(""), "<rejected>");
@@ -149,8 +149,8 @@ TEST(OtaReleasePolicy, AppAssetNameRejectsInsteadOfTruncating) {
   EXPECT_STREQ(name, "ybx-2.0.2-x3-x4.bin");
   // 4 + 31-char version + 1 + 23-char board tag + 4 does not fit 48 bytes: the
   // call reports the miss instead of handing back a truncated name.
-  EXPECT_FALSE(ota_policy::appAssetName("2.0.2-rc+aaaaaaaaaaaaaaaaaaaaaa", "metalio_eink4_papermono", 23, name,
-                                        sizeof(name)));
+  EXPECT_FALSE(
+      ota_policy::appAssetName("2.0.2-rc+aaaaaaaaaaaaaaaaaaaaaa", "metalio_eink4_papermono", 23, name, sizeof(name)));
   EXPECT_EQ(name[0], '\0');
   // A tag longer than the parser's own tagName field is rejected as well.
   EXPECT_FALSE(ota_policy::appAssetName("2.0.2-rc+aaaaaaaaaaaaaaaaaaaaaaaaaaa", "x4", 2, name, sizeof(name)));

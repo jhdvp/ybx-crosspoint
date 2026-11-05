@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include "util/NoSdRecoveryPolicy.h"
 
 TEST(NoSdRecovery, NeverProbesWithoutUserRequest) {

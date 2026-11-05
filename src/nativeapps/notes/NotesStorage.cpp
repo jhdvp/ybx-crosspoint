@@ -99,7 +99,8 @@ bool create(const Document& value, std::string& newFileName) {
     const std::string name = fileName(esp_random(), esp_random());
     const std::string path = pathFor(name);
     if (Storage.exists(path.c_str()) || Storage.exists((path + ".bak").c_str()) ||
-        Storage.exists((path + ".tmp").c_str())) continue;
+        Storage.exists((path + ".tmp").c_str()))
+      continue;
     if (!save(name, value)) return false;
     newFileName = name;
     return true;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SecureHttpClient.h>
+
 #include <string>
 
 #include "network/TlsPolicy.h"

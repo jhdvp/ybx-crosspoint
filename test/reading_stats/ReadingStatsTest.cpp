@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <array>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <string>
@@ -343,15 +343,15 @@ TEST(ReadingStatsReplay, RejectsTruncatedOrMalformedReplayTrailer) {
   EXPECT_FALSE(parseState(invalid.data(), len, parsed));
 
   invalid = bytes;
-  invalid[trailer + 1] = MAX_RECENT_SESSION_IDS; // illegal cursor
+  invalid[trailer + 1] = MAX_RECENT_SESSION_IDS;  // illegal cursor
   EXPECT_FALSE(parseState(invalid.data(), len, parsed));
 
   invalid = bytes;
-  invalid[trailer + 4] = 0; // active slot may not be empty
+  invalid[trailer + 4] = 0;  // active slot may not be empty
   EXPECT_FALSE(parseState(invalid.data(), len, parsed));
 
   invalid = bytes;
-  invalid[trailer + 4 + MAX_ID_LENGTH] = 'x'; // no NUL terminator
+  invalid[trailer + 4 + MAX_ID_LENGTH] = 'x';  // no NUL terminator
   EXPECT_FALSE(parseState(invalid.data(), len, parsed));
 }
 

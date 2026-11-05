@@ -23,7 +23,8 @@ std::unique_ptr<Activity> createNotes(GfxRenderer& renderer, MappedInputManager&
 #if FREEINK_DEVICE_X3 || FREEINK_DEVICE_X4 || FREEINK_DEVICE_X4PRO
 // Deliberately small pilot registry: all other InkHome apps remain unlinked.
 constexpr std::array<Descriptor, 2> kApps{{
-    {"memory-status", StrId::STR_YBX_APP_MEMORY, StrId::STR_YBX_APP_MEMORY_SUMMARY, createMemoryStatus, nullptr, 12 * 1024},
+    {"memory-status", StrId::STR_YBX_APP_MEMORY, StrId::STR_YBX_APP_MEMORY_SUMMARY, createMemoryStatus, nullptr,
+     12 * 1024},
     {"notes", StrId::STR_YBX_NOTES, StrId::STR_YBX_NOTE_SUMMARY, createNotes, nullptr, 28 * 1024},
 }};
 #else

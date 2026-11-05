@@ -25,8 +25,7 @@ class ProgressWriteGate {
 
   bool due(const uint32_t nowMs) const {
     return dirty_ && retryAllowed(nowMs) &&
-           (!persisted_ || changes_ >= kMaxTurns ||
-            static_cast<uint32_t>(nowMs - lastPersistedMs_) >= kMaxPendingMs);
+           (!persisted_ || changes_ >= kMaxTurns || static_cast<uint32_t>(nowMs - lastPersistedMs_) >= kMaxPendingMs);
   }
 
   bool needsFlush() const { return dirty_; }

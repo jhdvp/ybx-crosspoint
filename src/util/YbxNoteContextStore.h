@@ -13,19 +13,16 @@ namespace ybxnote::contextstore {
 // unique-text fallback; corrupt anchors NEVER cause unsafe reattachment.
 enum class Status : uint8_t { Missing, Found, Invalid, Stale };
 
-Status read(const std::string& path, std::string_view clippingId,
-            std::string_view quote, Context& out);
-bool save(const std::string& path, std::string_view clippingId,
-          std::string_view quote, const Context& anchor);
+Status read(const std::string& path, std::string_view clippingId, std::string_view quote, Context& out);
+bool save(const std::string& path, std::string_view clippingId, std::string_view quote, const Context& anchor);
 
 // A corrupt/ambiguous persisted sidecar must NEVER silently fall back to
 // quote-only relocation. Only truly absent legacy context permits fallback.
-inline Candidate resolve(std::string_view visible, std::string_view quote,
-                         Status status, const Context& context) {
+inline Candidate resolve(std::string_view visible, std::string_view quote, Status status, const Context& context) {
   if (status == Status::Found) return findWithContext(visible, quote, context);
   if (status == Status::Missing) return findUnique(visible, quote);
   return {};
 }
 
 inline constexpr size_t kMaxRecords = 64;
-} // namespace ybxnote::contextstore
+}  // namespace ybxnote::contextstore

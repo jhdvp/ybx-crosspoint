@@ -52,14 +52,16 @@ inline std::string headingTitle(std::string_view source) {
     if (ch == '[' || ch == ']') continue;
     if (ch == '(' && i > 0 && source[i - 1] == ']') {
       size_t end = source.find(')', i + 1);
-      if (end != std::string_view::npos) { i = end; continue; }
+      if (end != std::string_view::npos) {
+        i = end;
+        continue;
+      }
     }
     label.push_back(ch);
   }
   // If a label was truncated, cut back to last complete UTF-8 sequence.
   if (label.size() == 112) {
-    while (!label.empty() && (static_cast<unsigned char>(label.back()) & 0xC0) == 0x80)
-      label.pop_back();
+    while (!label.empty() && (static_cast<unsigned char>(label.back()) & 0xC0) == 0x80) label.pop_back();
     if (!label.empty() && static_cast<unsigned char>(label.back()) >= 0xC0) label.pop_back();
   }
   return std::string(trim(label));
@@ -68,7 +70,8 @@ inline std::string headingTitle(std::string_view source) {
 template <typename Append, typename OnHeading>
 class Parser {
  public:
-  Parser(Append& output, OnHeading& heading, const bool render) : output_(output), onHeading_(heading), render_(render) {
+  Parser(Append& output, OnHeading& heading, const bool render)
+      : output_(output), onHeading_(heading), render_(render) {
     line_.reserve(160);
   }
 
@@ -83,11 +86,8 @@ class Parser {
           if (pendingLength_ == pendingExpected_) {
             const unsigned char first = static_cast<unsigned char>(pending_[0]);
             const unsigned char second = static_cast<unsigned char>(pending_[1]);
-            const bool valid =
-                !(first == 0xE0 && second < 0xA0) &&
-                !(first == 0xED && second >= 0xA0) &&
-                !(first == 0xF0 && second < 0x90) &&
-                !(first == 0xF4 && second >= 0x90);
+            const bool valid = !(first == 0xE0 && second < 0xA0) && !(first == 0xED && second >= 0xA0) &&
+                               !(first == 0xF0 && second < 0x90) && !(first == 0xF4 && second >= 0x90);
             if (valid) {
               for (unsigned n = 0; n < pendingLength_; ++n) consume(pending_[n]);
             } else {
@@ -115,7 +115,10 @@ class Parser {
 
   void consume(const char c) {
     if (c == '\r') return;
-    if (c == '\n') { flushLine(); return; }
+    if (c == '\n') {
+      flushLine();
+      return;
+    }
     if (overflow_) {
       if (render_) escape(std::string_view(&c, 1));
       return;
@@ -123,7 +126,10 @@ class Parser {
     if (line_.size() == kMaxLineBytes) {
       overflow_ = true;
       if (render_) {
-        if (!code_) { endBlock(); put("<p>"); }
+        if (!code_) {
+          endBlock();
+          put("<p>");
+        }
         escape(line_);
       }
       line_.clear();
@@ -145,19 +151,32 @@ class Parser {
     } else if (!line_.empty()) {
       flushLine();
     }
-    if (code_) { put("</code></pre>\n"); code_ = false; }
+    if (code_) {
+      put("</code></pre>\n");
+      code_ = false;
+    }
     if (render_) endBlock();
   }
 
  private:
-  void put(std::string_view s) { if (render_) output_(s); }
+  void put(std::string_view s) {
+    if (render_) output_(s);
+  }
   void escape(std::string_view s) {
     for (const char c : s) {
       switch (c) {
-        case '&': put("&amp;"); break;
-        case '<': put("&lt;"); break;
-        case '>': put("&gt;"); break;
-        default: put(std::string_view(&c, 1)); break;
+        case '&':
+          put("&amp;");
+          break;
+        case '<':
+          put("&lt;");
+          break;
+        case '>':
+          put("&gt;");
+          break;
+        default:
+          put(std::string_view(&c, 1));
+          break;
       }
     }
   }
@@ -168,7 +187,9 @@ class Parser {
       if (ch == '`') {
         const size_t end = text.find('`', i + 1);
         if (end != std::string_view::npos && end > i + 1) {
-          put("<code>"); escape(text.substr(i + 1, end - i - 1)); put("</code>");
+          put("<code>");
+          escape(text.substr(i + 1, end - i - 1));
+          put("</code>");
           i = end + 1;
           continue;
         }
@@ -176,7 +197,9 @@ class Parser {
       if (ch == '*' && i + 1 < text.size() && text[i + 1] == '*') {
         const size_t end = text.find("**", i + 2);
         if (end != std::string_view::npos && end > i + 2) {
-          put("<strong>"); escape(text.substr(i + 2, end - i - 2)); put("</strong>");
+          put("<strong>");
+          escape(text.substr(i + 2, end - i - 2));
+          put("</strong>");
           i = end + 2;
           continue;
         }
@@ -184,7 +207,9 @@ class Parser {
       if ((ch == '*' || ch == '_') && i + 1 < text.size()) {
         const size_t end = text.find(ch, i + 1);
         if (end != std::string_view::npos && end > i + 1) {
-          put("<em>"); escape(text.substr(i + 1, end - i - 1)); put("</em>");
+          put("<em>");
+          escape(text.substr(i + 1, end - i - 1));
+          put("</em>");
           i = end + 1;
           continue;
         }
@@ -198,7 +223,11 @@ class Parser {
             // Markdown. Show the label and destination as readable text.
             escape(text.substr(i + 1, labelEnd - i - 1));
             const auto href = text.substr(labelEnd + 2, hrefEnd - labelEnd - 2);
-            if (!href.empty()) { put(" ("); escape(href); put(")"); }
+            if (!href.empty()) {
+              put(" (");
+              escape(href);
+              put(")");
+            }
             i = hrefEnd + 1;
             continue;
           }
@@ -210,22 +239,28 @@ class Parser {
   }
 
   void endBlock() {
-    if (paragraph_) { put("</p>\n"); paragraph_ = false; }
+    if (paragraph_) {
+      put("</p>\n");
+      paragraph_ = false;
+    }
     if (list_ != 0) {
       put(list_ == 1 ? "</ul>\n" : "</ol>\n");
       list_ = 0;
     }
-
   }
 
   static bool bullet(std::string_view s, unsigned& type, std::string_view& text) {
     if (s.size() >= 2 && (s[0] == '-' || s[0] == '+' || s[0] == '*') && s[1] == ' ') {
-      type = 1; text = trim(s.substr(2)); return true;
+      type = 1;
+      text = trim(s.substr(2));
+      return true;
     }
     size_t digits = 0;
     while (digits < s.size() && digits < 5 && s[digits] >= '0' && s[digits] <= '9') ++digits;
     if (digits > 0 && digits + 1 < s.size() && (s[digits] == '.' || s[digits] == ')') && s[digits + 1] == ' ') {
-      type = 2; text = trim(s.substr(digits + 2)); return true;
+      type = 2;
+      text = trim(s.substr(digits + 2));
+      return true;
     }
     return false;
   }
@@ -272,15 +307,22 @@ class Parser {
     if (level) {
       if (render_) endBlock();
       ++headingCount_;
-      if (headingCount_ <= kMaxTocHeadings) onHeading_(headingCount_, static_cast<uint8_t>(level), headingTitle(heading));
+      if (headingCount_ <= kMaxTocHeadings)
+        onHeading_(headingCount_, static_cast<uint8_t>(level), headingTitle(heading));
       if (render_) {
         const char digit = static_cast<char>('0' + level);
-        put("<h"); put(std::string_view(&digit, 1));
+        put("<h");
+        put(std::string_view(&digit, 1));
         if (headingCount_ <= kMaxTocHeadings) {
-          put(" id=\""); put(anchorFor(headingCount_)); put("\"");
+          put(" id=\"");
+          put(anchorFor(headingCount_));
+          put("\"");
         }
-        put(">"); inlineText(heading); put("</h");
-        put(std::string_view(&digit, 1)); put(">\n");
+        put(">");
+        inlineText(heading);
+        put("</h");
+        put(std::string_view(&digit, 1));
+        put(">\n");
       }
       line_.clear();
       return;
@@ -289,25 +331,39 @@ class Parser {
     std::string_view item;
     if (bullet(stripped, listType, item)) {
       if (render_) {
-        if (paragraph_) { put("</p>\n"); paragraph_ = false; }
+        if (paragraph_) {
+          put("</p>\n");
+          paragraph_ = false;
+        }
         if (list_ && list_ != listType) endBlock();
-        if (!list_) { list_ = listType; put(list_ == 1 ? "<ul>\n" : "<ol>\n"); }
-        put("<li>"); inlineText(item); put("</li>\n");
+        if (!list_) {
+          list_ = listType;
+          put(list_ == 1 ? "<ul>\n" : "<ol>\n");
+        }
+        put("<li>");
+        inlineText(item);
+        put("</li>\n");
       }
       line_.clear();
       return;
     }
     if (stripped.size() > 1 && stripped[0] == '>' && stripped[1] == ' ') {
       if (render_) {
-        endBlock(); put("<blockquote><p>"); inlineText(stripped.substr(2)); put("</p></blockquote>\n");
+        endBlock();
+        put("<blockquote><p>");
+        inlineText(stripped.substr(2));
+        put("</p></blockquote>\n");
       }
       line_.clear();
       return;
     }
     if (render_) {
       if (list_) endBlock();
-      if (!paragraph_) { put("<p>"); paragraph_ = true; }
-      else put(" ");
+      if (!paragraph_) {
+        put("<p>");
+        paragraph_ = true;
+      } else
+        put(" ");
       inlineText(stripped);
     }
     line_.clear();

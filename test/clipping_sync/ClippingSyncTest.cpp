@@ -99,14 +99,13 @@ constexpr const char* nativeText = "A complete unique selection.";
 
 std::string addNative(bool localContext) {
   assert(CLIPPINGS.loadForBook(nativeBook, "Native", "", "epub"));
-  assert(CLIPPINGS.addClipping(0, 0, 0, 1, 0, 0, 4, "Note", 0,
-                              nativeText, 112233, 0, 27) == ClippingStore::AddResult::Added);
+  assert(CLIPPINGS.addClipping(0, 0, 0, 1, 0, 0, 4, "Note", 0, nativeText, 112233, 0, 27) ==
+         ClippingStore::AddResult::Added);
   const Clipping* clip = CLIPPINGS.clippingAt(0);
   assert(clip);
   std::string id = clip->id;
   if (localContext)
-    assert(ybxnote::contextstore::save(CLIPPINGS.contextAnchorPath(), id, nativeText,
-                                      {"Before ", " after."}));
+    assert(ybxnote::contextstore::save(CLIPPINGS.contextAnchorPath(), id, nativeText, {"Before ", " after."}));
   CLIPPINGS.unload();
   return id;
 }
@@ -136,7 +135,7 @@ void sendsLocalContextAfterPrimaryQuoteAndAcceptsIdempotentRetry() {
   assert(parsed["text"].as<std::string>() == nativeText);
   assert(parsed["prefix"].as<std::string>() == "Before ");
   assert(clippingSync::run(nativeBook, "filename-md5"));
-  assert(fake::uploads.size() == 1);  // clipping revision is unchanged
+  assert(fake::uploads.size() == 1);        // clipping revision is unchanged
   assert(fake::anchorUploads.size() == 2);  // anchor PUT is idempotent
   released();
 }
@@ -168,15 +167,15 @@ void savesFetchedContextForQuoteAlreadySyncedViaV2() {
 
 void refusesInvalidAnchorVersionOrNonAdvancingCursor() {
   for (const char* badResponse : {
-       "{\"anchor_version\":2,\"cursor\":0,\"more\":false,\"items\":[]}",
-       "{\"anchor_version\":1,\"cursor\":0,\"more\":true,\"items\":[]}",
-       "{\"anchor_version\":1,\"cursor\":0,\"more\":true,\"items\":["
-         "{\"id\":\"0123456789abcdef0123456789abcdef\",\"text\":\"A complete unique selection.\","
-         "\"prefix\":\"pre\",\"suffix\":\"after\",\"revision\":1}]}",
-       "{\"anchor_version\":1,\"cursor\":1,\"more\":false,\"items\":["
-         "{\"id\":\"0123456789abcdef0123456789abcdef\",\"text\":\"A complete unique selection.\","
-         "\"prefix\":\"pre\",\"suffix\":\"after\",\"revision\":\"bad\"}]}",
-  }) {
+           "{\"anchor_version\":2,\"cursor\":0,\"more\":false,\"items\":[]}",
+           "{\"anchor_version\":1,\"cursor\":0,\"more\":true,\"items\":[]}",
+           "{\"anchor_version\":1,\"cursor\":0,\"more\":true,\"items\":["
+           "{\"id\":\"0123456789abcdef0123456789abcdef\",\"text\":\"A complete unique selection.\","
+           "\"prefix\":\"pre\",\"suffix\":\"after\",\"revision\":1}]}",
+           "{\"anchor_version\":1,\"cursor\":1,\"more\":false,\"items\":["
+           "{\"id\":\"0123456789abcdef0123456789abcdef\",\"text\":\"A complete unique selection.\","
+           "\"prefix\":\"pre\",\"suffix\":\"after\",\"revision\":\"bad\"}]}",
+       }) {
     reset();
     addNative(false);
     fake::anchorResponse = badResponse;

@@ -10,7 +10,7 @@ const char kReleaseRepo[] = "jhdvp/ybx-crosspoint";
 namespace {
 
 constexpr size_t kVersionCapacity = 32;  // ReleaseJsonParser::tagName
-constexpr size_t kSuffixCapacity = 24;    // board_tag::Scanner::MAX_NAME + 1
+constexpr size_t kSuffixCapacity = 24;   // board_tag::Scanner::MAX_NAME + 1
 
 bool startsWith(const char* text, size_t textLen, const char* prefix) {
   const size_t prefixLen = strlen(prefix);

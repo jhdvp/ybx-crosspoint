@@ -128,8 +128,8 @@ inline bool clippingContainsWord(const Clipping& clipping, const uint16_t spineI
     // Native Notes share one stable document key across edits. A clipping
     // from an older revision can still be listed/synced, but its old source
     // offsets must NOT paint unrelated text in an edited document.
-    if (!layoutSignature || clipping.layoutSignature != layoutSignature ||
-        clipping.startOffset == UINT32_MAX || clipping.endOffset == UINT32_MAX)
+    if (!layoutSignature || clipping.layoutSignature != layoutSignature || clipping.startOffset == UINT32_MAX ||
+        clipping.endOffset == UINT32_MAX)
       return false;
   }
   if (clipping.startOffset != UINT32_MAX && clipping.endOffset != UINT32_MAX) {

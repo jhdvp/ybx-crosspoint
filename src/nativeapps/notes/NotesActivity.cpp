@@ -52,16 +52,16 @@ const char* NotesActivity::headerTitle() const { return tr(STR_YBX_NOTES); }
 
 void NotesActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  screen.setContentMarginFromScreen(fui::Insets{
-      static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-      static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   if (notes_.failed || notes_.truncated) {
     const char* message = notes_.failed ? tr(STR_YBX_NOTE_SD_ERROR) : tr(STR_YBX_NOTE_LIMIT);
-    screen.target().text(screen.takeTop(static_cast<int16_t>(2 * screen.target().lineHeight(screen.theme().smallText.font)),
-                                        screen.theme().spaceMd),
-                         message, screen.theme().smallText);
+    screen.target().text(
+        screen.takeTop(static_cast<int16_t>(2 * screen.target().lineHeight(screen.theme().smallText.font)),
+                       screen.theme().spaceMd),
+        message, screen.theme().smallText);
   }
   fui::ListProps props;
   props.items = rows_.data();
@@ -100,8 +100,8 @@ void NotesActivity::startNewNote() {
     GUI.drawPopup(renderer, tr(STR_YBX_NOTE_LIMIT));
     return;
   }
-  auto titleKeyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_YBX_NOTE_TITLE),
-                                                                "", nativeapps::notes::kMaxTitleBytes, InputType::Text);
+  auto titleKeyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_YBX_NOTE_TITLE), "",
+                                                                nativeapps::notes::kMaxTitleBytes, InputType::Text);
   if (!titleKeyboard) {
     GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
     return;
@@ -115,8 +115,8 @@ void NotesActivity::startNewNote() {
       requestUpdate();
       return;
     }
-    auto bodyKeyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_YBX_NOTE_BODY),
-                                                                 "", nativeapps::notes::kMaxBodyBytes, InputType::Text);
+    auto bodyKeyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_YBX_NOTE_BODY), "",
+                                                                 nativeapps::notes::kMaxBodyBytes, InputType::Text);
     if (!bodyKeyboard) {
       GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
       return;

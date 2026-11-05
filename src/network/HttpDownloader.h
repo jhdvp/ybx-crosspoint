@@ -104,8 +104,7 @@ class HttpDownloader {
    * capped at a few KB. Returns true when the response status is 2xx.
    */
   static bool postForm(const std::string& url, const std::string& formBody, std::string& outResponse,
-                       int* statusOut = nullptr, uint32_t timeoutMs = 0,
-                       const std::function<bool()>& shouldAbort = {});
+                       int* statusOut = nullptr, uint32_t timeoutMs = 0, const std::function<bool()>& shouldAbort = {});
 
   /**
    * Download a file to the SD card with optional credentials. `headers` are
@@ -119,8 +118,8 @@ class HttpDownloader {
   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
                                       ProgressCallback progress = nullptr, const bool* cancelFlag = nullptr,
                                       const std::string& username = "", const std::string& password = "",
-                                      const std::vector<Header>& headers = {},
-                                      uint32_t timeoutMs = 0, const std::function<bool()>& shouldAbort = {});
+                                      const std::vector<Header>& headers = {}, uint32_t timeoutMs = 0,
+                                      const std::function<bool()>& shouldAbort = {});
 
   /**
    * POST a body (e.g. an LCP license to the fulfillment service) and stream

@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
+
 #include <array>
 #include <string>
+
 #include "HalStorage.h"
 #include "util/ReadingStats.h"
 #include "util/ReadingStatsSnapshot.h"

@@ -2439,13 +2439,12 @@ void CrossPointWebServer::handleFetch() {
   const tlspolicy::Failure tlsFailure = tlspolicy::failureFromConnect(result.failure);
   if (result.insecureRedirect || tlspolicy::isTrustFailure(tlsFailure)) {
     Storage.remove(part.c_str());
-    const tlspolicy::Failure failure =
-        result.insecureRedirect ? tlspolicy::Failure::InsecureRedirect : tlsFailure;
+    const tlspolicy::Failure failure = result.insecureRedirect ? tlspolicy::Failure::InsecureRedirect : tlsFailure;
     tlspolicy::recordFailure(failure);
-    const char* error = failure == tlspolicy::Failure::Clock        ? "tls clock"
-                        : failure == tlspolicy::Failure::Hostname   ? "tls hostname"
+    const char* error = failure == tlspolicy::Failure::Clock              ? "tls clock"
+                        : failure == tlspolicy::Failure::Hostname         ? "tls hostname"
                         : failure == tlspolicy::Failure::InsecureRedirect ? "insecure redirect"
-                                                                         : "tls certificate";
+                                                                          : "tls certificate";
     char msg[96];
     snprintf(msg, sizeof(msg), "{\"error\":\"%s\"}", error);
     LOG_ERR("WEB", "Refusing download: %s", error);

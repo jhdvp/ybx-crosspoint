@@ -9,11 +9,11 @@
 #include <HalDisplay.h>
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
+#include <HalMemory.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
-#include <HalMemory.h>
 #include <TrustedTime.h>
 #include <WiFi.h>
 #include <esp_system.h>
@@ -38,10 +38,10 @@
 #include "EpubReaderFootnoteSelectActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
 #include "EpubReaderUtils.h"
-#include "MarkdownLegacyProgress.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
+#include "MarkdownLegacyProgress.h"
 #include "ProgressMapper.h"
 #include "QrDisplayActivity.h"
 #include "ReaderActivity.h"
@@ -60,10 +60,10 @@
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
-#include "util/YbxKosync.h"
 #include "util/YbxDocumentIdentity.h"
-#include "util/YbxNoteRevision.h"
+#include "util/YbxKosync.h"
 #include "util/YbxNoteContextStore.h"
+#include "util/YbxNoteRevision.h"
 
 namespace {
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -258,8 +258,8 @@ bool EpubReaderActivity::loadBook() {
     if (Storage.openFileForRead("MDP", bookPath, source)) {
       const size_t length = source.size();
       source.close();
-      legacy = markdownlegacy::prepare(
-          loadedEpub->getCachePath(), length > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(length));
+      legacy = markdownlegacy::prepare(loadedEpub->getCachePath(),
+                                       length > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(length));
     }
     if (legacy.action == markdownlegacy::Action::Failed) {
       LOG_ERR("MDP", "Could not preserve legacy Markdown progress before reindexing");
@@ -319,8 +319,7 @@ bool EpubReaderActivity::loadBook() {
     }
   }
 
-  if (legacy.action == markdownlegacy::Action::Approximate ||
-      legacy.action == markdownlegacy::Action::Restart) {
+  if (legacy.action == markdownlegacy::Action::Approximate || legacy.action == markdownlegacy::Action::Restart) {
     // The old visible-text offset is from a different parser; never reuse it.
     // Preserve raw progress.md-v1.bin for manual recovery. A bounded document
     // can be fully repaginated with the existing Go-to-% path. Larger MDs and
@@ -363,32 +362,29 @@ bool EpubReaderActivity::loadBook() {
       // C3: never spend our last contiguous heap block on best-effort
       // relinking. Normal page display, clipping lists and sync win.
       const auto heap = HalMemory::getDefaultHeap();
-      if (clippingsLoaded && CLIPPINGS.hasClippings() &&
-          heap.freeBytes >= 32 * 1024 && heap.largestBlockBytes >= 12 * 1024) {
+      if (clippingsLoaded && CLIPPINGS.hasClippings() && heap.freeBytes >= 32 * 1024 &&
+          heap.largestBlockBytes >= 12 * 1024) {
         std::string visible;
         if (ybxnote::renderVisibleText(source, visible)) {
           uint8_t attempts = 0;
-          for (size_t i = 0; i < CLIPPINGS.clippingCount() &&
-                             attempts < ybxnote::kMaxRelocations; ++i) {
+          for (size_t i = 0; i < CLIPPINGS.clippingCount() && attempts < ybxnote::kMaxRelocations; ++i) {
             const Clipping& clip = *CLIPPINGS.clippingAt(i);
-            if (clip.spineIndex != 0 || clip.layoutSignature == 0 ||
-                clip.layoutSignature == nativeNoteRevision ||
-                clip.textLength < ybxnote::kMinQuoteBytes ||
-                clip.textLength > ybxnote::kMaxQuoteBytes) continue;
+            if (clip.spineIndex != 0 || clip.layoutSignature == 0 || clip.layoutSignature == nativeNoteRevision ||
+                clip.textLength < ybxnote::kMinQuoteBytes || clip.textLength > ybxnote::kMaxQuoteBytes)
+              continue;
             ++attempts;
             std::string quote;
             if (!CLIPPINGS.readClippingText(i, quote)) continue;
             ybxnote::Context savedContext;
-            const auto contextStatus = ybxnote::contextstore::read(
-                CLIPPINGS.contextAnchorPath(), clip.id, quote, savedContext);
+            const auto contextStatus =
+                ybxnote::contextstore::read(CLIPPINGS.contextAnchorPath(), clip.id, quote, savedContext);
             // A stored context is authoritative for this local revision.
             // A corrupt context store NEVER downgrades to text-only matching;
             // older clippings without context retain PR #20's unique fallback.
-            const auto candidate =
-                ybxnote::contextstore::resolve(visible, quote, contextStatus, savedContext);
+            const auto candidate = ybxnote::contextstore::resolve(visible, quote, contextStatus, savedContext);
             if (candidate.status == ybxnote::Match::Found) {
-              nativeNoteReanchors[nativeNoteReanchorCount++] =
-                  {static_cast<uint16_t>(i), candidate.start, candidate.end};
+              nativeNoteReanchors[nativeNoteReanchorCount++] = {static_cast<uint16_t>(i), candidate.start,
+                                                                candidate.end};
             }
           }
         }
@@ -544,7 +540,8 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
     return;
   }
   const uint32_t layoutSignature =
-      ybxdocument::isManagedNote(bookPath) ? nativeNoteRevision
+      ybxdocument::isManagedNote(bookPath)
+          ? nativeNoteRevision
           : readerRenderSpecSignature(SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
 
   int marginTop, marginRight, marginBottom, marginLeft;
@@ -615,9 +612,8 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
         chapterTitle.c_str(), paragraphIndex, clipping.text, layoutSignature, clipping.startOffset, clipping.endOffset);
     bool exported = false;
     if (addResult == ClippingStore::AddResult::Added) {
-      if (ybxdocument::isManagedNote(bookPath) && nativeNoteRevision &&
-          clipping.startOffset != UINT32_MAX && clipping.endOffset != UINT32_MAX &&
-          clipping.text.size() >= ybxnote::kMinQuoteBytes &&
+      if (ybxdocument::isManagedNote(bookPath) && nativeNoteRevision && clipping.startOffset != UINT32_MAX &&
+          clipping.endOffset != UINT32_MAX && clipping.text.size() >= ybxnote::kMinQuoteBytes &&
           clipping.text.size() <= ybxnote::kMaxQuoteBytes) {
         const auto heap = HalMemory::getDefaultHeap();
         if (heap.freeBytes >= 32 * 1024 && heap.largestBlockBytes >= 12 * 1024) {
@@ -629,7 +625,8 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
             if (ybxnote::renderVisibleText(source, visible) &&
                 ybxnote::makeContext(visible, clipping.text, clipping.startOffset, clipping.endOffset, context)) {
               const Clipping* saved = CLIPPINGS.clippingAt(CLIPPINGS.clippingCount() - 1);
-              if (saved && !ybxnote::contextstore::save(CLIPPINGS.contextAnchorPath(), saved->id, clipping.text, context))
+              if (saved &&
+                  !ybxnote::contextstore::save(CLIPPINGS.contextAnchorPath(), saved->id, clipping.text, context))
                 LOG_ERR("NCTX", "Clipping saved, but optional context anchor was not persisted");
             }
           }
@@ -1412,8 +1409,8 @@ bool EpubReaderActivity::launchKOReaderSync() {
   ybxkosync::refresh();
 
   if (!KOREADER_STORE.hasCredentials()) {
-    auto sync = makeUniqueNoThrow<KOReaderSyncActivity>(
-        renderer, mappedInput, epub->getPath(), getCurrentPosition(), SavedProgressPosition{}, "", true);
+    auto sync = makeUniqueNoThrow<KOReaderSyncActivity>(renderer, mappedInput, epub->getPath(), getCurrentPosition(),
+                                                        SavedProgressPosition{}, "", true);
     if (!sync) return false;
     activityManager.replaceActivity(std::move(sync));
     return true;
@@ -2040,8 +2037,8 @@ void EpubReaderActivity::renderBook() {
 
   if (legacyMarkdownResumeNotice) {
     legacyMarkdownResumeNotice = false;
-    GUI.drawPopup(renderer, legacyMarkdownResumeApproximate ? tr(STR_MD_RESUME_APPROXIMATE)
-                                                            : tr(STR_MD_RESUME_RESTART));
+    GUI.drawPopup(renderer,
+                  legacyMarkdownResumeApproximate ? tr(STR_MD_RESUME_APPROXIMATE) : tr(STR_MD_RESUME_RESTART));
   }
 
   if (pendingScreenshot) {

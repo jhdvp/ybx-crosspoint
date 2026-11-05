@@ -17,9 +17,12 @@ class MarkdownLegacyProgress : public ::testing::Test {
   void oldIndex(const uint16_t page = 14, const uint16_t total = 40, bool withOffset = true) {
     Storage.files[indexPath] = "old-bin";
     std::string raw;
-    raw.push_back(0); raw.push_back(0); // spine 0
-    raw.push_back(static_cast<char>(page & 0xff)); raw.push_back(static_cast<char>(page >> 8));
-    raw.push_back(static_cast<char>(total & 0xff)); raw.push_back(static_cast<char>(total >> 8));
+    raw.push_back(0);
+    raw.push_back(0);  // spine 0
+    raw.push_back(static_cast<char>(page & 0xff));
+    raw.push_back(static_cast<char>(page >> 8));
+    raw.push_back(static_cast<char>(total & 0xff));
+    raw.push_back(static_cast<char>(total >> 8));
     if (withOffset) raw += std::string(4, '\x12');
     Storage.files[originalPath] = raw;
   }
@@ -133,7 +136,6 @@ TEST_F(MarkdownLegacyProgress, BadProgressLengthCannotBeSilentlyMigrated) {
   EXPECT_EQ(ml::prepare(dir, 100).action, ml::Action::Failed);
   EXPECT_FALSE(Storage.exists(snapshotPath.c_str()));
 }
-
 
 TEST_F(MarkdownLegacyProgress, MissingBookIndexStillProtectsLegacyPosition) {
   oldIndex(18, 40, false);

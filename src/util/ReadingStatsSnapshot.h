@@ -1,14 +1,14 @@
 #pragma once
 
-#include "ReadingStats.h"
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <string>
 #include <memory>
 #include <new>
+#include <string>
+
+#include "ReadingStats.h"
 
 // One committed record holds both aggregate and per-book statistics.
 // Recovery selects a complete, CRC-validated generation; it never combines a
@@ -62,8 +62,8 @@ inline bool serialize(const Data& data, std::string& out) {
   p[11] = static_cast<uint8_t>(bookSize >> 8);
   std::memcpy(p + HEADER_BYTES, stateBytes, stateSize);
   for (int i = 0; i < data.bookCount; ++i) {
-    if (serializeBookRecord(data.books[i], p + HEADER_BYTES + stateSize + i * BOOK_RECORD_BYTES,
-                            BOOK_RECORD_BYTES) != BOOK_RECORD_BYTES) {
+    if (serializeBookRecord(data.books[i], p + HEADER_BYTES + stateSize + i * BOOK_RECORD_BYTES, BOOK_RECORD_BYTES) !=
+        BOOK_RECORD_BYTES) {
       out.clear();
       return false;
     }
@@ -74,13 +74,14 @@ inline bool serialize(const Data& data, std::string& out) {
 }
 
 inline bool parse(const uint8_t* p, size_t size, Data& out) {
-  if (!p || size < HEADER_BYTES || size > MAX_BYTES || std::memcmp(p, "YBS1", 4) != 0 ||
-      p[4] != 1 || p[6] != 0 || p[7] != 0 || p[5] > MAX_BOOKS) return false;
+  if (!p || size < HEADER_BYTES || size > MAX_BYTES || std::memcmp(p, "YBS1", 4) != 0 || p[4] != 1 || p[6] != 0 ||
+      p[7] != 0 || p[5] > MAX_BOOKS)
+    return false;
   const uint16_t stateSize = static_cast<uint16_t>(p[8] | (p[9] << 8));
   const uint16_t bookSize = static_cast<uint16_t>(p[10] | (p[11] << 8));
-  if (stateSize < STATE_HEADER_BYTES || stateSize > MAX_STATE_BYTES ||
-      bookSize != p[5] * BOOK_RECORD_BYTES ||
-      size != HEADER_BYTES + stateSize + bookSize) return false;
+  if (stateSize < STATE_HEADER_BYTES || stateSize > MAX_STATE_BYTES || bookSize != p[5] * BOOK_RECORD_BYTES ||
+      size != HEADER_BYTES + stateSize + bookSize)
+    return false;
   uint32_t expected = 0;
   for (int i = 0; i < 4; ++i) expected |= static_cast<uint32_t>(p[12 + i]) << (8 * i);
   if (crc32(p + HEADER_BYTES, size - HEADER_BYTES) != expected) return false;
@@ -88,8 +89,8 @@ inline bool parse(const uint8_t* p, size_t size, Data& out) {
   auto next = std::unique_ptr<Data>(new (std::nothrow) Data());
   if (!next || !parseState(p + HEADER_BYTES, stateSize, next->state)) return false;
   for (int i = 0; i < p[5]; ++i) {
-    if (!parseBookRecord(p + HEADER_BYTES + stateSize + i * BOOK_RECORD_BYTES,
-                         BOOK_RECORD_BYTES, next->books[i])) return false;
+    if (!parseBookRecord(p + HEADER_BYTES + stateSize + i * BOOK_RECORD_BYTES, BOOK_RECORD_BYTES, next->books[i]))
+      return false;
   }
   next->bookCount = p[5];
   out = *next;
@@ -99,7 +100,7 @@ inline bool parse(const uint8_t* p, size_t size, Data& out) {
 // IO requirements: exists(path), read(path, string&), writeSync(path, string),
 // remove(path), rename(oldPath, newPath). This lets the exact disk transaction
 // be fault-injected on a host, rather than merely testing a serializer.
-template<class IO>
+template <class IO>
 Candidate inspect(IO& io, const char* path, Data& out) {
   if (!io.exists(path)) return Candidate::Missing;
   std::string bytes;
@@ -108,7 +109,7 @@ Candidate inspect(IO& io, const char* path, Data& out) {
   return Candidate::Valid;
 }
 
-template<class IO>
+template <class IO>
 LoadStatus load(IO& io, Data& out) {
   bool seen = false;
   for (const char* path : {PRIMARY, BACKUP, TEMP}) {
@@ -119,12 +120,12 @@ LoadStatus load(IO& io, Data& out) {
   return seen ? LoadStatus::Corrupt : LoadStatus::Missing;
 }
 
-template<class IO>
+template <class IO>
 bool removeIfExists(IO& io, const char* path) {
   return !io.exists(path) || io.remove(path);
 }
 
-template<class IO>
+template <class IO>
 bool sameSnapshot(IO& io, const char* path, const std::string& expected) {
   std::string bytes;
   Data checked;
@@ -132,7 +133,7 @@ bool sameSnapshot(IO& io, const char* path, const std::string& expected) {
          parse(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(), checked);
 }
 
-template<class IO>
+template <class IO>
 bool save(IO& io, const Data& data) {
   std::string bytes;
   if (!serialize(data, bytes)) return false;
@@ -154,8 +155,7 @@ bool save(IO& io, const Data& data) {
     }
   }
 
-  if (!removeIfExists(io, TEMP) || !io.writeSync(TEMP, bytes) || !sameSnapshot(io, TEMP, bytes))
-    return false;
+  if (!removeIfExists(io, TEMP) || !io.writeSync(TEMP, bytes) || !sameSnapshot(io, TEMP, bytes)) return false;
 
   // Rotating the primary through a backup leaves a complete committed
   // generation available at every step, even if FAT rename fails.

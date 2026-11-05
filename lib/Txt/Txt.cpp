@@ -12,9 +12,9 @@
 
 #include <cstring>
 
-#include "TxtToHtml.h"
-#include "MarkdownStream.h"
 #include "MarkdownSourceFingerprint.h"
+#include "MarkdownStream.h"
+#include "TxtToHtml.h"
 
 namespace {
 
@@ -53,9 +53,7 @@ bool saveMarkdownCacheMarker(const std::string& cachePath, const uint64_t finger
 bool scanMarkdownToc(const std::string& path, BookMetadataCache& cache, unsigned& headings) {
   HalFile source;
   if (!Storage.openFileForRead("MD", path, source)) return false;
-  auto reader = [](void* ctx, uint8_t* data, size_t n) {
-    return static_cast<HalFile*>(ctx)->read(data, n);
-  };
+  auto reader = [](void* ctx, uint8_t* data, size_t n) { return static_cast<HalFile*>(ctx)->read(data, n); };
   auto unused = [](std::string_view) {};
   auto heading = [&cache, &headings](unsigned ordinal, uint8_t level, const std::string& title) {
     if (!title.empty()) {

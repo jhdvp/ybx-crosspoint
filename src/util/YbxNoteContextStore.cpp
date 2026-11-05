@@ -15,7 +15,7 @@ namespace {
 // of zero-padded UTF-8 context, FNV64 of original clipping text, then
 // FNV32 checksum little endian. A server edit under the same ID must NEVER
 // reuse old context to relocate a different quotation.
-constexpr char kMagic[8] = {'Y','B','X','C','T','X','0','1'};
+constexpr char kMagic[8] = {'Y', 'B', 'X', 'C', 'T', 'X', '0', '1'};
 constexpr size_t kIdSize = 33;
 constexpr size_t kPrefixLenOffset = kIdSize;
 constexpr size_t kSuffixLenOffset = kPrefixLenOffset + 1;
@@ -36,8 +36,7 @@ uint64_t quoteFingerprint(std::string_view quote) {
 }
 uint64_t storedQuoteFingerprint(const Raw& raw) {
   uint64_t value = 0;
-  for (unsigned i = 0; i < 8; ++i)
-    value |= static_cast<uint64_t>(raw[kQuoteHashOffset + i]) << (8 * i);
+  for (unsigned i = 0; i < 8; ++i) value |= static_cast<uint64_t>(raw[kQuoteHashOffset + i]) << (8 * i);
   return value;
 }
 bool validId(std::string_view id) {
@@ -59,20 +58,20 @@ bool validate(const Raw& raw, Context& out) {
   if (!validId(id) || raw[32] != 0) return false;
   const size_t pl = raw[kPrefixLenOffset], sl = raw[kSuffixLenOffset];
   if (pl > kMaxContextBytes || sl > kMaxContextBytes || (pl == 0 && sl == 0)) return false;
-  for (size_t i = pl; i < kMaxContextBytes; ++i) if (raw[kPrefixOffset + i]) return false;
-  for (size_t i = sl; i < kMaxContextBytes; ++i) if (raw[kSuffixOffset + i]) return false;
+  for (size_t i = pl; i < kMaxContextBytes; ++i)
+    if (raw[kPrefixOffset + i]) return false;
+  for (size_t i = sl; i < kMaxContextBytes; ++i)
+    if (raw[kSuffixOffset + i]) return false;
   const uint32_t expected = checksum(raw);
-  const uint32_t recorded = static_cast<uint32_t>(raw[kChecksumOffset]) |
-                            (static_cast<uint32_t>(raw[kChecksumOffset+1]) << 8) |
-                            (static_cast<uint32_t>(raw[kChecksumOffset+2]) << 16) |
-                            (static_cast<uint32_t>(raw[kChecksumOffset+3]) << 24);
+  const uint32_t recorded =
+      static_cast<uint32_t>(raw[kChecksumOffset]) | (static_cast<uint32_t>(raw[kChecksumOffset + 1]) << 8) |
+      (static_cast<uint32_t>(raw[kChecksumOffset + 2]) << 16) | (static_cast<uint32_t>(raw[kChecksumOffset + 3]) << 24);
   if (recorded != expected) return false;
-  Context candidate{
-    std::string(reinterpret_cast<const char*>(raw.data() + kPrefixOffset), pl),
-    std::string(reinterpret_cast<const char*>(raw.data() + kSuffixOffset), sl)
-  };
+  Context candidate{std::string(reinterpret_cast<const char*>(raw.data() + kPrefixOffset), pl),
+                    std::string(reinterpret_cast<const char*>(raw.data() + kSuffixOffset), sl)};
   if (!nativeapps::notes::isValidUtf8(candidate.prefix, true) ||
-      !nativeapps::notes::isValidUtf8(candidate.suffix, true)) return false;
+      !nativeapps::notes::isValidUtf8(candidate.suffix, true))
+    return false;
   out = std::move(candidate);
   return true;
 }
@@ -84,11 +83,9 @@ Raw encode(std::string_view id, std::string_view quote, const Context& context) 
   std::memcpy(raw.data() + kPrefixOffset, context.prefix.data(), context.prefix.size());
   std::memcpy(raw.data() + kSuffixOffset, context.suffix.data(), context.suffix.size());
   const uint64_t quoteHash = quoteFingerprint(quote);
-  for (unsigned i = 0; i < 8; ++i)
-    raw[kQuoteHashOffset + i] = static_cast<uint8_t>(quoteHash >> (i * 8));
+  for (unsigned i = 0; i < 8; ++i) raw[kQuoteHashOffset + i] = static_cast<uint8_t>(quoteHash >> (i * 8));
   const uint32_t sum = checksum(raw);
-  for (unsigned i = 0; i < 4; ++i)
-    raw[kChecksumOffset + i] = static_cast<uint8_t>(sum >> (i * 8));
+  for (unsigned i = 0; i < 4; ++i) raw[kChecksumOffset + i] = static_cast<uint8_t>(sum >> (i * 8));
   return raw;
 }
 
@@ -106,7 +103,7 @@ Scan scan(const std::string& path, std::string_view id) {
   HalFile file;
   if (!Storage.openFileForRead("NCTX", path, file)) return {};
   const size_t size = file.size();
-  if (size < sizeof(kMagic) || size > sizeof(kMagic) + kRecordSize*kMaxRecords ||
+  if (size < sizeof(kMagic) || size > sizeof(kMagic) + kRecordSize * kMaxRecords ||
       (size - sizeof(kMagic)) % kRecordSize != 0) {
     file.close();
     return {};
@@ -123,13 +120,15 @@ Scan scan(const std::string& path, std::string_view id) {
   for (size_t i = 0; i < answer.count; ++i) {
     Raw raw{};
     Context candidate;
-    if (file.read(raw.data(), raw.size()) != static_cast<int>(raw.size()) ||
-        !validate(raw, candidate)) {
+    if (file.read(raw.data(), raw.size()) != static_cast<int>(raw.size()) || !validate(raw, candidate)) {
       answer.ok = false;
       break;
     }
     if (id.size() == 32 && std::memcmp(raw.data(), id.data(), 32) == 0) {
-      if (answer.found) { answer.ok = false; break; }
+      if (answer.found) {
+        answer.ok = false;
+        break;
+      }
       answer.found = true;
       answer.context = std::move(candidate);
       answer.quoteHash = storedQuoteFingerprint(raw);
@@ -145,17 +144,16 @@ bool recover(const std::string& path) {
   const auto valid = scan(backup, {});
   return valid.ok && Storage.rename(backup.c_str(), path.c_str());
 }
-} // namespace
+}  // namespace
 
 Status read(const std::string& path, std::string_view id, std::string_view quote, Context& out) {
-  if (path.empty() || quote.size() < kMinQuoteBytes ||
-      quote.size() > kMaxQuoteBytes || !nativeapps::notes::isValidUtf8(quote, true))
+  if (path.empty() || quote.size() < kMinQuoteBytes || quote.size() > kMaxQuoteBytes ||
+      !nativeapps::notes::isValidUtf8(quote, true))
     return Status::Invalid;
   if (!Storage.exists(path.c_str()) && !recover(path)) {
     // A broken orphaned backup/temporary file means we cannot assume
     // no anchor was recorded. Do not downgrade to quote-only matching.
-    if (Storage.exists((path + ".bak").c_str()) ||
-        Storage.exists((path + ".tmp").c_str())) return Status::Invalid;
+    if (Storage.exists((path + ".bak").c_str()) || Storage.exists((path + ".tmp").c_str())) return Status::Invalid;
     return Status::Missing;
   }
   // Older server/legacy clip IDs can be 64 hex or even anonymous. This
@@ -174,23 +172,21 @@ Status read(const std::string& path, std::string_view id, std::string_view quote
 }
 
 bool save(const std::string& path, std::string_view id, std::string_view quote, const Context& anchor) {
-  if (path.empty() || !validId(id) || quote.size() < kMinQuoteBytes ||
-      quote.size() > kMaxQuoteBytes || !nativeapps::notes::isValidUtf8(quote, true) ||
-      anchor.prefix.size() > kMaxContextBytes || anchor.suffix.size() > kMaxContextBytes ||
-      (anchor.prefix.empty() && anchor.suffix.empty()) ||
-      !nativeapps::notes::isValidUtf8(anchor.prefix, true) ||
-      !nativeapps::notes::isValidUtf8(anchor.suffix, true)) return false;
+  if (path.empty() || !validId(id) || quote.size() < kMinQuoteBytes || quote.size() > kMaxQuoteBytes ||
+      !nativeapps::notes::isValidUtf8(quote, true) || anchor.prefix.size() > kMaxContextBytes ||
+      anchor.suffix.size() > kMaxContextBytes || (anchor.prefix.empty() && anchor.suffix.empty()) ||
+      !nativeapps::notes::isValidUtf8(anchor.prefix, true) || !nativeapps::notes::isValidUtf8(anchor.suffix, true))
+    return false;
 
   const bool hasMain = Storage.exists(path.c_str()) || recover(path);
-  if (!hasMain && (Storage.exists((path + ".bak").c_str()) ||
-                   Storage.exists((path + ".tmp").c_str()))) return false;
+  if (!hasMain && (Storage.exists((path + ".bak").c_str()) || Storage.exists((path + ".tmp").c_str()))) return false;
   Scan previous;
   if (hasMain) {
     previous = scan(path, id);
     if (!previous.ok) return false;
-    if (previous.found) return previous.quoteHash == quoteFingerprint(quote) &&
-                                previous.context.prefix == anchor.prefix &&
-                                previous.context.suffix == anchor.suffix;
+    if (previous.found)
+      return previous.quoteHash == quoteFingerprint(quote) && previous.context.prefix == anchor.prefix &&
+             previous.context.suffix == anchor.suffix;
     if (previous.count >= kMaxRecords) return false;
   }
 
@@ -201,7 +197,10 @@ bool save(const std::string& path, std::string_view id, std::string_view quote, 
   HalFile source;
   if (hasMain && !Storage.openFileForRead("NCTX", path, source)) return false;
   HalFile dest;
-  if (!Storage.openFileForWrite("NCTX", tmp, dest)) { if (source) source.close(); return false; }
+  if (!Storage.openFileForWrite("NCTX", tmp, dest)) {
+    if (source) source.close();
+    return false;
+  }
 
   bool ok = dest.write(kMagic, sizeof(kMagic)) == sizeof(kMagic);
   if (hasMain) {
@@ -218,22 +217,27 @@ bool save(const std::string& path, std::string_view id, std::string_view quote, 
   dest.flush();
   if (!dest.close()) ok = false;
   if (source && !source.close()) ok = false;
-  if (!ok) { Storage.remove(tmp.c_str()); return false; }
+  if (!ok) {
+    Storage.remove(tmp.c_str());
+    return false;
+  }
 
   const Scan verified = scan(tmp, id);
   if (!verified.ok || !verified.found || verified.count != previous.count + 1 ||
-      verified.quoteHash != quoteFingerprint(quote) ||
-      verified.context.prefix != anchor.prefix || verified.context.suffix != anchor.suffix) {
+      verified.quoteHash != quoteFingerprint(quote) || verified.context.prefix != anchor.prefix ||
+      verified.context.suffix != anchor.suffix) {
     Storage.remove(tmp.c_str());
     return false;
   }
 
   if (hasMain) {
     if (Storage.exists(bak.c_str()) && !Storage.remove(bak.c_str())) {
-      Storage.remove(tmp.c_str()); return false;
+      Storage.remove(tmp.c_str());
+      return false;
     }
     if (!Storage.rename(path.c_str(), bak.c_str())) {
-      Storage.remove(tmp.c_str()); return false;
+      Storage.remove(tmp.c_str());
+      return false;
     }
   }
   if (!Storage.rename(tmp.c_str(), path.c_str())) {
@@ -244,4 +248,4 @@ bool save(const std::string& path, std::string_view id, std::string_view quote, 
   if (hasMain && Storage.exists(bak.c_str())) Storage.remove(bak.c_str());
   return true;
 }
-} // namespace ybxnote::contextstore
+}  // namespace ybxnote::contextstore

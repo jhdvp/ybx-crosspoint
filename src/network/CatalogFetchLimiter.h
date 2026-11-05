@@ -66,9 +66,7 @@ class CatalogFetchLimiter {
   }
 
  private:
-  static bool reached(uint32_t now, uint32_t deadline) {
-    return static_cast<int32_t>(now - deadline) >= 0;
-  }
+  static bool reached(uint32_t now, uint32_t deadline) { return static_cast<int32_t>(now - deadline) >= 0; }
 
   bool active_ = false;
   Stop stop_ = Stop::None;

@@ -32,15 +32,12 @@ inline bool isManagedNote(const std::string_view path) {
 
 // Used ONLY to choose the clipping endpoint document key, not the
 // reader-progress hash, so non-native Markdown and EPUB remain unchanged.
-inline bool useStableClippingIdentity(const std::string_view path) {
-  return isManagedNote(path);
-}
+inline bool useStableClippingIdentity(const std::string_view path) { return isManagedNote(path); }
 
 // The callback is intentionally lazy: regular books never calculate an
 // extra hash or change their KoSync document key.
 template <typename FilenameHash>
-std::string clippingDocumentKey(const std::string_view path, const std::string& kosyncHash,
-                                FilenameHash filenameHash) {
+std::string clippingDocumentKey(const std::string_view path, const std::string& kosyncHash, FilenameHash filenameHash) {
   if (!isManagedNote(path)) return kosyncHash;
   return filenameHash();
 }

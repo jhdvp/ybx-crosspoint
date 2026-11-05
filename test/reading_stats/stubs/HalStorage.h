@@ -14,7 +14,7 @@ struct Disk {
   void reset() { *this = Disk{}; }
 };
 inline Disk disk;
-}
+}  // namespace fake_sd
 
 struct HalFile {
   std::string path;
@@ -39,11 +39,17 @@ struct HalFile {
     return static_cast<int>(count);
   }
   void flush() {}
-  bool close() { opened = false; return fake_sd::disk.available; }
+  bool close() {
+    opened = false;
+    return fake_sd::disk.available;
+  }
 };
 
 struct HalStorage {
-  static HalStorage& getInstance() { static HalStorage s; return s; }
+  static HalStorage& getInstance() {
+    static HalStorage s;
+    return s;
+  }
   bool ensureDirectoryExists(const char*) { return fake_sd::disk.available; }
   bool exists(const char* path) { return fake_sd::disk.available && fake_sd::disk.files.count(path) != 0; }
   bool remove(const char* path) {
@@ -69,7 +75,10 @@ struct HalStorage {
   bool openFileForWrite(const char*, const char* path, HalFile& f) {
     if (!fake_sd::disk.available) return false;
     fake_sd::disk.files[path].clear();
-    f.path = path; f.pos = 0; f.opened = true; f.writing = true;
+    f.path = path;
+    f.pos = 0;
+    f.opened = true;
+    f.writing = true;
     return true;
   }
 };

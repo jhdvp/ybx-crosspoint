@@ -46,11 +46,12 @@ class SecureHttpClient {
     if (anchor) ++fake::anchorRequests;
     complete_ = !fake::incomplete;
     if (anchor && !fake::anchorsSupported) return 404;
-    if (upload && anchor) fake::anchorUploads.emplace_back(reinterpret_cast<const char*>(data), length);
-    else if (upload) fake::uploads.emplace_back(reinterpret_cast<const char*>(data), length);
-    const std::string response = anchor
-                                     ? (upload ? "{\"accepted\":1,\"revision\":1}" : fake::anchorResponse)
-                                 : upload                                        ? "{\"accepted\":1}"
+    if (upload && anchor)
+      fake::anchorUploads.emplace_back(reinterpret_cast<const char*>(data), length);
+    else if (upload)
+      fake::uploads.emplace_back(reinterpret_cast<const char*>(data), length);
+    const std::string response = anchor   ? (upload ? "{\"accepted\":1,\"revision\":1}" : fake::anchorResponse)
+                                 : upload ? "{\"accepted\":1}"
                                  : url_.find("?cursor=0") != std::string::npos ? "{\"sync_version\":2}"
                                                                                : fake::remoteResponse;
     for (size_t offset = 0; offset < response.size(); offset += 97) {

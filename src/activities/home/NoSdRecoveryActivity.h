@@ -13,8 +13,7 @@ class NoSdRecoveryActivity final : public Activity {
   bool rebooting = false;
 
  public:
-  NoSdRecoveryActivity(GfxRenderer& renderer, MappedInputManager& input)
-      : Activity("NoSdRecovery", renderer, input) {}
+  NoSdRecoveryActivity(GfxRenderer& renderer, MappedInputManager& input) : Activity("NoSdRecovery", renderer, input) {}
   void onEnter() override;
   void loop() override;
   void render(RenderLock&& lock) override;

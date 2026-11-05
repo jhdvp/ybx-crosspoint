@@ -19,9 +19,7 @@ class Hasher {
       value_ *= UINT64_C(1099511628211);
     }
   }
-  void add(std::string_view chunk) {
-    add(reinterpret_cast<const uint8_t*>(chunk.data()), chunk.size());
-  }
+  void add(std::string_view chunk) { add(reinterpret_cast<const uint8_t*>(chunk.data()), chunk.size()); }
   uint64_t value() const { return value_; }
 
  private:

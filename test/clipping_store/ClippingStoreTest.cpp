@@ -1,7 +1,7 @@
 #include <ClippingStore.h>
 #include <HalStorage.h>
-#include <gtest/gtest.h>
 #include <esp_random.h>
+#include <gtest/gtest.h>
 
 namespace {
 using Result = ClippingStore::AddResult;
@@ -245,7 +245,8 @@ TEST(ClippingStore, MovesFolderWithClipsAndDeletionJournalAndRollsBackFailure) {
       EXPECT_FALSE(Storage.exists(contextPath.c_str()));
       ASSERT_TRUE(store.loadForBook("/renamed/sub/book.epub", "", "", "epub"));
       EXPECT_EQ(fake::files.at(store.contextAnchorPath())->bytes,
-                std::vector<uint8_t>({'c','o','n','t','e','x','t','-','s','n','a','p','s','h','o','t','-','f','o','r','-','m','o','v','e'}));
+                std::vector<uint8_t>({'c', 'o', 'n', 't', 'e', 'x', 't', '-', 's', 'n', 'a', 'p', 's',
+                                      'h', 'o', 't', '-', 'f', 'o', 'r', '-', 'm', 'o', 'v', 'e'}));
       EXPECT_EQ(store.clippingCount(), 1u);
       std::string text;
       EXPECT_TRUE(store.readClippingText(0, text));
@@ -295,7 +296,6 @@ TEST(ClippingStore, MoveRefusesExistingDestinationHistoryAndDeleteCleansSidecars
   EXPECT_FALSE(Storage.exists((path + ".tmp").c_str()));
 }
 
-
 TEST(ClippingStore, NewClippingReceivesStableOpaqueIdBeforeAnySync) {
   fake::reset();
   ClippingStore store;
@@ -309,8 +309,7 @@ TEST(ClippingStore, NewClippingReceivesStableOpaqueIdBeforeAnySync) {
   ASSERT_EQ(secondId.size(), 32u);
   EXPECT_NE(firstId, secondId);
   for (const auto& id : {firstId, secondId}) {
-    for (const char c : id)
-      EXPECT_TRUE((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+    for (const char c : id) EXPECT_TRUE((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
   }
   store.unload();
   ASSERT_TRUE(store.loadForBook("/notes.md", "Notes", "", "epub"));

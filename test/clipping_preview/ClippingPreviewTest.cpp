@@ -315,7 +315,6 @@ TEST(SelectionGeometry, KeepsCursorClearOfHintsOnEitherAxis) {
   EXPECT_EQ(selectionGeometry::keepVisible(100, 20, 40, 700), 0);
 }
 
-
 // When Native Notes change between two devices, source offsets for the
 // previous revision cannot safely be painted on the edited text.
 TEST(ClippingPreview, NativeNoteSourceRevisionGuardRejectsOldOffsets) {

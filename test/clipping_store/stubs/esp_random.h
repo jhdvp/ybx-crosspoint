@@ -8,7 +8,7 @@
 namespace fake_random {
 inline bool forceCollision = false;
 inline uint64_t state = UINT64_C(0x6a09e667f3bcc909);
-}
+}  // namespace fake_random
 inline void esp_fill_random(void* buffer, size_t size) {
   auto* bytes = static_cast<uint8_t*>(buffer);
   for (size_t i = 0; i < size; ++i) {

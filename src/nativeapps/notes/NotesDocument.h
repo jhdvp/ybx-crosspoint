@@ -26,22 +26,19 @@ struct Document {
 inline bool isValidUtf8(std::string_view value, bool allowNewlines) {
   for (size_t i = 0; i < value.size();) {
     const uint8_t c = static_cast<uint8_t>(value[i]);
-    if (c == 0 || c == 0x7F || (c < 0x20 && c != '\t' && (!allowNewlines || (c != '\n' && c != '\r'))))
-      return false;
+    if (c == 0 || c == 0x7F || (c < 0x20 && c != '\t' && (!allowNewlines || (c != '\n' && c != '\r')))) return false;
     if (c < 0x80) {
       ++i;
       continue;
     }
-    const int length = (c >= 0xC2 && c <= 0xDF) ? 2
-                       : (c >= 0xE0 && c <= 0xEF) ? 3
-                       : (c >= 0xF0 && c <= 0xF4) ? 4 : 0;
+    const int length = (c >= 0xC2 && c <= 0xDF) ? 2 : (c >= 0xE0 && c <= 0xEF) ? 3 : (c >= 0xF0 && c <= 0xF4) ? 4 : 0;
     if (length == 0 || i + static_cast<size_t>(length) > value.size()) return false;
     const auto next = [&](size_t offset) { return static_cast<uint8_t>(value[i + offset]); };
     for (int j = 1; j < length; ++j) {
       if ((next(static_cast<size_t>(j)) & 0xC0) != 0x80) return false;
     }
-    if ((c == 0xE0 && next(1) < 0xA0) || (c == 0xED && next(1) >= 0xA0) ||
-        (c == 0xF0 && next(1) < 0x90) || (c == 0xF4 && next(1) >= 0x90))
+    if ((c == 0xE0 && next(1) < 0xA0) || (c == 0xED && next(1) >= 0xA0) || (c == 0xF0 && next(1) < 0x90) ||
+        (c == 0xF4 && next(1) >= 0x90))
       return false;
     i += static_cast<size_t>(length);
   }
@@ -93,8 +90,7 @@ inline bool validFileName(std::string_view name) {
 
 inline std::string fileName(uint32_t high, uint32_t low) {
   char name[32];
-  snprintf(name, sizeof(name), "note-%08lx%08lx.md", static_cast<unsigned long>(high),
-           static_cast<unsigned long>(low));
+  snprintf(name, sizeof(name), "note-%08lx%08lx.md", static_cast<unsigned long>(high), static_cast<unsigned long>(low));
   return name;
 }
 

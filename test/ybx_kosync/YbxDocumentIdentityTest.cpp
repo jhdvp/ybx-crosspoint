@@ -8,7 +8,7 @@
 namespace {
 constexpr const char* kNote = "/apps/notes/note-0123456789abcdef.md";
 constexpr const char* kOther = "/apps/notes/note-fedcba9876543210.md";
-}
+}  // namespace
 
 TEST(YbxDocumentIdentity, ManagedNotesUseStableClippingFilenameHash) {
   EXPECT_TRUE(ybxdocument::isManagedNote(kNote));
@@ -33,26 +33,21 @@ TEST(YbxDocumentIdentity, IndependentNoteIdsAreDifferent) {
 }
 
 TEST(YbxDocumentIdentity, OtherMarkdownAndEpubRetainKoSyncPreference) {
-  for (const char* path : {"/books/report.md", "/books/book.epub",
-                           "/apps/notes/draft.md", "/apps/notes/book.epub",
-                           "/docs/ordinary.md"}) {
+  for (const char* path :
+       {"/books/report.md", "/books/book.epub", "/apps/notes/draft.md", "/apps/notes/book.epub", "/docs/ordinary.md"}) {
     EXPECT_FALSE(ybxdocument::isManagedNote(path)) << path;
     EXPECT_FALSE(ybxdocument::useStableClippingIdentity(path)) << path;
   }
 }
 
 TEST(YbxDocumentIdentity, BadNamesAndPathTraversalNeverForceIdentity) {
-  for (const char* path : {"", "note-0123456789abcdef.md",
-                           "/apps/notes/../note-0123456789abcdef.md",
-                           "/apps/notes/note-0123456789abcdef.md/extra",
-                           "/apps/notes/note-0123456789ABCDEf.md",
-                           "/apps/notes/note-0123456789abcde.md",
-                           "/apps/notes/note-0123456789abcdef.MD",
+  for (const char* path : {"", "note-0123456789abcdef.md", "/apps/notes/../note-0123456789abcdef.md",
+                           "/apps/notes/note-0123456789abcdef.md/extra", "/apps/notes/note-0123456789ABCDEf.md",
+                           "/apps/notes/note-0123456789abcde.md", "/apps/notes/note-0123456789abcdef.MD",
                            "/apps/notes/note-0123456789abcdef.md.bak"}) {
     EXPECT_FALSE(ybxdocument::isManagedNote(path)) << path;
   }
 }
-
 
 TEST(YbxDocumentIdentity, NativeNoteContentRevisionChangesOnSameLengthEdit) {
   constexpr std::string_view a = "# Title\n\nred apple\n";
@@ -76,8 +71,10 @@ TEST(YbxDocumentIdentity, NativeNoteUsesFilenameKeyAcrossContentEdits) {
 }
 TEST(YbxDocumentIdentity, OrdinaryEpubDoesNotCallExtraFilenameHash) {
   bool called = false;
-  const auto result = ybxdocument::clippingDocumentKey("/books/novel.epub", "original-kosync-key",
-                                                        [&] { called = true; return "wrong-key"; });
+  const auto result = ybxdocument::clippingDocumentKey("/books/novel.epub", "original-kosync-key", [&] {
+    called = true;
+    return "wrong-key";
+  });
   EXPECT_FALSE(called);
   EXPECT_EQ(result, "original-kosync-key");
 }
@@ -87,8 +84,7 @@ TEST(YbxDocumentIdentity, UnavailableNativeNoteHashRefusesUnrelatedFallback) {
 }
 
 TEST(YbxDocumentIdentity, PreservesNoteIdentityAcrossDirectoryMove) {
-  for (const char* p : {"/apps/notes/note-0123456789abcdef.md",
-                        "/Read/note-0123456789abcdef.md",
+  for (const char* p : {"/apps/notes/note-0123456789abcdef.md", "/Read/note-0123456789abcdef.md",
                         "/Transferred/SD 1/note-0123456789abcdef.md"}) {
     ASSERT_TRUE(ybxdocument::isManagedNote(p));
     EXPECT_EQ(ybxdocument::clippingDocumentKey(p, "binary-hash", [] { return "stable-name-hash"; }),

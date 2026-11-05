@@ -381,8 +381,7 @@ inline void putBytes(uint8_t*& out, const void* data, const size_t size) {
 
 inline size_t serializeState(const State& state, uint8_t* out, const size_t capacity) {
   if (out == nullptr || state.dayCount > MAX_DAYS) return 0;
-  if (state.recentSessionCount > MAX_RECENT_SESSION_IDS || state.recentSessionNext >= MAX_RECENT_SESSION_IDS)
-    return 0;
+  if (state.recentSessionCount > MAX_RECENT_SESSION_IDS || state.recentSessionNext >= MAX_RECENT_SESSION_IDS) return 0;
   const size_t length = STATE_HEADER_BYTES + static_cast<size_t>(state.dayCount) * DAY_RECORD_BYTES + RECENT_IDS_BYTES;
   if (capacity < length) return 0;
   uint8_t* p = out;
@@ -459,14 +458,12 @@ inline bool parseState(const uint8_t* in, const size_t length, State& state) {
     // A committed CPS2 record is complete only with all recent event IDs.
     if (static_cast<size_t>(end - p) != RECENT_IDS_BYTES) return false;
     uint16_t ringReserved = 0;
-    if (!detail::takeU8(p, end, next.recentSessionCount) ||
-        !detail::takeU8(p, end, next.recentSessionNext) || !detail::takeU16(p, end, ringReserved) ||
-        ringReserved != 0 || next.recentSessionCount > MAX_RECENT_SESSION_IDS ||
-        next.recentSessionNext >= MAX_RECENT_SESSION_IDS) {
+    if (!detail::takeU8(p, end, next.recentSessionCount) || !detail::takeU8(p, end, next.recentSessionNext) ||
+        !detail::takeU16(p, end, ringReserved) || ringReserved != 0 ||
+        next.recentSessionCount > MAX_RECENT_SESSION_IDS || next.recentSessionNext >= MAX_RECENT_SESSION_IDS) {
       return false;
     }
-    if (next.recentSessionCount < MAX_RECENT_SESSION_IDS &&
-        next.recentSessionNext != next.recentSessionCount) {
+    if (next.recentSessionCount < MAX_RECENT_SESSION_IDS && next.recentSessionNext != next.recentSessionCount) {
       return false;
     }
     for (int i = 0; i < MAX_RECENT_SESSION_IDS; ++i) {
@@ -474,8 +471,7 @@ inline bool parseState(const uint8_t* in, const size_t length, State& state) {
       const char* id = reinterpret_cast<const char*>(p);
       const bool active = i < next.recentSessionCount;
       const void* terminator = std::memchr(id, 0, MAX_ID_LENGTH + 1);
-      if ((active && (id[0] == '\0' || terminator == nullptr)) ||
-          (!active && id[0] != '\0')) {
+      if ((active && (id[0] == '\0' || terminator == nullptr)) || (!active && id[0] != '\0')) {
         return false;
       }
       std::memcpy(next.recentSessionIds[i], p, MAX_ID_LENGTH + 1);

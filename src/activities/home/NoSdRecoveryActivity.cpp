@@ -53,7 +53,6 @@ void NoSdRecoveryActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, y, "Or tap the screen");
   }
   y += line;
-  renderer.drawCenteredText(UI_10_FONT_ID, y,
-                            attempted.load() ? "Card still unavailable" : "Files will not be erased");
+  renderer.drawCenteredText(UI_10_FONT_ID, y, attempted.load() ? "Card still unavailable" : "Files will not be erased");
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }

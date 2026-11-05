@@ -2,8 +2,8 @@
 
 #include <array>
 
-#include "activities/UiListActivity.h"
 #include "CatalogPolicy.h"
+#include "activities/UiListActivity.h"
 
 // FreeInkUI launcher, integrated with the existing YBX Home -> More menu.
 // PluginHub remains an independent declarative catalog/install flow.

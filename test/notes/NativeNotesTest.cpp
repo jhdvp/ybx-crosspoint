@@ -54,12 +54,11 @@ TEST(NativeNotes, OpaqueStableIdNotDerivedFromTitle) {
   EXPECT_EQ(name, "note-0011223344556677.md");
   EXPECT_TRUE(validFileName(name));
   EXPECT_EQ(pathFor(name), "/apps/notes/note-0011223344556677.md");
-  EXPECT_NE(fileName(1,2), fileName(1,3));
+  EXPECT_NE(fileName(1, 2), fileName(1, 3));
 }
 TEST(NativeNotes, FilenameCannotTraverseOrUseTemporarySuffix) {
-  for (const char* name : {"../../bad.md", "note-0011223344556677.md.tmp",
-                           "note-0011223344556677.md.bak", "note-0011223344556677.txt",
-                           "note-001122334455667g.md", "note-0011223344556677.MD", ""}) {
+  for (const char* name : {"../../bad.md", "note-0011223344556677.md.tmp", "note-0011223344556677.md.bak",
+                           "note-0011223344556677.txt", "note-001122334455667g.md", "note-0011223344556677.MD", ""}) {
     EXPECT_FALSE(validFileName(name)) << name;
     EXPECT_TRUE(pathFor(name).empty());
   }

@@ -58,9 +58,9 @@ void OtaUpdateActivity::runUpdateCheck() {
   }
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update check failed: %d", res);
-    const char* detail = res == OtaUpdater::TLS_ERROR ? tlsui::failureDetail(tlspolicy::lastFailure())
+    const char* detail = res == OtaUpdater::TLS_ERROR   ? tlsui::failureDetail(tlspolicy::lastFailure())
                          : res == OtaUpdater::OOM_ERROR ? tr(STR_MEMORY_ERROR)
-                                                       : tr(STR_UPDATE_NETWORK_HINT);
+                                                        : tr(STR_UPDATE_NETWORK_HINT);
     enterFailed(detail, true);
     return;
   }
@@ -278,8 +278,7 @@ void OtaUpdateActivity::failedScreen(UiScreen& screen, void* user) {
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing),
       static_cast<int16_t>(self->renderer.getScreenWidth() - (safe.x + safe.width)),
-      static_cast<int16_t>(self->renderer.getScreenHeight() - (safe.y + safe.height)),
-      static_cast<int16_t>(safe.x)});
+      static_cast<int16_t>(self->renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
 
   const auto& theme = screen.theme();
   const fui::Rect body = screen.body();

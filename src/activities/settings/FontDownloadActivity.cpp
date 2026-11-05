@@ -578,28 +578,27 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
 
     downloadUrl_.assign(baseUrl_).append(str(file.name));
 
-    auto result = HttpDownloader::downloadToFile(
-        downloadUrl_, destPath,
-        [this](size_t downloaded, size_t total) {
-          fileProgress_ = downloaded;
-          fileTotal_ = total;
-          mappedInput.update(true);
-          if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
-              mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-            cancelRequested_ = true;
-          }
-          // Home cancels immediately; other configured actions are deferred to
-          // the next main-loop pass by the transfer input pump.
-          if (mappedInput.wasHomeGesture()) {
-            cancelRequested_ = true;
-            goHomeRequested_ = true;
-          }
-          requestUpdate(true);
-        },
-        // Bulk font transfers follow GitHub's release-asset redirect over
-        // verified https: the CA bundle covers both github.com and the
-        // release-assets host, so no transport downgrade is needed.
-        &cancelRequested_, "", "", /*headers=*/{});
+    auto result = HttpDownloader::downloadToFile(downloadUrl_, destPath,
+                                                 [this](size_t downloaded, size_t total) {
+                                                   fileProgress_ = downloaded;
+                                                   fileTotal_ = total;
+                                                   mappedInput.update(true);
+                                                   if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
+                                                       mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+                                                     cancelRequested_ = true;
+                                                   }
+                                                   // Home cancels immediately; other configured actions are deferred to
+                                                   // the next main-loop pass by the transfer input pump.
+                                                   if (mappedInput.wasHomeGesture()) {
+                                                     cancelRequested_ = true;
+                                                     goHomeRequested_ = true;
+                                                   }
+                                                   requestUpdate(true);
+                                                 },
+                                                 // Bulk font transfers follow GitHub's release-asset redirect over
+                                                 // verified https: the CA bundle covers both github.com and the
+                                                 // release-assets host, so no transport downgrade is needed.
+                                                 &cancelRequested_, "", "", /*headers=*/{});
 
     if (result == HttpDownloader::ABORTED) {
       fontInstaller_.deleteFamily(str(family.name));

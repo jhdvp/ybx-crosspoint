@@ -135,8 +135,7 @@ bool decode(JsonObjectConst item, Clipping& clipping, std::string& text, bool& d
 }
 // The optional extension is intentionally outside sync_version=2. An older
 // server returns 404 on its first GET; ordinary clipping sync remains valid.
-bool syncNativeNoteAnchors(freeink::SecureHttpClient& http, const std::string& url,
-                           char* buffer, JsonDocument& doc) {
+bool syncNativeNoteAnchors(freeink::SecureHttpClient& http, const std::string& url, char* buffer, JsonDocument& doc) {
   const std::string anchorUrl = url + "/anchors";
   int status = 0;
   if (!request(http, anchorUrl + "?cursor=0", buffer, doc, false, &status)) {
@@ -146,16 +145,15 @@ bool syncNativeNoteAnchors(freeink::SecureHttpClient& http, const std::string& u
     }
     return false;
   }
-  if (!doc["anchor_version"].is<unsigned>() || doc["anchor_version"].as<unsigned>() != 1)
-    return false;
+  if (!doc["anchor_version"].is<unsigned>() || doc["anchor_version"].as<unsigned>() != 1) return false;
 
   const std::string sidecar = CLIPPINGS.contextAnchorPath();
   if (sidecar.empty()) return false;
   std::string quote;
   for (size_t index = 0; index < CLIPPINGS.clippingCount(); ++index) {
     const Clipping* clipping = CLIPPINGS.clippingAt(index);
-    if (!clipping || clipping->textLength < ybxnote::kMinQuoteBytes ||
-        clipping->textLength > ybxnote::kMaxQuoteBytes) continue;
+    if (!clipping || clipping->textLength < ybxnote::kMinQuoteBytes || clipping->textLength > ybxnote::kMaxQuoteBytes)
+      continue;
     if (!CLIPPINGS.readClippingText(index, quote)) return false;
     ybxnote::Context context;
     const auto state = ybxnote::contextstore::read(sidecar, clipping->id, quote, context);
@@ -181,27 +179,26 @@ bool syncNativeNoteAnchors(freeink::SecureHttpClient& http, const std::string& u
   // no outbox mutation and no change to the normal v2 pagination cursor.
   uint64_t cursor = 0;
   do {
-    if (!request(http, anchorUrl + "?cursor=" + std::to_string(cursor), buffer, doc))
-      return false;
+    if (!request(http, anchorUrl + "?cursor=" + std::to_string(cursor), buffer, doc)) return false;
     if (!doc["anchor_version"].is<unsigned>() || doc["anchor_version"].as<unsigned>() != 1 ||
         !doc["cursor"].is<uint64_t>() || !doc["more"].is<bool>() || !doc["items"].is<JsonArray>())
       return false;
     const uint64_t next = doc["cursor"];
     const JsonArrayConst items = doc["items"].as<JsonArrayConst>();
     if (items.size() > 1 || next < cursor || (items.size() && next <= cursor) ||
-        (doc["more"].as<bool>() && !items.size())) return false;
+        (doc["more"].as<bool>() && !items.size()))
+      return false;
 
     for (JsonObjectConst item : items) {
       const JsonString id = item["id"].as<JsonString>();
       const JsonString text = item["text"].as<JsonString>();
       const JsonString prefix = item["prefix"].as<JsonString>();
       const JsonString suffix = item["suffix"].as<JsonString>();
-      if (id.isNull() || id.size() != 32 || text.isNull() ||
-          text.size() < ybxnote::kMinQuoteBytes || text.size() > ybxnote::kMaxQuoteBytes ||
-          prefix.isNull() || suffix.isNull() ||
+      if (id.isNull() || id.size() != 32 || text.isNull() || text.size() < ybxnote::kMinQuoteBytes ||
+          text.size() > ybxnote::kMaxQuoteBytes || prefix.isNull() || suffix.isNull() ||
           prefix.size() > ybxnote::kMaxContextBytes || suffix.size() > ybxnote::kMaxContextBytes ||
-          (!prefix.size() && !suffix.size()) ||
-          !item["revision"].is<uint64_t>()) return false;
+          (!prefix.size() && !suffix.size()) || !item["revision"].is<uint64_t>())
+        return false;
       const std::string remoteId(id.c_str(), id.size());
       const std::string remoteText(text.c_str(), text.size());
       const ybxnote::Context remoteContext{std::string(prefix.c_str(), prefix.size()),
@@ -215,8 +212,7 @@ bool syncNativeNoteAnchors(freeink::SecureHttpClient& http, const std::string& u
         locallyPresent = true;
         break;
       }
-      if (locallyPresent && !ybxnote::contextstore::save(
-            sidecar, remoteId, remoteText, remoteContext)) return false;
+      if (locallyPresent && !ybxnote::contextstore::save(sidecar, remoteId, remoteText, remoteContext)) return false;
     }
     cursor = next;
   } while (doc["more"].as<bool>());
@@ -314,7 +310,6 @@ bool clippingSync::run(const std::string& bookPath, const std::string& documentH
   } while (doc["more"].as<bool>());
   // Optional extension only for generated Native Notes; EPUB, arbitrary MD
   // and historical servers retain their exact existing clipping protocol.
-  if (ybxdocument::isManagedNote(bookPath))
-    return syncNativeNoteAnchors(*http, url, buffer.get(), doc);
+  if (ybxdocument::isManagedNote(bookPath)) return syncNativeNoteAnchors(*http, url, buffer.get(), doc);
   return true;
 }

@@ -1,8 +1,10 @@
-#include <gtest/gtest.h>
 #include <expat.h>
+#include <gtest/gtest.h>
+
 #include <cstdint>
 #include <string>
 #include <string_view>
+
 #include "Print.h"
 #include "TxtToHtml.h"
 #include "util/YbxNoteReanchor.h"
@@ -11,12 +13,19 @@ namespace {
 class StringPrint : public Print {
  public:
   std::string bytes;
-  size_t write(uint8_t byte) override { bytes.push_back(static_cast<char>(byte)); return 1; }
+  size_t write(uint8_t byte) override {
+    bytes.push_back(static_cast<char>(byte));
+    return 1;
+  }
   size_t write(const uint8_t* buf, size_t size) override {
-    bytes.append(reinterpret_cast<const char*>(buf), size); return size;
+    bytes.append(reinterpret_cast<const char*>(buf), size);
+    return size;
   }
 };
-struct ExpatBody { bool inBody = false; std::string visible; };
+struct ExpatBody {
+  bool inBody = false;
+  std::string visible;
+};
 void XMLCALL startElement(void* user, const XML_Char* name, const XML_Char**) {
   if (std::string_view(name) == "body") static_cast<ExpatBody*>(user)->inBody = true;
 }
@@ -40,15 +49,15 @@ std::string xmlVisible(std::string_view source) {
   XML_ParserFree(parser);
   return ok ? body.visible : std::string{};
 }
-}
+}  // namespace
 
 TEST(NativeNoteReanchor, VisibleTextAgreesWithRealXhtmlExpatCharacterData) {
   for (const std::string source : {
-         "# Topic\n\nA **unique phrase** in text & <tag>.\n",
-         "# Café ☕\n\nЛев *мост* right & left.\n",
-         "# Head\n\n- first item\n- second item\n\n> quoted text\n",
-         "# Head\n\n~~~\nhello <world> & code\n~~~\n",
-         "# Head\n\n[Visit](https://example.com) literal <script>.\n",
+           "# Topic\n\nA **unique phrase** in text & <tag>.\n",
+           "# Café ☕\n\nЛев *мост* right & left.\n",
+           "# Head\n\n- first item\n- second item\n\n> quoted text\n",
+           "# Head\n\n~~~\nhello <world> & code\n~~~\n",
+           "# Head\n\n[Visit](https://example.com) literal <script>.\n",
        }) {
     std::string actual;
     ASSERT_TRUE(ybxnote::renderVisibleText(source, actual));
@@ -159,7 +168,7 @@ TEST(NativeNoteReanchor, ChangedSurroundingContextRefusesEvenUniqueQuote) {
   ASSERT_NE(pos, std::string::npos);
   ybxnote::Context c;
   const auto start = ybxnote::codepointCount(oldVisible.substr(0, pos));
-  ASSERT_TRUE(ybxnote::makeContext(oldVisible, "unique passage", start, start+14, c));
+  ASSERT_TRUE(ybxnote::makeContext(oldVisible, "unique passage", start, start + 14, c));
   EXPECT_EQ(ybxnote::findUnique(newVisible, "unique passage").status, ybxnote::Match::Found);
   EXPECT_EQ(ybxnote::findWithContext(newVisible, "unique passage", c).status, ybxnote::Match::Missing);
 }
@@ -168,12 +177,13 @@ TEST(NativeNoteReanchor, DuplicateQuoteWithSameContextStaysAmbiguous) {
   std::string visible;
   ASSERT_TRUE(ybxnote::renderVisibleText(
       "# Title\n\nThe exact contextual repeated phrase after it. trailing twenty characters.\n\n"
-      "The exact contextual repeated phrase after it. trailing twenty characters.\n", visible));
+      "The exact contextual repeated phrase after it. trailing twenty characters.\n",
+      visible));
   const auto pos = visible.find("repeated phrase");
   ASSERT_NE(pos, std::string::npos);
   ybxnote::Context c;
   const auto start = ybxnote::codepointCount(visible.substr(0, pos));
-  ASSERT_TRUE(ybxnote::makeContext(visible, "repeated phrase", start, start+15, c));
+  ASSERT_TRUE(ybxnote::makeContext(visible, "repeated phrase", start, start + 15, c));
   EXPECT_EQ(ybxnote::findWithContext(visible, "repeated phrase", c).status, ybxnote::Match::Ambiguous);
 }
 
@@ -194,8 +204,8 @@ TEST(NativeNoteReanchor, UnicodeContextUsesWholeCodepoints) {
   ASSERT_NE(at, std::string::npos);
   const uint32_t start = ybxnote::codepointCount(visible.substr(0, at));
   ybxnote::Context c;
-  ASSERT_TRUE(ybxnote::makeContext(visible, "важная цитата", start,
-                                  start + ybxnote::codepointCount("важная цитата"), c));
+  ASSERT_TRUE(
+      ybxnote::makeContext(visible, "важная цитата", start, start + ybxnote::codepointCount("важная цитата"), c));
   EXPECT_TRUE(nativeapps::notes::isValidUtf8(c.prefix, true));
   EXPECT_TRUE(nativeapps::notes::isValidUtf8(c.suffix, true));
   EXPECT_EQ(ybxnote::findWithContext(visible, "важная цитата", c).status, ybxnote::Match::Found);

@@ -47,8 +47,7 @@ inline std::string originOf(const std::string& url) {
   std::string scheme = url.substr(0, schemeEnd);
   const size_t hostStart = schemeEnd + 3;
   const size_t hostEnd = url.find_first_of("/?#", hostStart);
-  std::string authority =
-      url.substr(hostStart, hostEnd == std::string::npos ? std::string::npos : hostEnd - hostStart);
+  std::string authority = url.substr(hostStart, hostEnd == std::string::npos ? std::string::npos : hostEnd - hostStart);
   const size_t at = authority.rfind('@');
   if (at != std::string::npos) authority.erase(0, at + 1);
   for (auto* part : {&scheme, &authority}) {

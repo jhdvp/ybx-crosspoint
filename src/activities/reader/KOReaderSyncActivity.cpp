@@ -28,8 +28,8 @@
 #include "network/WifiPowerSaveGuard.h"
 #include "util/PluginEvents.h"
 #include "util/PluginHttp.h"
-#include "util/YbxKosync.h"
 #include "util/YbxDocumentIdentity.h"
+#include "util/YbxKosync.h"
 
 namespace fui = freeink::ui;
 

@@ -20,8 +20,8 @@
 #include "ProgressWriteGate.h"
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
-#include "util/YbxNoteReanchor.h"
 #include "components/OptionPopup.h"
+#include "util/YbxNoteReanchor.h"
 
 class EpubReaderActivity final : public ReaderActivity {
   std::shared_ptr<Epub> epub;

@@ -2,8 +2,8 @@
 
 #include <array>
 
-#include "nativeapps/CatalogPolicy.h"
 #include "nativeapps/AppPaths.h"
+#include "nativeapps/CatalogPolicy.h"
 
 namespace {
 void launch() {}
@@ -22,8 +22,8 @@ TEST(NativeAppsCatalog, NoAppsIsValidAndSafe) {
   EXPECT_EQ(nativeapps::catalog::availableAt(static_cast<const Entry*>(nullptr), 0, 0), nullptr);
 }
 TEST(NativeAppsCatalog, RejectsInvalidAndUnboundedIdentifiers) {
-  for (auto id : {"", "A", "-bad", "bad-", "bad/dir", "../etc", "space id", "a_b", "123",
-                  "abcdefghijklmnopqrstuvwxyz"}) {
+  for (auto id :
+       {"", "A", "-bad", "bad-", "bad/dir", "../etc", "space id", "a_b", "123", "abcdefghijklmnopqrstuvwxyz"}) {
     EXPECT_FALSE(nativeapps::catalog::validId(id)) << id;
   }
   EXPECT_FALSE(nativeapps::catalog::validId(nullptr));
@@ -36,8 +36,10 @@ TEST(NativeAppsCatalog, RequiresFactoriesAndUniqueIds) {
   EXPECT_FALSE(nativeapps::catalog::valid(duplicates, 2));
 }
 TEST(NativeAppsCatalog, FiltersUnsupportedWithoutShiftingUnexpectedOrder) {
-  const Entry items[] = {{"memory", launch, enabled}, {"hidden", launch, disabled},
-                         {"notes", launch, nullptr}, {"unsupported", launch, disabled}};
+  const Entry items[] = {{"memory", launch, enabled},
+                         {"hidden", launch, disabled},
+                         {"notes", launch, nullptr},
+                         {"unsupported", launch, disabled}};
   ASSERT_TRUE(nativeapps::catalog::valid(items, 4));
   EXPECT_EQ(nativeapps::catalog::availableCount(items, 4), 2u);
   ASSERT_NE(nativeapps::catalog::availableAt(items, 4, 0), nullptr);
@@ -58,12 +60,10 @@ TEST(NativeAppsCatalog, RejectsOversizedOrNullCatalog) {
   EXPECT_EQ(nativeapps::catalog::availableCount(items.data(), items.size()), 0u);
 }
 TEST(NativeAppsCatalog, ExactlyMaximumAllowedWhenIdsAreUnique) {
-  constexpr Entry items[] = {{"app-0", launch, nullptr}, {"app-1", launch, nullptr},
-                             {"app-2", launch, nullptr}, {"app-3", launch, nullptr},
-                             {"app-4", launch, nullptr}, {"app-5", launch, nullptr},
-                             {"app-6", launch, nullptr}, {"app-7", launch, nullptr},
-                             {"app-8", launch, nullptr}, {"app-9", launch, nullptr},
-                             {"app-10", launch, nullptr}, {"app-11", launch, nullptr}};
+  constexpr Entry items[] = {{"app-0", launch, nullptr}, {"app-1", launch, nullptr},  {"app-2", launch, nullptr},
+                             {"app-3", launch, nullptr}, {"app-4", launch, nullptr},  {"app-5", launch, nullptr},
+                             {"app-6", launch, nullptr}, {"app-7", launch, nullptr},  {"app-8", launch, nullptr},
+                             {"app-9", launch, nullptr}, {"app-10", launch, nullptr}, {"app-11", launch, nullptr}};
   static_assert(nativeapps::catalog::valid(items, 12));
   EXPECT_EQ(nativeapps::catalog::availableCount(items, 12), 12u);
 }
@@ -73,7 +73,6 @@ TEST(NativeAppsCatalog, IdValidationIsNotAMemoryAllocationOrFsPath) {
   EXPECT_FALSE(nativeapps::catalog::sameId("memory", "memory2"));
   EXPECT_TRUE(nativeapps::catalog::sameId("memory", "memory"));
 }
-
 
 TEST(NativeAppsCatalog, ContentAndStatePathsAreSeparate) {
   char path[64];

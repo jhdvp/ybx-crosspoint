@@ -16,8 +16,8 @@ namespace fui = freeink::ui;
 
 void NoteActionsActivity::onEnter() {
   loaded_ = nativeapps::notes::load(fileName_, doc_);
-  constexpr StrId names[] = {StrId::STR_YBX_NOTE_OPEN, StrId::STR_YBX_NOTE_EDIT_TITLE,
-                             StrId::STR_YBX_NOTE_EDIT_BODY, StrId::STR_DELETE};
+  constexpr StrId names[] = {StrId::STR_YBX_NOTE_OPEN, StrId::STR_YBX_NOTE_EDIT_TITLE, StrId::STR_YBX_NOTE_EDIT_BODY,
+                             StrId::STR_DELETE};
   for (size_t i = 0; i < rows_.size(); ++i) {
     rows_[i].label = I18N.get(names[i]);
     rows_[i].actionValue = static_cast<int16_t>(i);
@@ -27,9 +27,8 @@ void NoteActionsActivity::onEnter() {
 
 void NoteActionsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  screen.setContentMarginFromScreen(fui::Insets{
-      static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-      static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
   if (!loaded_) {
     screen.target().text(
@@ -67,8 +66,7 @@ void NoteActionsActivity::activateIndex(const int index) {
 
 void NoteActionsActivity::startEdit(const bool title) {
   auto keyboard = makeUniqueNoThrow<KeyboardEntryActivity>(
-      renderer, mappedInput, title ? tr(STR_YBX_NOTE_TITLE) : tr(STR_YBX_NOTE_BODY),
-      title ? doc_.title : doc_.body,
+      renderer, mappedInput, title ? tr(STR_YBX_NOTE_TITLE) : tr(STR_YBX_NOTE_BODY), title ? doc_.title : doc_.body,
       title ? nativeapps::notes::kMaxTitleBytes : nativeapps::notes::kMaxBodyBytes, InputType::Text);
   if (!keyboard) {
     GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
@@ -93,8 +91,8 @@ void NoteActionsActivity::startEdit(const bool title) {
 }
 
 void NoteActionsActivity::confirmDelete() {
-  auto confirm = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_DELETE),
-                                                         doc_.title, tr(STR_CANCEL), tr(STR_DELETE));
+  auto confirm = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_DELETE), doc_.title,
+                                                         tr(STR_CANCEL), tr(STR_DELETE));
   if (!confirm) {
     GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
     return;

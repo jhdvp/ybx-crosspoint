@@ -1,5 +1,4 @@
 #include "ReadingStats.h"
-#include "ReadingStatsSnapshot.h"
 
 #include <HalStorage.h>
 #include <Logging.h>
@@ -8,6 +7,8 @@
 #include <memory>
 #include <new>
 #include <string>
+
+#include "ReadingStatsSnapshot.h"
 
 namespace {
 
@@ -78,10 +79,8 @@ LegacyStatus loadLegacy(readingstats::snapshot::Data& out) {
   const bool booksPrimary = Storage.exists(LEGACY_BOOKS);
   const bool booksTemp = Storage.exists(LEGACY_PENDING_BOOKS);
   // Keep the original book-file precedence; do not combine partial files.
-  if (booksPrimary && readLegacyBooks(LEGACY_BOOKS, out))
-    return LegacyStatus::Valid;
-  if (booksTemp && readLegacyBooks(LEGACY_PENDING_BOOKS, out))
-    return LegacyStatus::Valid;
+  if (booksPrimary && readLegacyBooks(LEGACY_BOOKS, out)) return LegacyStatus::Valid;
+  if (booksTemp && readLegacyBooks(LEGACY_PENDING_BOOKS, out)) return LegacyStatus::Valid;
   if (booksPrimary || booksTemp) return LegacyStatus::Corrupt;
   return statePrimary || stateTemp ? LegacyStatus::Valid : LegacyStatus::Missing;
 }
@@ -92,7 +91,7 @@ readingstats::snapshot::LoadStatus loadCombined(SdSnapshotIO& io, readingstats::
   const LegacyStatus legacy = loadLegacy(out);
   return legacy == LegacyStatus::Corrupt ? readingstats::snapshot::LoadStatus::Corrupt
          : legacy == LegacyStatus::Valid ? readingstats::snapshot::LoadStatus::Loaded
-                                          : readingstats::snapshot::LoadStatus::Missing;
+                                         : readingstats::snapshot::LoadStatus::Missing;
 }
 
 std::unique_ptr<readingstats::snapshot::Data> newSnapshot() {

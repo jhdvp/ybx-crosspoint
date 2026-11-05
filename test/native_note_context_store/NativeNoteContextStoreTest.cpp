@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
-#include "util/YbxNoteContextStore.h"
+
 #include "HalStorage.h"
+#include "util/YbxNoteContextStore.h"
 
 namespace ctx = ybxnote::contextstore;
 
@@ -150,7 +151,6 @@ TEST_F(NativeNoteContextStore, CorruptAnchorNeverDowngradesToTextOnlyMatch) {
   EXPECT_EQ(ctx::resolve(visible, quote, ctx::Status::Missing, unrelated).status, ybxnote::Match::Found);
 }
 
-
 TEST_F(NativeNoteContextStore, RemoteQuoteUpdateWithSameIdCannotUseOldContext) {
   ASSERT_TRUE(ctx::save(path, id1, quote1, a));
   ybxnote::Context c;
@@ -159,7 +159,6 @@ TEST_F(NativeNoteContextStore, RemoteQuoteUpdateWithSameIdCannotUseOldContext) {
   EXPECT_EQ(ctx::read(path, id1, quote1, c), ctx::Status::Found);
   EXPECT_EQ(c.prefix, a.prefix);
 }
-
 
 TEST_F(NativeNoteContextStore, LegacyNonLocalIdsKeepPreviousUniqueQuoteFallback) {
   ybxnote::Context c;
