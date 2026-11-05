@@ -1,0 +1,71 @@
+# YBX Reader · No-SD recovery boot path (P1-C)
+
+Base: fix/ybx-stats-atomic-20261103 (draft PR #9).
+Isolated work: fix/ybx-nosd-recovery-20261103.
+
+## Defect
+
+The previous setup() displayed a generic "SD card error" when Storage.begin()
+failed, then returned. The normal main loop kept accessing settings-dependent
+shortcuts, battery operations, input mappings, global sleep logic, and activity
+state, despite SETTINGS, APP_STATE and all SD-backed services never having
+finished initialization. This is an unsafe partial-boot state.
+
+## Change
+
+- Introduce a separate NoSdRecoveryActivity rendered entirely with built-in
+  fonts: title, card instruction, physical-button and touchscreen retry hint,
+  and non-destructive status text.
+- The SD-failure branch initializes only display, built-in fonts, input and
+  the recovery activity. The SD-font scanner is explicitly skipped.
+- The first statement of the ordinary main loop guards sdRecoveryBootMode:
+  only input update, recovery activity loop and low-power idle delay execute.
+  No regular settings, Wi-Fi, plugin, queue, file browser, or screenshot code
+  can run during the failed-mount boot.
+- Retry is **user-triggered**, never periodically polled. Press OK/Right or
+  tap the touchscreen. The RetryGate enforces a 2000 ms cooldown and tolerates
+  millis() wraparound.
+- A successful Storage.begin() does **not** resume a partially initialized
+  setup() or write any files. It invokes ESP.restart(), so the next boot
+  follows the entire normal initialization sequence.
+- No filesystem formatting, remount "repair", removal, renaming, or rewriting
+  is attempted on failure. Users can insert a readable card and retry.
+
+## Verification and limits
+
+- 5 host unit tests for the explicit-input gate, cooldown, wraparound, and
+  absence of background probes.
+- Hardware/firmware builds for ESP32-C3 and ESP32-S3 and full host regression
+  are required before merge. Do not infer a pass from this document alone.
+- Actual card removal/insertion on X3/X4/X4 Pro remains a **hardware gate**.
+  ESP.restart() on success is intentional. Recovery is limited to initial
+  failed SD mount; unplugging an already-mounted card at runtime is a separate
+  problem.
+- Recovery UI uses English boot-safe strings because SD-stored localization
+  preferences were not yet loaded. This path intentionally does not create
+  extra files or activate networking.
+- No auto-sleep from the normal loop during failed setup; the CPU is moved
+  to power-saving mode between user actions. Physical current draw must be
+  measured. The device may need manual power-off if no card is available.
+- No OTA or production changes were performed.
+
+## Verified host and C3 results (2026-11-03)
+- Full CMake host test build: PASS.
+- CTest: 1117/1117 PASS in 25.32 s, including 5 new NoSdRecovery policy tests.
+- ESP32-C3 X3/X4 firmware PlatformIO default target: PASS.
+  Flash 5,679,369 / 6,553,600 bytes (86.7%).
+  Static RAM 66,904 / 327,680 bytes (20.4%).
+  The application image is preserved in the local verification artifacts;
+  SHA-256 aab3793f7f4d2a6a697063bdd82628847e6b5412e1e9a3a981997d8e073f29ef.
+- X4 Pro target acceptance is reported separately only after a verified pass.
+- These are host and build checks, not runtime SD card hot-insertion or
+  physical power-button shutdown validation.
+
+## Verified X4 Pro firmware build (2026-11-03)
+- ESP32-S3 / X4 Pro PlatformIO x4pro target: PASS.
+  Flash 5,523,014 / 6,553,600 bytes (84.3%).
+  Static RAM 111,956 / 327,680 bytes (34.2%).
+  Retained application image: 5,528,272 bytes.
+  SHA-256 e912ebf83f0b88997289962b8dab61c4f2e20fdc7a932fb0bc8dbcb3ad066889.
+- Both target builds and the complete 1117/1117 host suite passed.
+  No physical reader was flashed and no OTA or production deployment occurred.
