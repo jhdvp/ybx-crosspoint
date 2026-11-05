@@ -60,7 +60,8 @@ bool copyBytes(HalFile& in, HalFile& out, uint16_t length) {
   }
   return true;
 }
-constexpr const char* STORE_SUFFIXES[] = {"", ".bak", ".tmp", ".deleted", ".migrate.bak"};
+constexpr const char* STORE_SUFFIXES[] = {"", ".bak", ".tmp", ".deleted", ".migrate.bak",
+                                          ".anchors", ".anchors.tmp", ".anchors.bak"};
 enum class MovePhase { Check, Move, Rollback };
 
 bool moveStoreFiles(const std::string& from, const std::string& to, const MovePhase phase) {
@@ -216,6 +217,10 @@ ClippingStore::AddResult ClippingStore::addClipping(const uint16_t spineIndex, c
   copyBounded(clipping.chapterTitle, sizeof(clipping.chapterTitle), chapterTitle);
   clipping.textLength = static_cast<uint16_t>(std::min(text.size(), CLIPPING_TEXT_MAX));
 
+  // Mint the durable ID *at capture*, before the first SD commit. Never
+  // treat a clipping as anonymous until the user happens to sync it.
+  // The same ID survives rename, export, offline reading and upload retries.
+  if (!assignUniqueId(clipping)) return AddResult::SaveFailed;
   clippingRef(clippingSize++) = clipping;
   dirty = true;
   if (!writeToFile(&text, clippingSize - 1)) {
@@ -323,18 +328,42 @@ bool ClippingStore::saveToFile() {
   return false;
 }
 
+bool ClippingStore::assignUniqueId(Clipping& clipping) {
+  static constexpr char HEX_DIGITS[] = "0123456789abcdef";
+  // IDs are 128-bit random values, not chapter/page-derived hashes: two
+  // legitimate selections of identical text remain distinct. Recheck the
+  // current in-memory book for an improbable collision before committing.
+  for (unsigned attempt = 0; attempt < 8; ++attempt) {
+    uint8_t bytes[16];
+    esp_fill_random(bytes, sizeof(bytes));
+    char candidate[33] = {};
+    for (size_t i = 0; i < sizeof(bytes); ++i) {
+      candidate[i * 2] = HEX_DIGITS[bytes[i] >> 4];
+      candidate[i * 2 + 1] = HEX_DIGITS[bytes[i] & 15];
+    }
+    bool collision = false;
+    for (size_t i = 0; i < clippingSize; ++i) {
+      if (std::strcmp(candidate, clippingRef(i).id) == 0 && &clippingRef(i) != &clipping) {
+        collision = true;
+        break;
+      }
+    }
+    if (!collision) {
+      std::memcpy(clipping.id, candidate, sizeof(candidate));
+      return true;
+    }
+  }
+  LOG_ERR("CLIP", "Could not assign a unique clipping ID");
+  return false;
+}
+
 bool ClippingStore::prepareSync() {
+  // Existing V1-V3 and early V4 clippings may lack IDs. Assign IDs only
+  // for those legacy records; never regenerate a persisted ID on retry.
   for (size_t index = 0; index < clippingSize; ++index) {
     Clipping& clipping = clippingRef(index);
     if (clipping.id[0]) continue;
-    uint8_t bytes[16];
-    esp_fill_random(bytes, sizeof(bytes));
-    static constexpr char HEX_DIGITS[] = "0123456789abcdef";
-    for (size_t i = 0; i < sizeof(bytes); ++i) {
-      clipping.id[i * 2] = HEX_DIGITS[bytes[i] >> 4];
-      clipping.id[i * 2 + 1] = HEX_DIGITS[bytes[i] & 15];
-    }
-    clipping.id[32] = '\0';
+    if (!assignUniqueId(clipping)) return false;
     dirty = true;
   }
   return saveToFile();
