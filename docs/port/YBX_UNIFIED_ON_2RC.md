@@ -113,15 +113,15 @@ Took #23 wholesale after hunk-by-hunk review of the 2rc↔#23 delta: staged uplo
 | src/components/YbxHomeUi.{h,cpp} | calls ybx::loadReadingSummary (needs YbxReadingData.cpp) |
 | src/main.cpp | both-sides rework |
 
-### lib (5 + unclassified EpdFont cluster)
+### lib (5; target font architecture retained)
 
 | File | Reason |
 |---|---|
-| lib/Txt/TxtToHtml.cpp | both-sides rework |
-| lib/Epub/Epub/ParsedText.cpp, Section.cpp | both-sides rework |
-| lib/Epub/Epub/blocks/TextBlock.{h,cpp} | both-sides rework |
+| lib/Txt/TxtToHtml.cpp | Markdown adapter and cache version; retain target TXT conversion |
+| lib/Epub/Epub/ParsedText.cpp, Section.cpp | RTL focus-reading offsets and cache invalidation; retain target pagination |
+| lib/Epub/Epub/blocks/TextBlock.{h,cpp} | RTL focus-reading placement; retain target ruby and font behavior |
 
-**lib/EpdFont cluster (~17 files, +3740/−3024: builtin font swap notosans→ubuntu, SdCardFont/SdCardFontManager/SdCardFontRegistry rework, `src/SdCardFontSystem.cpp`, `test/sd_card_font`) — never classified in stage 1.** Discovered during stage 2 via the CrossPointWebServer dependency analysis. Must be classified and ported before #23's `handleFontList` form can be restored.
+**Stage-3 correction:** the apparent EpdFont cluster is not a #23 feature delta. `feat/ybx-native-integration` and `afcee36b` both contain EpdFont tree `34111366dcfb80b24132f81db80a661d4b6cb920`; target/current contain `9b310c8de2b44bd87381f02c0c5d25724a838933`. The feature diff also leaves `SdCardFontSystem`, `lib/GfxRenderer`, and `test/sd_card_font` unchanged. Keep the target Noto Sans font, registry, caches, and tests. Stage 2's `handleFontList` adaptation using `file.path` is the intended target integration, not a workaround awaiting a font port.
 
 ### repo/docs/tests (12 + platformio.ini residual)
 
