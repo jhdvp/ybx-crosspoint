@@ -123,11 +123,13 @@ void startSync() {
   configureSntp();
 }
 
-bool syncNow(const uint32_t timeoutMs) {
+bool syncNow(const uint32_t timeoutMs, const std::function<bool()>& shouldAbort) {
+  if (shouldAbort && shouldAbort()) return false;
   // configureSntp() (configTzTime) restarts SNTP if already running.
   configureSntp();
   const unsigned long deadline = millis() + timeoutMs;
   while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && static_cast<long>(deadline - millis()) > 0) {
+    if (shouldAbort && shouldAbort()) return false;
     delay(100);
   }
   const bool synced = sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED;

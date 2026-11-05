@@ -7,6 +7,10 @@
 
 class ReleaseJsonParser {
  public:
+  // Capacity of the release-asset name to match. Callers build the name in a
+  // buffer of this size so setFirmwareAssetName() can never truncate it silently.
+  static constexpr size_t kFirmwareAssetNameSize = 48;
+
   ReleaseJsonParser();
 
   ReleaseJsonParser(const ReleaseJsonParser&) = delete;
@@ -69,5 +73,5 @@ class ReleaseJsonParser {
   char currentAssetUrl[512];
   size_t currentAssetSize;
 
-  char firmwareAssetName[48];
+  char firmwareAssetName[kFirmwareAssetNameSize];
 };
