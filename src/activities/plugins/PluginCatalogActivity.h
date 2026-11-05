@@ -20,11 +20,14 @@ class SecureHttpClient;
 // Picker entry; an empty manifestPath marks an inert browser-only plugin.
 struct PluginRef {
   std::string name;          // folder name
+  std::string dir;           // exact discovered installation directory
   std::string title;         // from device.json or manifest.json (falls back to name)
   std::string description;   // one-line summary, if provided
   std::string manifestPath;  // device.json path, "" for a web-only plugin
   std::string readmePath;    // README.md path when present
   PluginLocations::DeviceKind deviceKind = PluginLocations::DeviceKind::None;
+  // device.json declares a native "reading-stats.v1" dashboard.
+  bool hasDashboard = false;
 };
 
 // Rescan plugin roots on demand; metadata is owned by the picker.
@@ -35,9 +38,10 @@ std::vector<PluginRef> discoverPlugins();
 class PluginCatalogActivity final : public CatalogActivity {
  public:
   // showOpds adds the OPDS row; rootMode returns Home instead of popping to Settings.
+  // updateTarget opens Plugin Hub straight into that plugin's update screen.
   // Out-of-line construction/destruction needs the complete SecureHttpClient type.
   explicit PluginCatalogActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool showOpds = false,
-                                 bool rootMode = false);
+                                 bool rootMode = false, std::string updateTarget = {});
   ~PluginCatalogActivity() override;
 
   void onEnter() override;
@@ -75,7 +79,7 @@ class PluginCatalogActivity final : public CatalogActivity {
     // Named JSON views override the browse URL/body; Back returns to their picker.
     struct BrowseList {
       std::string title, url, body;
-      std::string id, parent;  // optional dynamic folder nodes; blank parent = top level
+      std::string id, parent;  // no URL + ID = directory; parent selects its children
       std::string noticeTitle, noticeMessage, noticeConfirm, noticeCancel;
       bool hasNotice() const { return !noticeMessage.empty(); }
     };
@@ -99,6 +103,9 @@ class PluginCatalogActivity final : public CatalogActivity {
     // Empty dlUrlPath means a direct URL; otherwise resolve it through an API hop.
     pluginhttp::RequestSpec downloadReq;
     std::string dlUrlPath;
+    // require_url: the mapped url field is the row's file source, so a row that
+    // leaves it empty has nothing to fetch (the YBX update notice).
+    bool dlRequireUrl = false;
     // Optional HTTP Basic credentials for the file GET (webdav); templates.
     std::string dlUser, dlPass;
     std::string destDir, filenameTpl;
@@ -123,6 +130,8 @@ class PluginCatalogActivity final : public CatalogActivity {
     std::string version;  // catalog version (tracksInstalls only)
     std::string status;   // computed install/update badge shown in the row value
     bool isDir = false;   // a container/folder (navigable), not a downloadable file
+    // The planned download destination already exists on SD ("на ридере").
+    bool onReader = false;
     // Bundle download only: base URL + relative file paths for this item.
     std::string base;
     std::vector<std::string> files;
@@ -141,8 +150,20 @@ class PluginCatalogActivity final : public CatalogActivity {
   bool showPluginHubInstallRow = false;
   bool ignoreHubInstallerBackRelease = false;
   OptionPopup pluginHubPopup;
+  // Long-press menu for rows whose book is already on the SD card
+  // (open/re-download/remove), mirroring pluginHubPopup's plumbing.
+  OptionPopup shelfPopup;
+  // Destination of the last successful single-file download; the DONE screen
+  // opens it as a book instead of only returning to the list. The title is
+  // kept so book.downloaded can fire from downloadFinished, after the file
+  // passed verification, instead of from downloadBook before it.
+  std::string lastDownloadPath;
+  std::string lastDownloadTitle;
   bool showOpds = false;
   bool rootMode = false;
+  // Plugin name to open in the hub catalog (Home update prompt), cleared once
+  // found or abandoned.
+  std::string updateTarget;
   std::string pickerReturnName;  // plugin identity to reselect after leaving a catalog
   std::vector<Item> items;
   // Row buffer over items/browseLists plus the synthetic pager rows; rebuilt
@@ -154,9 +175,10 @@ class PluginCatalogActivity final : public CatalogActivity {
   int page = 1;
   bool hasMore = false;
   int currentList = -1;                 // index into manifest.browseLists; -1 = none/default
-  std::string currentGroup;             // dynamic list-picker folder, empty at the root
-  std::vector<std::string> groupTrail;  // bounded cycle-free path for nested groups
-  std::string folderLabel;              // current JSON page folder title
+  std::string currentGroup;             // dynamic directory, empty at top
+  std::vector<std::string> groupTrail;  // cycle-free stack (max 8)
+  std::string folderLabel;
+  std::vector<std::string> folderLabelHistory;
   std::string searchQuery;
   bool searchActive = false;
   // Reuse browse TLS; release in the picker and before a single-file download.
@@ -176,14 +198,20 @@ class PluginCatalogActivity final : public CatalogActivity {
   void enterPluginPicker();
   void enterCatalog();
   void exitCatalog();
+  // Picker entries with a native dashboard open either the catalog or the
+  // statistics screen; both helpers re-read the plugin by index.
+  void openPluginCatalog(int pluginIndex);
+  void openPluginStats(int pluginIndex);
   // Clear items, paging, list and search state, and the row buffer.
   void resetBrowse();
   // JSON catalog with named lists and none picked yet.
   bool wantsListPicker() const;
-  std::vector<int> visibleLists() const;
+  int visibleListCount() const;
+  int visibleListIndex(int ordinal) const;
   void openList(int index);
   bool loadManifest();
-  bool loadBrowseListIndex();
+  enum class ListIndexResult { LOADED, UNAUTHORIZED, FAILED };
+  ListIndexResult loadBrowseListIndex();
   bool loadToken();
   void loadConfig();
   bool saveToken(const std::string& value);
@@ -203,6 +231,9 @@ class PluginCatalogActivity final : public CatalogActivity {
   int listCount() const override { return rowCount(); }
   // Row dispatch: pager rows page, picker rows pick, item rows open/download.
   void activateIndex(int index) override;
+  void onRowLongPress(int index) override;
+  bool handleButtons() override;
+  void confirmUninstallPlugin(int pickerIndex);
   void render(RenderLock&& lock) override;
   void buildScreen(UiScreen& screen) override;
   bool handleCustomInput() override;
@@ -222,14 +253,45 @@ class PluginCatalogActivity final : public CatalogActivity {
   void fetchPage(int newPage);
   // Read installed versions once per page, outside the render path.
   void computeInstallStatus();
+  // Plugin Hub only: rebuild the update cache from the catalog response already
+  // streamed to BROWSE_TMP_PATH, at most once a day.
+  void refreshUpdateCache();
+  // Home "Update" prompt entry point: open the hub catalog for the requested
+  // plugin and walk pages until its row is found.
+  void openUpdateTarget();
+  void continueUpdateTarget();
   bool parseXmlList();
   bool parseBrowseResponse();
   void activateItem(int itemIndex);  // XML list: navigate into a folder, else show details/download
   bool loadItemDetails(int itemIndex, ItemDetails& details);
   void showItemDetails(int itemIndex);
+  // Whether the row still has a file to fetch. require_url plus an empty mapped
+  // url field means the catalog says "show this, do not fetch it" (the YBX
+  // update notice). Every other catalog keeps its download action.
+  bool itemDownloadable(const Item& item) const;
   void downloadItem(int itemIndex);
   HttpDownloader::DownloadError downloadBundle(const Item& item);
   HttpDownloader::DownloadError downloadBook(const Item& item);
+  // On-reader shelf state: single-file book catalogs whose planned destination
+  // exists on SD with the firmware download marker.
+  bool bookShelfEligible() const;
+  std::string plannedFilename(const Item& item) const;
+  // Shelf path under pluginshelf::plannedPath rules: the manifest's own
+  // dest_dir, one safe book-extension component. "" = row has no shelf state.
+  std::string plannedBookPath(const Item& item) const;
+  // Resolved "{dest}.meta.json"-style sidecar for removal; "" when absent or
+  // unsafe. Shares the downloadBook substitution.
+  std::string sidecarPathFor(const Item& item, const std::string& dest) const;
+  // On-shelf = planned path exists and carries the firmware download marker.
+  bool shelfBookPresent(const std::string& path) const;
+  void computeOnReaderStatus();
+  // Reboot into the reader on this file (the catalog's onExit restarts to Home,
+  // so a soft navigation here would land on the wrong screen).
+  void openDownloadedBook(const std::string& path);
+  bool showShelfOptions(int itemIndex);  // false = nothing eligible, popup not shown
+  void promptRemoveShelfBook(int itemIndex);
+  // ZIP-magic gate on a finished .epub download (removed and failed when wrong).
+  bool verifyDownloadedEpub();
   void beginAuth();
   void pollAuth();
   bool refreshCredentialToken();  // password grant: mint a token from config creds
