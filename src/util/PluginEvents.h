@@ -24,6 +24,9 @@ class GfxRenderer;
 //
 // A handler is either a "request" (response discarded; an acknowledgement) or
 // a "download" (response streamed to `dest` on SD, e.g. a sleep image).
+// "require_meta": "<key>" queues an event for that handler only when the
+// event's book ("book", or "path" for book.downloaded) has a sidecar with a
+// non-empty value for the key.
 //
 // Execution is deferred: plugin handlers need the network, and events mostly
 // fire with WiFi down (leaving the reader, entering sleep). emit() appends one
@@ -36,7 +39,9 @@ class GfxRenderer;
 // a pre-sleep progress push), so subscribing implies "connect": true: the
 // sleep path brings WiFi up to deliver it at sleep entry rather than waiting
 // for the next online session. Delivery stays at-least-once — a failed
-// sleep-time drain leaves the events queued for the next drain.
+// sleep-time drain leaves the events queued for the next drain. A sleep.enter
+// GET download can opt into "delivery": "latest": reserve one attempt for the
+// newest snapshot and discard older snapshots only after it succeeds.
 //
 // Whitelist only: unknown names in a manifest are ignored with a log line, so
 // manifests written against newer firmware degrade gracefully. Event names are
@@ -44,9 +49,13 @@ class GfxRenderer;
 namespace pluginevents {
 
 enum class Event : uint8_t {
-  ReaderOpen,      // "reader.open"      vars: book
-  ReaderExit,      // "reader.exit"      vars: book, percent
-  ReaderSession,   // "reader.session"   vars: book, document, active-session summary
+  ReaderOpen,  // "reader.open"      vars: book
+  ReaderExit,  // "reader.exit"      vars: book, percent
+  // "reader.session" vars: book, document, start_time, end_time,
+  // duration_seconds, start_progress_bp, end_progress_bp, progress_scale.
+  // Emitted once per completed reading interval (exit, sleep, restart, or
+  // recovered at boot after a crash) carrying the id allocated for it once.
+  ReaderSession,
   BookDownloaded,  // "book.downloaded"  vars: path, title, plugin
   SleepEnter,      // "sleep.enter"      vars: book, percent when sleeping from a reader, else none
   COUNT
@@ -76,18 +85,37 @@ uint8_t subscriptionMask(const char* plugin);
 // (e.g. a fresh sleep image) instead of in the next online session.
 bool wantsConnectAny();
 
+// Formats a new unique event id ("%08lx-%lu": per-boot nonce and a shared
+// counter). Readers that need the id to survive a reboot allocate it once and
+// pass it back to emit(); the counter keeps it from colliding with ids that
+// emit() allocates itself.
+void allocateEventId(char* out, size_t size);
+
 // Appends the event to each subscribing plugin's outbox. No-op without
-// subscribers. An outbox over the size cap is dropped wholesale first (the
-// newest events carry the current state; stale ones are worthless by then).
-void emit(Event e, const Var* vars, size_t varCount);
+// subscribers. An outbox at the size cap first drops its oldest complete
+// events, so a long offline period keeps the newest history instead of losing
+// everything.
+//
+// When explicitId is non-empty it becomes the event id instead of a fresh one.
+// Returns false when the event could not be appended to every subscribing
+// outbox and another attempt may succeed (SD fault, tail repair). An event
+// that can never fit the line limit is dropped and returns true: retrying
+// cannot shrink it.
+bool emit(Event e, const Var* vars, size_t varCount, const char* explicitId = nullptr);
 
 // Replays queued events through their manifest handlers. Call only while WiFi
 // is connected; requests run synchronously on the calling task. At most
-// `maxEvents` handlers run per call (each is a bounded HTTPS request) so a
-// backlog cannot stall an interactive session. Successfully delivered events
+// `maxEvents` handler attempts run per call, including failures. A handler
+// can refresh authentication and retry; this is not a wall-clock deadline.
+// Successfully delivered events
 // leave the outbox; failures stay for the next drain. When `renderer` is
 // non-null, a handler's "toast" template is shown via the standard popup after
 // its request succeeds.
-void drain(GfxRenderer* renderer, size_t maxEvents = 4);
+// maxMillis=0 preserves the normal online drain. A nonzero budget stops new
+// requests and cooperatively aborts SDK waits; a request's DNS, TCP and TLS
+// handshake share its own timeout (SecureNet), so a stalled lookup no longer
+// runs on a separate clock, but a connect already in flight can still reach
+// that timeout before the abort is seen.
+void drain(GfxRenderer* renderer, size_t maxEvents = 4, uint32_t maxMillis = 0);
 
 }  // namespace pluginevents
