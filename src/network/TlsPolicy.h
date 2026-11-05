@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <string>
@@ -51,7 +52,8 @@ inline std::string originOf(const std::string& url) {
   const size_t at = authority.rfind('@');
   if (at != std::string::npos) authority.erase(0, at + 1);
   for (auto* part : {&scheme, &authority}) {
-    for (char& c : *part) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::transform(part->begin(), part->end(), part->begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   }
   const size_t bracket = authority.rfind(']');  // IPv6 literal: its colons are not a port
   if (authority.find(':', bracket == std::string::npos ? 0 : bracket) == std::string::npos) {

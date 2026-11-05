@@ -63,13 +63,11 @@ inline bool parseNumber(const std::string_view text, const uint64_t limit, uint6
 
 inline bool validId(const std::string_view id) {
   if (id.size() <= 9 || id.size() > MAX_ID_LENGTH || id[8] != '-') return false;
-  for (size_t i = 0; i < 8; i++) {
-    if (!std::isxdigit(static_cast<unsigned char>(id[i]))) return false;
-  }
-  for (size_t i = 9; i < id.size(); i++) {
-    if (id[i] < '0' || id[i] > '9') return false;
-  }
-  return true;
+  const bool prefixValid =
+      std::all_of(id.begin(), id.begin() + 8, [](const unsigned char c) { return std::isxdigit(c); });
+  const bool suffixValid =
+      std::all_of(id.begin() + 9, id.end(), [](const unsigned char c) { return c >= '0' && c <= '9'; });
+  return prefixValid && suffixValid;
 }
 
 }  // namespace detail

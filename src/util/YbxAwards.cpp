@@ -86,11 +86,11 @@ void AwardsParser::key(void* p, const char* value, size_t size) {
                                                                  {"earned_at", Field::Earned},
                                                                  {"first_observed_at", Field::Observed}};
   s.field = Field::Other;
-  for (const auto& item : names)
-    if (item.first == text) {
-      s.field = item.second;
-      break;
-    }
+  const auto it =
+      std::find_if(std::begin(names), std::end(names), [&](const auto& item) { return item.first == text; });
+  if (it != std::end(names)) {
+    s.field = it->second;
+  }
 }
 void AwardsParser::objectStart(void* p) {
   auto& s = *static_cast<AwardsParser*>(p);

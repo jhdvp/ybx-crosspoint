@@ -1,6 +1,7 @@
 #include "OtaReleasePolicy.h"
 
 #include <cstring>
+#include <numeric>
 
 namespace ota_policy {
 
@@ -112,9 +113,9 @@ bool appAssetName(const char* tag, const char* boardName, size_t boardNameLen, c
   if (!normalizeVersionTag(tag, version, sizeof(version))) return false;
   if (!assetSuffixForBoard(boardName, boardNameLen, suffix, sizeof(suffix))) return false;
 
-  size_t needed = 0;
   const char* parts[] = {"ybx-", version, "-", suffix, ".bin"};
-  for (const char* part : parts) needed += strlen(part);
+  const size_t needed = std::accumulate(std::begin(parts), std::end(parts), size_t{0},
+                                        [](size_t acc, const char* part) { return acc + strlen(part); });
   if (needed + 1 > outSize) return false;
 
   size_t written = 0;

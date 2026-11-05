@@ -19,13 +19,13 @@ constexpr const char* LEGACY_BOOKS = "/.crosspoint/reading-books.bin";
 constexpr const char* LEGACY_PENDING_BOOKS = "/.crosspoint/reading-books.tmp";
 
 struct SdSnapshotIO {
-  bool exists(const char* path) { return Storage.exists(path); }
+  static bool exists(const char* path) { return Storage.exists(path); }
 
-  bool read(const char* path, std::string& bytes) {
+  static bool read(const char* path, std::string& bytes) {
     return Storage.readFileToString("RSTA", path, readingstats::snapshot::MAX_BYTES, bytes);
   }
 
-  bool writeSync(const char* path, const std::string& bytes) {
+  static bool writeSync(const char* path, const std::string& bytes) {
     HalFile file;
     if (!Storage.openFileForWrite("RSTA", path, file)) return false;
     const bool written = file.write(bytes.data(), bytes.size()) == bytes.size();
@@ -34,8 +34,8 @@ struct SdSnapshotIO {
     return written && closed;
   }
 
-  bool remove(const char* path) { return Storage.remove(path); }
-  bool rename(const char* from, const char* to) { return Storage.rename(from, to); }
+  static bool remove(const char* path) { return Storage.remove(path); }
+  static bool rename(const char* from, const char* to) { return Storage.rename(from, to); }
 };
 
 enum class LegacyStatus { Valid, Missing, Corrupt };

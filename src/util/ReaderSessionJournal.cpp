@@ -15,10 +15,12 @@ namespace {
 constexpr const char* JOURNAL_PATH = "/.crosspoint/reader-session.journal";
 
 struct JournalFiles {
-  bool exists(const std::string& path) { return Storage.exists(path.c_str()); }
-  bool remove(const std::string& path) { return Storage.remove(path.c_str()); }
-  bool rename(const std::string& from, const std::string& to) { return Storage.rename(from.c_str(), to.c_str()); }
-  bool writeComplete(const std::string& path, const std::string_view content) {
+  static bool exists(const std::string& path) { return Storage.exists(path.c_str()); }
+  static bool remove(const std::string& path) { return Storage.remove(path.c_str()); }
+  static bool rename(const std::string& from, const std::string& to) {
+    return Storage.rename(from.c_str(), to.c_str());
+  }
+  static bool writeComplete(const std::string& path, const std::string_view content) {
     HalFile file;
     if (!Storage.openFileForWrite("RSES", path, file)) return false;
     const bool complete =
@@ -26,7 +28,7 @@ struct JournalFiles {
     const bool closed = file.close();
     return complete && closed;
   }
-  bool read(const std::string& path, std::string& out, const size_t cap) {
+  static bool read(const std::string& path, std::string& out, const size_t cap) {
     return Storage.readFileToString("RSES", path, cap, out);
   }
 };

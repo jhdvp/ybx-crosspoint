@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <numeric>
 
 #include "util/YbxHomeLayout.h"
 
@@ -43,8 +44,8 @@ void drawYbxReadingPanel(UiAppHost::UiScreen& screen, fui::Rect bounds, const yb
   }
   const int chartTop = bounds.y + 2 * line + 6;
   const int chartHeight = std::max(24, bounds.height - 4 * line - 12);
-  int32_t maximum = 1;
-  for (int32_t day : data.days) maximum = std::max(maximum, day);
+  const int32_t maximum = std::accumulate(std::begin(data.days), std::end(data.days), int32_t{1},
+                                          [](int32_t acc, int32_t day) { return std::max(acc, day); });
   const int cell = bounds.width / 7;
   static constexpr StrId DAYS[] = {StrId::STR_YBX_MON, StrId::STR_YBX_TUE, StrId::STR_YBX_WED, StrId::STR_YBX_THU,
                                    StrId::STR_YBX_FRI, StrId::STR_YBX_SAT, StrId::STR_YBX_SUN};

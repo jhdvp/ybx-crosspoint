@@ -2,6 +2,7 @@
 
 #include <HalStorage.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -41,9 +42,8 @@ uint64_t storedQuoteFingerprint(const Raw& raw) {
 }
 bool validId(std::string_view id) {
   if (id.size() != 32) return false;
-  for (const unsigned char c : id)
-    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
-  return true;
+  return std::all_of(id.begin(), id.end(),
+                     [](const unsigned char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
 }
 uint32_t checksum(const Raw& record) {
   uint32_t h = 2166136261u;
