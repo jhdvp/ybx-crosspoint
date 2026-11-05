@@ -26,6 +26,10 @@
 #include "components/UiAppHelpers.h"  // list icons for the compare rows
 #include "fontIds.h"
 #include "network/WifiPowerSaveGuard.h"
+#include "util/PluginEvents.h"
+#include "util/PluginHttp.h"
+#include "util/YbxKosync.h"
+#include "util/YbxDocumentIdentity.h"
 
 namespace fui = freeink::ui;
 
@@ -48,11 +52,29 @@ const char* matchMethodName(const DocumentMatchMethod method) {
   return method == DocumentMatchMethod::FILENAME ? "filename" : "binary";
 }
 
+// What a failed request means for the YBX status row: a refused key is fixed by
+// pairing again, a declined account by the service, anything else by the network
+// or the server. The code belongs to the request that failed: smart sync fires an
+// alternate getProgress that overwrites the client's static, so callers snapshot it.
+ybxkosync::Outcome outcomeForFailure(const KOReaderSyncClient::Error result, const int httpCode) {
+  switch (result) {
+    case KOReaderSyncClient::NETWORK_ERROR:
+      return ybxkosync::Outcome::Offline;
+    case KOReaderSyncClient::AUTH_FAILED:
+      return ybxkosync::Outcome::AuthRejected;
+    case KOReaderSyncClient::SERVER_ERROR:
+      return httpCode == 409 ? ybxkosync::Outcome::Refused : ybxkosync::Outcome::Failed;
+    default:
+      return ybxkosync::Outcome::Failed;
+  }
+}
+
 }  // namespace
 
 KOReaderSyncActivity::KOReaderSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                            const std::string& epubPath, CrossPointPosition localPosition,
-                                           SavedProgressPosition localKoPos, std::string localChapterName)
+                                           SavedProgressPosition localKoPos, std::string localChapterName,
+                                           const bool pluginEventsOnly)
     : Activity("KOReaderSync", renderer, mappedInput),
       UiAppHost(renderer),
       epubPath(epubPath),
@@ -60,7 +82,8 @@ KOReaderSyncActivity::KOReaderSyncActivity(GfxRenderer& renderer, MappedInputMan
       localPosition(localPosition),
       remoteProgress{},
       remotePosition{},
-      localProgress(std::move(localKoPos)) {}
+      localProgress(std::move(localKoPos)),
+      pluginEventsOnly(pluginEventsOnly) {}
 
 void KOReaderSyncActivity::ensureEpubLoaded() {
   if (!epub) {
@@ -94,6 +117,7 @@ void KOReaderSyncActivity::saveProgressAndReturn(int spineIndex, int page) {
     requestUpdate(true);
     return;
   }
+  ybxkosync::noteTransaction(ybxkosync::Outcome::Pulled);
   returnToReader();
 }
 
@@ -128,6 +152,19 @@ void KOReaderSyncActivity::onWifiSelectionComplete(const bool success) {
   // stalls that surface as HTTP timeouts. WiFi is torn down when this activity exits.
   WiFi.setSleep(false);
   LOG_DBG("KOSync", "WiFi sleep disabled for sync");
+
+  if (pluginEventsOnly) {
+    {
+      RenderLock lock(*this);
+      state = SYNCING;
+      statusMessage = tr(STR_SYNC_PROGRESS);
+    }
+    requestUpdate(true);
+
+    pluginevents::drain(&renderer);
+    completeAlreadySynced();
+    return;
+  }
 
   {
     RenderLock lock(*this);
@@ -169,7 +206,13 @@ void KOReaderSyncActivity::performSync() {
       RenderLock lock;
       GfxRenderer::FrameBufferLoan loan(renderer);
 #endif
-      clippingsSynced = clippingSync::run(epubPath, documentHash);
+      // Native Notes use an opaque, immutable filename as the common
+      // clipping document key across edits and copied SD cards. Keep the
+      // user's normal content/filename choice for *progress* below: the
+      // page layout may differ between edited copies of one note.
+      const std::string clippingHash = ybxdocument::clippingDocumentKey(
+          epubPath, documentHash, [this] { return KOReaderDocumentId::calculateFromFilename(epubPath); });
+      clippingsSynced = !clippingHash.empty() && clippingSync::run(epubPath, clippingHash);
     }
     if (!clippingsSynced) {
       {
@@ -191,9 +234,10 @@ void KOReaderSyncActivity::performSync() {
   // Fetch remote progress. In smart mode, retain the alternate document-id
   // record until both records can be mapped after the Epub is reloaded.
   auto result = KOReaderSyncClient::getProgress(documentHash, remoteProgress);
+  const int primaryHttpCode = KOReaderSyncClient::lastHttpCode;
   LOG_DBG("KOSync", "Primary remote (%s): result=%d http=%d doc=%s local=%.6f remote=%.6f xpath=%s",
-          matchMethodName(primaryMethod), result, KOReaderSyncClient::lastHttpCode, documentHash.c_str(),
-          localProgress.percentage, remoteProgress.percentage, remoteProgress.progress.c_str());
+          matchMethodName(primaryMethod), result, primaryHttpCode, documentHash.c_str(), localProgress.percentage,
+          remoteProgress.percentage, remoteProgress.progress.c_str());
 
   KOReaderProgress alternateProgress;
   bool hasAlternateProgress = false;
@@ -239,6 +283,7 @@ void KOReaderSyncActivity::performSync() {
   }
 
   if (result != KOReaderSyncClient::OK) {
+    ybxkosync::noteTransaction(outcomeForFailure(result, primaryHttpCode));
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;
@@ -304,12 +349,22 @@ void KOReaderSyncActivity::performSync() {
             remoteProgress.progress.c_str(), remotePosition.spineIndex, remotePosition.pageNumber);
     switch (comparison) {
       case ProgressComparison::Synchronized:
+        ybxkosync::noteTransaction(ybxkosync::Outcome::Already);
         completeAlreadySynced();
         return;
       case ProgressComparison::LocalAhead:
         performUpload();
         return;
       case ProgressComparison::RemoteAhead:
+        // Like the other YBX clients, apply a server position silently only when it
+        // is within a percentage point of this reader's own; further ahead, the
+        // comparison screen asks before the reader leaves its place.
+        if (ybxkosync::isActive() &&
+            ybxkosync::remoteJumpNeedsConsent(localProgress.percentage, remoteProgress.percentage)) {
+          ybxkosync::setMismatchPending(true);
+          LOG_DBG("KOSync", "Remote position differs; opening manual selection");
+          break;
+        }
         saveProgressAndReturn(remotePosition.spineIndex, remotePosition.pageNumber);
         return;
       case ProgressComparison::Unknown:
@@ -410,6 +465,7 @@ void KOReaderSyncActivity::performUpload() {
   esp_wifi_stop();
 
   if (result != KOReaderSyncClient::OK) {
+    ybxkosync::noteTransaction(outcomeForFailure(result, KOReaderSyncClient::lastHttpCode));
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;
@@ -419,6 +475,7 @@ void KOReaderSyncActivity::performUpload() {
     return;
   }
 
+  ybxkosync::noteTransaction(ybxkosync::Outcome::Pushed);
   {
     RenderLock lock(*this);
     state = UPLOAD_COMPLETE;
@@ -435,8 +492,8 @@ void KOReaderSyncActivity::onEnter() {
   app.on(ACTION_ROW, &KOReaderSyncActivity::onResultRow, this);
   app.setScreen(&KOReaderSyncActivity::resultScreen, this);
 
-  // Check for credentials first
-  if (!KOREADER_STORE.hasCredentials()) {
+  // Check for credentials first (plugin-events-only mode needs none).
+  if (!pluginEventsOnly && !KOREADER_STORE.hasCredentials()) {
     state = NO_CREDENTIALS;
     requestUpdate();
     return;

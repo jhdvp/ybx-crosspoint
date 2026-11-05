@@ -215,6 +215,7 @@ void ActivityManager::loop() {
           stackActivities.pop_back();
         }
       } else if (pendingAction == PendingAction::Push) {
+        if (currentActivity) currentActivity->onScreenCovered();
         // Move current activity to stack
         stackActivities.push_back(std::move(currentActivity));
         // The parent's header back rect must not route taps on the pushed
