@@ -151,6 +151,28 @@ TEST(MarkdownToHtmlTest, HeadingScannerMatchesHtmlIdsAcrossChunkBoundaries) {
   EXPECT_NE(html.find("id=\"md-h0002\""), std::string::npos);
 }
 
+TEST(MarkdownToHtmlTest, ReadChunksFitEmbeddedStackBudget) {
+  const std::string input = std::string(126, 'x') + "Привет\n\n# Heading";
+  struct Reader {
+    std::string_view data;
+    size_t offset = 0;
+    size_t largestRequest = 0;
+  } reader{input};
+  auto read = [](void* context, uint8_t* buffer, size_t capacity) {
+    auto& reader = *static_cast<Reader*>(context);
+    reader.largestRequest = std::max(reader.largestRequest, capacity);
+    const size_t count = std::min(capacity, reader.data.size() - reader.offset);
+    std::memcpy(buffer, reader.data.data() + reader.offset, count);
+    reader.offset += count;
+    return static_cast<int>(count);
+  };
+  StringPrint out;
+  ASSERT_TRUE(TxtToHtml::stream("note.MD", &reader, read, out));
+  EXPECT_EQ(out.str, markdown(input));
+  // MarkdownStream::process feeds the parser a fixed 512-byte stack chunk.
+  EXPECT_LE(reader.largestRequest, 512u);
+}
+
 TEST(MarkdownToHtmlTest, ReaderErrorIsReported) {
   struct Reader { int readCount = 0; } reader;
   auto fail = [](void* p, uint8_t* buffer, size_t) {

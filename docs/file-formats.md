@@ -90,6 +90,21 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 72
+
+Version 72 retains the version 64 binary layout. The optional per-word focus
+split offset now points to the second visual run: the bold logical prefix for
+RTL words, or the regular suffix for LTR words. Cross-weight kerning uses that
+visual order. Completed and partial section caches rebuild; book metadata,
+CSS caches, and saved reading progress are kept.
+
+Versions 65–71 belong to the source branch's different rendering layout and
+are not reused here. The partial-build version remains derived from the final
+version (210 for version 72); incomplete builds still use version 0.
+
+Markdown HTML uses `MD_CACHE_VERSION: 2` for parsed headings, emphasis, lists,
+quotes, and code. Plain TXT remains at `TXT_CACHE_VERSION: 1`.
+
 ### Version 64
 
 Version 64 preserves the binary layout but rebuilds completed and partial
