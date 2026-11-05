@@ -10,6 +10,14 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/OtaUpdater.h"
+#include "network/TlsTransport.h"
+#include "util/TlsFailureText.h"
+
+namespace {
+namespace fui = freeink::ui;
+constexpr fui::ActionId ACTION_RETRY = 1;
+constexpr fui::ActionId ACTION_BACK = 2;
+}  // namespace
 
 void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
@@ -18,10 +26,17 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     return;
   }
 
+  runUpdateCheck();
+}
+
+// Lookup + confirmation. Retry on the FAILED screen re-enters this while the
+// Wi-Fi connection this activity opened is still up.
+void OtaUpdateActivity::runUpdateCheck() {
   LOG_DBG("OTA", "WiFi connected, checking for update");
 
   {
     RenderLock lock(*this);
+    failureStage = FAILURE_CHECK;
     state = CHECKING_FOR_UPDATE;
   }
   requestUpdateAndWait();
@@ -34,15 +49,19 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     {
       RenderLock lock(*this);
       state = NO_UPDATE;
+      // The first check runs from WifiSelectionActivity's result handler, where
+      // ActivityManager repaints after the pop; a retried check runs from
+      // loop() and must request its own frame.
+      requestUpdate();
     }
     return;
   }
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update check failed: %d", res);
-    {
-      RenderLock lock(*this);
-      state = FAILED;
-    }
+    const char* detail = res == OtaUpdater::TLS_ERROR ? tlsui::failureDetail(tlspolicy::lastFailure())
+                         : res == OtaUpdater::OOM_ERROR ? tr(STR_MEMORY_ERROR)
+                                                       : tr(STR_UPDATE_NETWORK_HINT);
+    enterFailed(detail, true);
     return;
   }
 
@@ -51,6 +70,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     {
       RenderLock lock(*this);
       state = NO_UPDATE;
+      requestUpdate();
     }
     return;
   }
@@ -74,6 +94,11 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 
 void OtaUpdateActivity::onEnter() {
   Activity::onEnter();
+
+  resetUi();
+  app.on(ACTION_RETRY, &OtaUpdateActivity::onRetryEvent, this);
+  app.on(ACTION_BACK, &OtaUpdateActivity::onBackEvent, this);
+  app.setScreen(&OtaUpdateActivity::failedScreen, this);
 
   // Turn on WiFi immediately
   LOG_DBG("OTA", "Turning on WiFi...");
@@ -133,6 +158,10 @@ void OtaUpdateActivity::render(RenderLock&&) {
                       (std::string(tr(STR_NEW_VERSION)) + updater.getLatestVersion()).c_str());
 
     if (confirmPopup.processRender(renderer, mappedInput)) return;
+  } else if (state == UPDATE_PREPARING) {
+    // The slot erase runs before the first byte; a 0 % bar here would look
+    // like a hang for tens of seconds. No percentage until data arrives.
+    renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_PREPARING), true, EpdFontFamily::BOLD);
   } else if (state == UPDATE_IN_PROGRESS) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATING));
 
@@ -156,9 +185,17 @@ void OtaUpdateActivity::render(RenderLock&&) {
   } else if (state == FAILED) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATE_FAILED), true, EpdFontFamily::BOLD);
     if (failedDetail != nullptr) {
-      renderer.drawCenteredText(UI_10_FONT_ID, top + height + metrics.verticalSpacing, failedDetail);
+      // The TLS explanations wrap over several lines; one centered line clips.
+      const int detailY = top + height + metrics.verticalSpacing;
+      const Rect detailBounds{metrics.contentSidePadding, detailY, pageWidth - metrics.contentSidePadding * 2,
+                              pageHeight - detailY};
+      UITheme::drawCenteredWrappedText(renderer, detailBounds, UI_10_FONT_ID, failedDetail, 3, true,
+                                       EpdFontFamily::REGULAR, UITheme::TextVerticalAlignment::TOP);
     }
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    // Labeled Retry/Back controls, also on touch boards, which draw no hint
+    // bar. Their hit rects are registered here on the render task.
+    renderUi();
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), allowRetry ? tr(STR_RETRY) : "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state == FINISHED) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATE_COMPLETE), true, EpdFontFamily::BOLD);
@@ -176,26 +213,46 @@ void OtaUpdateActivity::runUpdateInstall() {
   LOG_DBG("OTA", "New update available, starting download...");
   {
     RenderLock lock(*this);
-    state = UPDATE_IN_PROGRESS;
+    failureStage = FAILURE_INSTALL;
+    failedDetail = nullptr;
+    // Force the first progress frame to paint: render() skips the refresh when
+    // the percent looks unchanged, and a retried install starts at 0 again.
+    lastUpdaterPercentage = UNINITIALIZED_PERCENTAGE;
+    state = UPDATE_PREPARING;
   }
   requestUpdateAndWait();
   const auto res = updater.installUpdate(
       [](void* ctx) {
+        auto* self = static_cast<OtaUpdateActivity*>(ctx);
+        {
+          RenderLock lock(*self);
+          // installUpdate() reports once right after the slot erase, before the
+          // first bytes arrive. From here on the progress bar shows real bytes.
+          if (self->state == UPDATE_PREPARING) {
+            self->lastUpdaterPercentage = UNINITIALIZED_PERCENTAGE;
+            self->state = UPDATE_IN_PROGRESS;
+          }
+        }
         // immediate=true notifies the render task directly. The default deferred path only
         // sets a flag consumed at the end of ActivityManager::loop(), which never runs while
         // installUpdate() blocks this task.
-        static_cast<OtaUpdateActivity*>(ctx)->requestUpdate(true);
+        self->requestUpdate(true);
       },
       this);
 
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update failed: %d", res);
-    {
-      RenderLock lock(*this);
-      failedDetail = res == OtaUpdater::WRONG_DEVICE_ERROR ? tr(STR_FIRMWARE_WRONG_DEVICE) : nullptr;
-      state = FAILED;
+    const char* detail = nullptr;
+    if (res == OtaUpdater::WRONG_DEVICE_ERROR) {
+      detail = tr(STR_FIRMWARE_WRONG_DEVICE);
+    } else if (res == OtaUpdater::TLS_ERROR) {
+      detail = tlsui::failureDetail(tlspolicy::lastFailure());
+    } else if (res == OtaUpdater::HTTP_ERROR) {
+      detail = tr(STR_UPDATE_NETWORK_HINT);
     }
-    requestUpdate();
+    // A wrong-device image fails the same way on every attempt; a truncated
+    // download or a failed flash write is worth re-running.
+    enterFailed(detail, res != OtaUpdater::WRONG_DEVICE_ERROR);
     return;
   }
 
@@ -212,6 +269,88 @@ void OtaUpdateActivity::runUpdateInstall() {
   }
 }
 
+void OtaUpdateActivity::failedScreen(UiScreen& screen, void* user) {
+  const auto* self = static_cast<const OtaUpdateActivity*>(user);
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  // Same band as the Wi-Fi list: below the header, clear of the hint bar that
+  // buttons-only profiles still draw.
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(self->renderer, true, false);
+  screen.setContentMarginFromScreen(fui::Insets{
+      static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing),
+      static_cast<int16_t>(self->renderer.getScreenWidth() - (safe.x + safe.width)),
+      static_cast<int16_t>(self->renderer.getScreenHeight() - (safe.y + safe.height)),
+      static_cast<int16_t>(safe.x)});
+
+  const auto& theme = screen.theme();
+  const fui::Rect body = screen.body();
+  const fui::Rect band{body.x, static_cast<int16_t>(body.y + body.height * 2 / 3), body.width, theme.rowHeight};
+
+  const auto drawButton = [&screen, &theme](const char* label, const fui::ActionId action, const fui::Rect rect) {
+    fui::ButtonProps props;
+    props.label = label;
+    props.action = action;
+    props.inputMask = fui::InputTouch;
+    props.text = theme.bodyText;
+    // Outlined like the OPDS publication page's action, so the control reads as
+    // a button on a screen that also carries plain text.
+    props.styles = theme.button;
+    props.styles.normal.border = fui::Paint::solid(fui::Color::Black);
+    props.styles.normal.borderWidth = 1;
+    props.radius = theme.controlRadius;
+    fui::button(screen.frame(), rect, props);
+  };
+
+  // Back left, Retry right: the same order as the physical Back/Retry hints on
+  // buttons-only profiles. A wrong-device image repeats identically, so that
+  // failure offers Back alone.
+  if (self->allowRetry) {
+    const int16_t gap = theme.spaceMd;
+    const int16_t width = static_cast<int16_t>((band.width - gap) / 2);
+    drawButton(tr(STR_BACK), ACTION_BACK, fui::Rect{band.x, band.y, width, band.height});
+    drawButton(tr(STR_RETRY), ACTION_RETRY,
+               fui::Rect{static_cast<int16_t>(band.x + width + gap), band.y,
+                         static_cast<int16_t>(band.width - width - gap), band.height});
+  } else {
+    const int16_t width = static_cast<int16_t>(band.width / 2);
+    drawButton(tr(STR_BACK), ACTION_BACK,
+               fui::Rect{static_cast<int16_t>(band.x + (band.width - width) / 2), band.y, width, band.height});
+  }
+}
+
+void OtaUpdateActivity::onRetryEvent(const fui::ActionEvent&, void* user) {
+  auto* self = static_cast<OtaUpdateActivity*>(user);
+  self->app.clearTapFlash();
+  // The last paint may still show Retry while enterFailed() has already
+  // withdrawn it; the flag, not the stale hit table, decides.
+  if (self->allowRetry) {
+    self->retryFailedStep();
+  }
+}
+
+void OtaUpdateActivity::onBackEvent(const fui::ActionEvent&, void* user) {
+  auto* self = static_cast<OtaUpdateActivity*>(user);
+  self->app.clearTapFlash();
+  finish();
+}
+
+void OtaUpdateActivity::enterFailed(const char* detail, const bool canRetry) {
+  {
+    RenderLock lock(*this);
+    failedDetail = detail;
+    allowRetry = canRetry;
+    state = FAILED;
+  }
+  requestUpdate();
+}
+
+void OtaUpdateActivity::retryFailedStep() {
+  if (failureStage == FAILURE_INSTALL) {
+    runUpdateInstall();
+  } else {
+    runUpdateCheck();
+  }
+}
+
 void OtaUpdateActivity::loop() {
   if (state == WAITING_CONFIRMATION) {
     if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
@@ -221,10 +360,19 @@ void OtaUpdateActivity::loop() {
   }
 
   if (state == FAILED) {
-    int x = 0;
-    int y = 0;
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) || mappedInput.wasScreenTapped(x, y)) {
+    // Taps route only to the labeled Back/Retry controls; anywhere else does
+    // nothing, so an unlabeled tap can never start a slot-erasing re-flash.
+    const auto route = routeTouch(mappedInput);
+    if (route.routed && app.invalidated()) requestUpdate();
+    if (route) return;
+    // Physical keys keep working on every profile. The header chevron on touch
+    // profiles folds into Back (HeaderBackTapTarget), like every other screen.
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
       finish();
+      return;
+    }
+    if (allowRetry && mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      retryFailedStep();
     }
     return;
   }
@@ -242,3 +390,4 @@ void OtaUpdateActivity::loop() {
     ESP.restart();
   }
 }
+// format-pass-marker
