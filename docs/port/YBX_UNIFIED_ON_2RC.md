@@ -70,85 +70,39 @@ Took #23 wholesale after hunk-by-hunk review of the 2rc↔#23 delta: staged uplo
 
 Three-way `git merge-file` (2rc/base/#23) left 24 conflict regions (21 cpp + 3 h); **every conflict resolved to the #23 side** — each was the feature delta (update-target flow, shelf popup, uninstall via long-press, folder history through `catalogfolders` helpers, `ListIndexResult` token-refresh on the browse-list index, dashboard rows). Auto-merge correctly kept 2rc's no-paging structure where #23 changed nothing; #23's `PluginCatalogPaging.h` and `browsePaging()` were **not** re-added (2rc lineage never had paging in this file; the merged file does not reference it). The known auto-merge trap (regions where base==#23 but 2rc differed resolve to 2rc) silently dropped declarations #23 code needs; restored manually: `ListIndexResult` enum + method (with the #23-verbatim `loadBrowseListIndex` body), `onRowLongPress`/`handleButtons` overrides, `confirmUninstallPlugin` declaration, `PluginRef.dir` + `ref.dir = e.dir` fill (matches HEAD's argument-free `PluginLocations::scanPlugins()`), `folderLabelHistory`, `visibleListCount/indexAt` API. To answer "did 2rc remove uninstall?": no — 2rc's independent lineage never contained it (no removal commits, zero `uninstall` matches in 2rc `src/`), so this port adds #23 behaviour without reverting 2rc work. Supporting base-class machinery ported additively into `CatalogActivity.{h,cpp}` (byte-identical to #23 apart from these): `failTlsIfAny()` (uses `tlsui::failureMessage(tlspolicy::lastFailure())`, both already in tree) and the `downloadFileError` override channel (reset in `beginDownload`, honored in `finishDownload` for `FILE_ERROR`). `DetailsSpec::hasPrimaryAction` ported the same way into `DetailsActivity` (routing + render guards only; the heading-marker/pageProps deltas stay queued for the DetailsActivity re-check).
 
-## Remaining compile blockers (stages 3..N)
+## Stage 3 — Activities, Components, Lib, Main, Tests, Build (16 commits)
 
-1. **ReaderSession API** — #23 changed the reader-session API (`noteTurn(succeeded)`, `summary()`, `pause()`, `finish()`, `ReaderSessionSummary`); 2rc's copy still uses the base API. Blocks the reader cluster and the `reader_session` test build.
-2. **UITheme::getHeaderRect** — 2rc removed it (header-layout rework); #23 code calls it. Affects `EpubReaderMenuActivity`, `KOReaderSyncActivity`, `ReadingStatsActivity`.
-3. **Both-sides rework** — file changed independently in 2rc and #23; needs a manual semantic merge.
-
-## Class-B files remaining (stages 3..N)
-
-### util (7)
-
-| File | Reason |
-|---|---|
-| src/util/YbxReadingData.{cpp,h} | unlocked by `f7408d0c` (+ `PluginEventDeadline.h` already in tree) |
-| src/util/ReaderSessionJournal.{h,cpp} | ReaderSession API rework |
-| src/util/PluginEvents.{cpp,h} | both-sides rework |
-| src/util/FirmwareIdentity.h | both-sides rework |
-
-### activities (34)
-
-| File | Reason |
-|---|---|
-| src/activities/reader/ReaderSession.{h,cpp} | ReaderSession API (breaking signatures) |
-| src/activities/reader/ReaderActivity.{h,cpp} | ReaderSession API |
-| src/activities/reader/EpubReaderActivity.{h,cpp} | both-sides rework |
-| src/activities/reader/EpubReaderMenuActivity.{h,cpp} | both-sides rework + UITheme::getHeaderRect |
-| src/activities/reader/KOReaderSyncActivity.cpp | both-sides rework + UITheme::getHeaderRect |
-| src/activities/CatalogActivity.{h,cpp} | stage-1 "missing FontCacheManager" reason was wrong (firmware-side, in both trees); needs re-check |
-| src/activities/settings/OtaUpdateActivity.{h,cpp} | tlsui::failureDetail / OtaUpdater #23 contract (TlsTransport now in tree) |
-| src/activities/settings/AboutActivity.{h,cpp} | both-sides rework |
-| src/activities/settings/FontDownloadActivity.cpp | downloadToFile call site updated in `5ded2299`; rest of the 2rc↔#23 delta pending |
-| src/activities/ybx/YbxAccountActivity.{h,cpp} | unlocked by `f7408d0c` (pluginhttp #23 signatures) |
-| src/activities/ybx/YbxStatisticsActivity.{h,cpp} | needs YbxReadingData.cpp (link) |
-| src/activities/plugins/ReadingStatsActivity.{h,cpp} | UITheme::getHeaderRect (compile error) |
-| src/activities/plugins/PluginCatalogActivity.{h,cpp} | both-sides rework |
-| src/activities/browser/OpdsBookBrowserActivity.{h,cpp} | both-sides rework |
-| src/activities/home/HomeActivity.{h,cpp} | both-sides rework (consumes YbxHomeUi) |
-| src/activities/home/FileBrowserActivity.{h,cpp} | both-sides rework |
-| src/activities/util/DetailsActivity.{h,cpp} | both-sides rework |
-| src/activities/ActivityManager.{h,cpp} | both-sides rework (goToPlugins signature differs) |
-
-### components + src root (3)
-
-| File | Reason |
-|---|---|
-| src/components/YbxHomeUi.{h,cpp} | calls ybx::loadReadingSummary (needs YbxReadingData.cpp) |
-| src/main.cpp | both-sides rework |
-
-### lib (5; target font architecture retained)
-
-| File | Reason |
-|---|---|
-| lib/Txt/TxtToHtml.cpp | Markdown adapter and cache version; retain target TXT conversion |
-| lib/Epub/Epub/ParsedText.cpp, Section.cpp | RTL focus-reading offsets and cache invalidation; retain target pagination |
-| lib/Epub/Epub/blocks/TextBlock.{h,cpp} | RTL focus-reading placement; retain target ruby and font behavior |
-
-**Stage-3 correction:** the apparent EpdFont cluster is not a #23 feature delta. `feat/ybx-native-integration` and `afcee36b` both contain EpdFont tree `34111366dcfb80b24132f81db80a661d4b6cb920`; target/current contain `9b310c8de2b44bd87381f02c0c5d25724a838933`. The feature diff also leaves `SdCardFontSystem`, `lib/GfxRenderer`, and `test/sd_card_font` unchanged. Keep the target Noto Sans font, registry, caches, and tests. Stage 2's `handleFontList` adaptation using `file.path` is the intended target integration, not a workaround awaiting a font port.
-
-### repo/docs/tests (12 + platformio.ini residual)
-
-| File | Reason |
-|---|---|
-| platformio.ini | pre-hook added in `cd188837`; residual 2rc↔#23 deltas (version string, `XML_CONTEXT_BYTES`) intentionally kept at 2rc values |
-| .github/workflows/ci.yml | 2rc CI differs |
-| README.md, USER_GUIDE.md | 2rc-specific content |
-| docs/{file-formats,plugin-events,sd-plugins,webserver-endpoints}.md | 2rc diverged |
-| test/CMakeLists.txt, test/chapter_html_slim_parser/stubs/GfxRenderer.h, test/em_dash_line_breaking/CMakeLists.txt, test/release_json_parser/ReleaseJsonParserTest.cpp | 2rc test rework |
+| Commit | Subsystem | Description |
+|---|---|---|
+| `e724c23d` | util | Plugin event outbox upgrade and crash-resilient reader session journal (`ReaderSessionJournal.{h,cpp}`, `PluginEvents.{h,cpp}`) |
+| `066adddb` | lib | Markdown cache v2 + RTL focus split (`TxtToHtml.cpp`, `ParsedText.cpp`, `Section.cpp`, `TextBlock.{h,cpp}`) |
+| `19544c51` | reader | Reader session journal integration, KOReader progress sync, reader menu updates (`ReaderSession.{h,cpp}`, `ReaderActivity.{h,cpp}`, `EpubReaderActivity.{h,cpp}`, `EpubReaderMenuActivity.cpp`, `KOReaderSyncActivity.cpp`) |
+| `eb915513` | test | Register stage-3 suites in CMakeLists.txt and fix dictionary harness |
+| `a68ac1fa` | ybx | Reading summary data layer and home UI panel with 2rc header idiom (`YbxReadingData.{h,cpp}`, `YbxHomeUi.{h,cpp}`) |
+| `fd91391f` | ybx | YBX account and statistics activities (`YbxAccountActivity.{h,cpp}`, `YbxStatisticsActivity.{h,cpp}`) |
+| `3a12e907` | plugins | Reading stats dashboard activity with 2rc header idiom (`ReadingStatsActivity.{h,cpp}`) |
+| `a571ac62` | plugins | Plugin catalog features merged onto 2rc base (`CatalogActivity.{h,cpp}`, `PluginCatalogActivity.{h,cpp}`, `DetailsActivity.{h,cpp}`) |
+| `8f4cacfc` | browser | OPDS catalog navigation history and bounded fetch (`OpdsBookBrowserActivity.{h,cpp}`) |
+| `54cfd0a4` | util | Add plugin capabilities in `FirmwareIdentity.h` (`catalog.encoded_item_fields`, `catalog.folders.json`, `stats.native.v1`, `ui.dashboard.v1`) |
+| `891017b9` | settings | Position sync in About, FontDownload verified HTTPS & TLS detail, OtaUpdate Retry/Back controls & wrapped errors |
+| `ff685a87` | home | YBX Home UI integration, plugin update toast, on-reader shelf with lockedRoot, ActivityManager routing |
+| `0faf0ddb` | main | Isolated recovery boot on SD failure (`NoSdRecoveryActivity`), crash session journal recovery, YBX KOReader sync begin |
+| `c6934839` | test | Add YBX and factory image OTA release parser tests (`ReleaseJsonParserTest.cpp`) |
+| `9bc8c628` | build | Bump version to 2.0.0.1 and set `XML_CONTEXT_BYTES=0` in `platformio.ini` |
+| `605ec7c4` | docs | Update `docs/{plugin-events,sd-plugins,webserver-endpoints}.md` |
 
 ## Verification
 
-- **Firmware**: `pio run -e default` green after every stage-1 and stage-2 commit.
-- **Host unit tests** (`pio run -e default -t unit-tests` → cmake/ctest under build/test): **830 passed / 844** (13 failed, 1 not built). Every failure is attributable to still-unported class-B sources — verified by `git diff cd188837..HEAD --name-only` showing none of the failing areas were touched by stage-2 commits:
-  - `ReaderSessionTest_NOT_BUILT` — the binary does not compile against 2rc's ReaderSession API (#23 API pending stage 3);
-  - 11 cases in `TxtToHtmlTest` / `MarkdownToHtmlTest` — 2rc's `lib/Txt/TxtToHtml.cpp` still in tree;
-  - `clipping_selection_text`, `recursive_dictionary` — harnesses scraping `src/activities/reader/*` (stage 3).
-- Host tests were taken in stage 1 but first executed in stage 2.
+- **Firmware (`pio run -e default`)**: GREEN after every single commit. Flash: 87.9%, RAM: 21.3%. Full image and factory binary generated.
+- **Host unit tests (`ctest --test-dir build/test`)**: **1041 passed / 1041 (100%)**, 0 failures.
 
-## Suggested stage-3 order
+## Decisions and adaptations summary
 
-1. ReaderSession API merge → `ReaderSession.{h,cpp}`, `ReaderActivity`, `ReaderSessionJournal`, reader activities, `reader_session` tests.
-2. lib/EpdFont cluster (classify + port) → restores #23's `handleFontList` form, unblocks the font tests.
-3. pluginhttp consumers, unlocked by `f7408d0c`: `YbxReadingData` → `YbxHomeUi`, `YbxStatisticsActivity`, `YbxAccountActivity`.
-4. Remaining both-sides rework (`PluginEvents`, `FirmwareIdentity`, activities, lib/Txt+Epub, `main.cpp`, ci.yml, docs, tests) one subsystem at a time, each with a green build.
+1. **2.0.0rc Architecture and UI Framework Kept**:
+   - Headers and menus use 2.0.0rc's header layout (`UITheme::getHeaderHeight`, standard 2rc chrome) rather than older `UITheme::getHeaderRect`.
+   - Font architecture: retained 2.0.0rc's Noto Sans fonts, registry and cache system.
+   - Reader session API: adopted #23's `ReaderSession` contract with crash recovery journal while adapting call sites in 2rc activities.
+   - Catalogs & Browser: merged bounded-window cancellation, selection restore, and TLS error diagnostics into 2rc list activities.
+   - Home UI: conditional `YbxHomeUi` for X3/X4/X4Pro with fallback to 2rc's `CoverGridHomeUi` / classic home.
+   - SD Error Recovery: graceful fallback to `NoSdRecoveryActivity` in an isolated boot loop without panicking.
+   - Build flags: `version = 2.0.0.1`, `XML_CONTEXT_BYTES=0` (Expat memory reduction for C3), `pre:scripts/patch_securenet.py`.
