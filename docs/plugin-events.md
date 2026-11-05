@@ -48,7 +48,7 @@ against newer firmware degrades gracefully on older firmware.
 | ----------------- | ------------------------------------------------------ | ------------------------------------ |
 | `reader.open`     | A book is opened (EPUB/TXT/XTC)                        | `book` (SD path)                     |
 | `reader.exit`     | The reader is left (home, sleep, another activity)     | `book`, `percent` (0-100 whole-book) |
-| `reader.session`  | An active-reading summary is flushed before sleep/exit | fields documented below              |
+| `reader.session`  | A reading interval ends: exit, sleep, restart, or recovery at boot after a crash | fields documented below |
 | `book.downloaded` | An on-device catalog download completed                | `path`, `title`, `plugin`            |
 | `sleep.enter`     | The device begins entering deep sleep                  | `book`, `percent` when sleeping out of a reader, else none |
 
@@ -72,23 +72,63 @@ All values are strings in the event's `vars` object:
 | `end_progress_bp` | monotonic-clamped final progress, 0..10000 basis points |
 | `progress_scale` | literal `10000` |
 
-Only successful ordinary forward turns count. A displayed page contributes
-when it remains visible for at least 2 seconds; one dwell is capped at 1800
-seconds. Reverse turns, chapter skips, failed turns, and shorter displays are
-excluded and re-anchor the timer. At least 10 active seconds and a trustworthy
-positive start time are required. EPUB retains basis-point precision; TXT/XTC
-may report whole-percent steps. The document hash is calculated lazily only
-when an emit-worthy summary and a subscriber both exist.
+Only successful ordinary page turns close an interval, in either direction.
+A displayed page contributes when it remains visible for at least 2 seconds;
+one interval is capped at 1800 seconds. Chapter skips, failed turns, and
+shorter displays are excluded. The page still on screen when reading stops
+(exit, sleep, restart) contributes its trailing interval through the same
+2/1800-second bounds. A session shorter than 5 active seconds is not reported:
+it is an accidental open or a quick flip, not reading. A redraw of the same
+page (full or forced refresh) does not reset the interval. A screen pushed on
+top of the page — the reader menu, dictionary, bookmarks, clipping list,
+KOSync or the frontlight panel — does: its dwell closes when the page loses
+focus and the render after the screen returns opens the next one, so time
+spent in those screens is not reading time.
+
+`start_time` is `0` when the device clock was never set; the session is still
+reported, and the envelope `event.ts` carries the same uncertainty. Both
+`start_time` and `end_time` are `0` in that case. A clock that arrives
+mid-session (SNTP after boot) still places the start: it is back-computed from
+the first counted dwell whose clock was known, so a session that began before
+the sync is not reported with `start_time` `0`. EPUB retains basis-point
+precision; TXT/XTC may report whole-percent steps. The document hash is
+calculated lazily only when an emit-worthy summary and a subscriber exist.
 
 `end_time` is deliberately not the wall-clock time of the last interaction.
 Idle gaps are removed, so it always equals `start_time + duration_seconds` and
-is greater than `start_time` for every emitted session. The envelope
-`event.ts` remains the actual emission time.
+is greater than `start_time` for every emitted session with a known clock. The
+envelope `event.ts` remains the actual emission time.
 
 The pre-sleep activity hook queues and resets this event immediately before
 `sleep.enter` and the sleep drain. Normal reader teardown calls the same
 idempotent flush as a fallback, so direct-from-reader sleep queues it exactly
-once and can deliver it on that same sleep.
+once and can deliver it on that same sleep. The explicit restart paths flush
+first as well.
+
+### Session identity and crash recovery
+
+The event id is allocated once, before the session's first checkpoint or
+flush, and is written to a small checkpoint
+(`/.crosspoint/reader-session.journal`) at most once a minute while reading. If the device crashes, loses power, or
+restarts without a flush, the next boot queues the checkpointed session with
+that same id and deletes the checkpoint. If the checkpoint could not be
+deleted, or the event was only queued for some subscribers, the same id is
+queued again: a server that keys its store by `(device, event id)` (as YBX does)
+ignores the duplicate instead of counting the reading time twice.
+
+The 5-second minimum applies when the session ends; a crash can therefore
+recover at most the last checkpointed minute of a session that would have been
+reported anyway. Every reader — EPUB, XTC and TXT — writes that checkpoint
+from its own loop, so a power cut costs at most the current minute in any
+format.
+
+A checkpoint is only replaced once the session it holds has been queued: if
+that delivery fails, the record stays on the card for the next boot and the
+session still in RAM does not overwrite it. A flush clears the checkpoint only
+when the record carries its own session id, so the second flush of the sleep
+path (the activity teardown that follows `prepareForSleep`) cannot delete the
+retry record the first flush just wrote. A checkpoint that fails to be written
+is retried on the next minute, not on every loop pass.
 
 A generic consumer can expand one summary into two distinct points without
 firmware knowing the destination schema:
@@ -102,7 +142,8 @@ firmware knowing the destination schema:
 
 The distinct compact timestamps avoid a uniqueness collision even when the
 two progress values are equal. Preserve at-least-once delivery and deduplicate
-replayed points by the consumer's natural document/time key.
+replayed points by the consumer's natural document/time key, or by
+`{event.id}` when the clock was unknown (`start_time` is `0`).
 
 ## Declaring handlers in `device.json`
 
@@ -142,6 +183,16 @@ Optional per handler:
 
 - **`toast`** — a template shown as the standard popup after the request
   succeeds, when a screen is available (sleep entry, web-server session).
+- **`require_meta`** — a sidecar key, e.g. `"require_meta": "bookfusion_id"`.
+  The event is queued for this handler only when the event's book (`book`, or
+  `path` for `book.downloaded`) has a metadata sidecar where that key holds a
+  non-empty string or a whole number (decimals and `true`/`false` do not
+  match). Other books' events are not queued at all, so they cost no outbox
+  space, no request, and no WiFi bring-up at sleep. An event without a book
+  (`sleep.enter` outside a reader) is not queued, and neither is one whose
+  sidecar cannot be read. The sidecar is read when the event fires, so write
+  it before the book is opened. A handler whose `require_meta` is not a
+  string is ignored, so a wrong type cannot turn the filter off.
 - **`connect`** — normally the drain only runs when the device is already
   online. `"connect": true` opts a handler into WiFi bring-up at **sleep entry
   only**. Subscribing to `sleep.enter` sets that opt-in for you, so a
@@ -180,8 +231,12 @@ Templates in `url`, `headers`, `body`, `dest`, and `toast` substitute:
 | `{cfg.KEY}`    | The plugin's flat config file (`config` section)                 |
 | `{event.NAME}` | The event's variables (see the whitelist table)                  |
 | `{event.ts}`   | Unix time when the event fired; 0 if the clock was never set     |
-| `{event.id}`   | Unique event id, stable across delivery retries (dedupe key)     |
-| `{meta.KEY}`   | The book's metadata sidecar, for events that carry a `book`      |
+| `{event.id}`   | Unique event id, stable across delivery retries (dedupe key); for `reader.session` also across a reboot that recovers the checkpoint |
+| `{meta.KEY}`   | The book's metadata sidecar, for events that carry a `book` (or `path`, for `book.downloaded`) |
+
+Values are inserted as they are. Before a request is sent, spaces, control
+characters, and non-ASCII bytes in its URL are percent-encoded; `&`, `?`, `#`,
+`+` and `/` inside a value are not, and events have no `_enc` forms.
 
 Unmatched variables substitute as nothing was replaced (the literal `{...}`
 text is sent), so servers should tolerate or reject malformed values.
@@ -214,17 +269,51 @@ writer of a key wins. Use `bookfusion_id`, not `id`.
    e.g. `metadata.bookfusion_id` — the firmware never learns what any key
    means.
 2. **Event handlers**, via `{meta.*}` as above.
+3. **Handler filters**, via `require_meta` (see above).
 
 Fields are flat strings, numbers, or booleans with a 2KB read cap. KOSync
-uploads carry them with their JSON types; `{meta.*}` templates see them as
-text. Null and nested values are ignored. Structured service data
+uploads carry them with their JSON types; `{meta.*}` templates see strings
+and whole numbers as text, and decimals and booleans as empty. Null and
+nested values are ignored. Structured service data
 belongs on the service's server, keyed by the id in the sidecar.
 
 ## Delivery semantics and limits
 
-- At-least-once, in order per plugin. The drain stops at the first failed
-  delivery so a later event never overtakes an earlier one; delivered events
-  are removed, the rest wait for the next drain.
+- Ordinary events are delivered at least once, in order per plugin, within
+  the outbox size limit below. The drain stops ordinary delivery at the first
+  failure; undelivered events wait for the next drain.
+- A `sleep.enter` GET download may opt into `"delivery": "latest"` alongside
+  its `download` object. One attempt from the drain budget is reserved for the
+  newest queued sleep snapshot, after ordinary events. It is attempted even
+  if an ordinary event failed. Only after that download succeeds are older
+  queued sleep snapshots removed as superseded. Failed downloads retain all
+  snapshots. Other event types and POST handlers cannot opt in.
+- The budget counts handler attempts, including failures. Authentication
+  refresh and its retry can make more than one HTTP call per handler. This
+  is a request-count limit, not a wall-clock sleep deadline. Across plugins,
+  the shared budget and existing subscription order still apply.
+- Sleep entry uses a 15-second cooperative drain budget after the existing
+  Wi-Fi join window (up to 10 seconds). Ordinary handlers share a 2-second
+  budget per event; an opted-in latest snapshot has up to 8 seconds. Token
+  refresh and retry share the event budget. Online drains keep the normal
+  30-second request timeout. Synchronous DNS/TCP connect and SD I/O may overrun
+  the cooperative budget; this is not a hard upper bound on sleep latency.
+- Queue replacement writes and closes `.pending`, parks the previous queue
+  as `.bak`, then renames the complete replacement. Before append, inspection
+  or delivery, a missing queue is restored from `.bak`. An existing queue is
+  authoritative; uncommitted `.pending` files are discarded, never promoted.
+  A failed restore leaves the backup for another attempt. This handles failed
+  operations and interrupted transaction boundaries; physical FAT/SD corruption
+  still requires device testing and cannot be excluded by host tests.
+- Before appending, the firmware checks the final line boundary and truncates
+  only a partial trailing event (at most 1024 bytes). A read/truncate failure
+  stops that append; the next event is never glued to a known incomplete line.
+- When the outbox is at its size limit, the oldest whole events are dropped
+  first, so a long offline period keeps the newest history instead of losing
+  everything. The line being appended is never split.
+- A streamed download is accepted only after a complete HTTP response, complete
+  writes and successful file close. A close failure keeps the old sleep image
+  and the queued event for retry.
 - A corrupt queue line, or a line whose event no longer has a handler, counts
   as delivered — a manifest edit cannot wedge the queue.
 - The subscription table is rebuilt at boot. A plugin installed mid-session
@@ -232,12 +321,12 @@ belongs on the service's server, keyed by the id in the sidecar.
 
 | Limit                          | Value                          |
 | ------------------------------ | ------------------------------ |
-| Outbox size                    | 4KB per plugin, then dropped wholesale (newest events describe current state; stale ones are worthless by then) |
-| Event line                     | 512 bytes                      |
+| Outbox size                    | 4KB per plugin, then oldest whole events are dropped first |
+| Event line                     | 1024 bytes                     |
 | Request response               | 8KB (discarded)                |
 | Download                       | 1MB, streamed to SD            |
 | Subscribed plugins             | 8                              |
-| Handlers run per drain         | 4 (backlog continues next drain) |
+| Handler attempts per drain     | 4 (backlog continues next drain) |
 | Sidecar / config / token files | 2KB each                       |
 
 ## Worked example: hands-free progress sync
