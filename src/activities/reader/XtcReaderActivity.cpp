@@ -328,8 +328,8 @@ void XtcReaderActivity::onReturnFromEndOfBook() {
   }
 }
 
-void XtcReaderActivity::saveProgress() const {
-  if (!xtc) return;
+void XtcReaderActivity::saveProgress() {
+  if (!xtc || (savedPageValid && savedPage == currentPage)) return;
   uint8_t data[4];
   data[0] = currentPage & 0xFF;
   data[1] = (currentPage >> 8) & 0xFF;
@@ -337,7 +337,10 @@ void XtcReaderActivity::saveProgress() const {
   data[3] = (currentPage >> 24) & 0xFF;
   if (!ProgressFile::writeAtomic(xtc->getCachePath(), data, sizeof(data))) {
     LOG_ERR("XTC", "Failed to save progress: page %lu", currentPage);
+    return;
   }
+  savedPage = currentPage;
+  savedPageValid = true;
 }
 
 void XtcReaderActivity::loadProgress() {
