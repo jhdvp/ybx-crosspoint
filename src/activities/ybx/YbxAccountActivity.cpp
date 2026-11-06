@@ -235,17 +235,16 @@ void YbxAccountActivity::draw(UiScreen& ui) {
                         : sources_.connected(static_cast<ybxaccount::SourceKind>(i)) ? tr(STR_CONNECTED)
                                                                                      : tr(STR_YBX_ACCOUNT_NOT_LISTED);
     snprintf(rows_[i].data(), rows_[i].size(), "%s: %s", names[i], value);
-    ui.target().text(
-        {static_cast<int16_t>(x), static_cast<int16_t>(topY + i * 48), static_cast<int16_t>(width), 40},
-        rows_[i].data(), text);
+    ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(topY + i * 48), static_cast<int16_t>(width), 40},
+                     rows_[i].data(), text);
   }
   const char* status = tr(STR_YBX_ACCOUNT_UNAVAILABLE);
   if (state_ == State::Ready) status = fetched_ ? tr(STR_YBX_ACCOUNT_UPDATED) : tr(STR_YBX_ACCOUNT_REFRESH);
   if (state_ == State::Loading) status = tr(STR_LOADING_POPUP);
   if (state_ == State::NotConnected || state_ == State::InvalidToken) status = tr(STR_YBX_SYNC_NOT_PAIRED);
   if (state_ == State::Unsupported) status = tr(STR_YBX_PLUGIN_UPDATE);
-  ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(topY + 160), static_cast<int16_t>(width), 45},
-                   status, text);
+  ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(topY + 160), static_cast<int16_t>(width), 45}, status,
+                   text);
   const int spacing = 8, cell = (width - spacing * 2) / 3;
   const int y = safe.y + safe.height - 64;
   button(ui, {static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 0, tr(STR_BACK));

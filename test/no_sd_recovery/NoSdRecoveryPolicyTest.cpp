@@ -50,4 +50,3 @@ TEST(NoSdRecovery, PowerButtonHeldTriggersSleep) {
   EXPECT_FALSE(nosd::shouldPowerSleep(true, 400u, 500u));
   EXPECT_TRUE(nosd::shouldPowerSleep(true, 501u, 500u));
 }
-

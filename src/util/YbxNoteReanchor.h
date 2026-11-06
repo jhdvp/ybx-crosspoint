@@ -139,10 +139,8 @@ inline bool renderVisibleText(std::string_view source, std::string& visible) {
 }
 
 inline uint32_t codepointCount(std::string_view utf8) {
-  uint32_t count = 0;
-  for (const unsigned char c : utf8)
-    if ((c & 0xC0) != 0x80) ++count;
-  return count;
+  return static_cast<uint32_t>(
+      std::count_if(utf8.begin(), utf8.end(), [](unsigned char c) { return (c & 0xC0) != 0x80; }));
 }
 
 inline bool wordish(unsigned char c) {

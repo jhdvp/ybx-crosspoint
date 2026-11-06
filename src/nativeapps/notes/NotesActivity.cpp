@@ -47,9 +47,7 @@ void NotesActivity::onExit() {
   UiListActivity::onExit();
 }
 
-void NotesActivity::onScreenCovered() {
-  releaseRows();
-}
+void NotesActivity::onScreenCovered() { releaseRows(); }
 
 void NotesActivity::loop() {
   if (needsReload_) {

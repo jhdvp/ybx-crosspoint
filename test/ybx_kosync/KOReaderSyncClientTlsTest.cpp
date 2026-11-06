@@ -1,6 +1,5 @@
-#include <gtest/gtest.h>
-
 #include <SecureHttpClient.h>
+#include <gtest/gtest.h>
 
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncClient.h"
