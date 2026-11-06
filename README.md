@@ -15,7 +15,8 @@
 
 Your connected book libraries on an e-ink reader. YBX Reader is an independent
 [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) fork
-for **Xteink X3, X4 and X4 Pro**, with YBX branding and a matching SD-card plugin.
+for **Xteink X3, X4 and X4 Pro**, with YBX branding and a matching SD-card plugin
+(X4 Pro release and OTA packaging remain in development).
 Connect your services in [your YBX account](https://my.ybx.app), then browse
 and download available text books on the reader.
 
