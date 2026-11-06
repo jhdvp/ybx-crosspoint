@@ -15,7 +15,8 @@
 
 Your connected book libraries on an e-ink reader. YBX Reader is an independent
 [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) fork
-for **Xteink X3 and X4**, with YBX branding and a matching SD-card plugin.
+for **Xteink X3, X4 and X4 Pro**, with YBX branding and a matching SD-card plugin
+(X4 Pro release and OTA packaging remain in development).
 Connect your services in [your YBX account](https://my.ybx.app), then browse
 and download available text books on the reader.
 
@@ -56,7 +57,7 @@ provider permissions; this project does not bypass DRM.
 | --- | --- |
 | YBX branding and dedicated update channel | Implemented; device acceptance pending |
 | Connected-service catalog and search | Implemented with authenticated list loading; device acceptance pending |
-| X3/X4 firmware build | Passing on upstream `a790b144` with its pinned FreeInk SDK |
+| X3/X4/X4 Pro firmware build | Passing on upstream `a790b144` with its pinned FreeInk SDK |
 | Wi-Fi settings loaded before sleep | Included from upstream; fresh-wake behavior still needs a device test |
 | Automatic sleep-card refresh | **Open blocker:** queued events can delay the image request; manual refresh is available |
 | Sleep-card design and statistics | Rendered by the YBX server; successful firmware build does not prove automatic delivery |
@@ -99,7 +100,10 @@ formatting uses `clang-format` **21**.
 ```sh
 git clone --recursive --branch feat/ybx-native-integration https://github.com/jhdvp/ybx-crosspoint.git
 cd ybx-crosspoint
+# X3 / X4:
 CROSSPOINT_RC_HASH="$(git rev-parse --short=7 HEAD)" pio run -e gh_release_rc
+# X4 Pro:
+CROSSPOINT_RC_HASH="$(git rev-parse --short=7 HEAD)" pio run -e x4pro-gh_release_rc
 ```
 
 This command builds without flashing a device. See the
