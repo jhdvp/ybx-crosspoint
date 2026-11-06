@@ -769,9 +769,10 @@ void HomeActivity::onMoreOpen() {
   ybxMoreChoice = -1;
   if (!ybxShelfResolved) {
     ybxShelfResolved = true;
-    // Offline shelf entry: the folder the YBX plugin downloads books into
-    // (empty when the plugin is absent or the plugin system is disabled).
+    // Built-in YBX Reader downloads to /books/ybx even without the optional
+    // SD catalog plugin. Do not hide that shelf when Plugins is disabled.
     ybxShelfDir = pluginhttp::catalogDownloadDir(PluginLocations::findPluginDir("ybx"));
+    if (ybxShelfDir.empty() && Storage.exists("/books/ybx")) ybxShelfDir = "/books/ybx";
   }
   const bool hasNativeApps = nativeapps::availableCount() > 0;
   if (!ybxShelfDir.empty()) {

@@ -140,4 +140,5 @@ add_test(NAME patch_animatedgif COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SO
 
 add_test(NAME recursive_dictionary COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_recursive_dictionary.py)
 add_test(NAME ybx_plugin_install COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ybx_plugin_install.py)
+add_test(NAME ybx_builtin_catalog_contract COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ybx_builtin_catalog_manifest.py)
 add_test(NAME ybx_sleep_logo_asset COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ybx_sleep_logo_asset.py)
