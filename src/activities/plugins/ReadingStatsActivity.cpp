@@ -667,8 +667,7 @@ void ReadingStatsActivity::render(RenderLock&&) {
   const BodyArea body = bodyArea();
   // 2rc removed UITheme::getHeaderRect; draw the same band in screen coords.
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-  const Rect header{safe.x, safe.y + metrics.topPadding, safe.width, metrics.headerHeight};
+  const Rect header{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight};
   const char* subtitle = (dashboardLoaded && pagesUsed > 0) ? currentPageSpec().title : nullptr;
   GUI.drawHeader(renderer, header, pluginTitle.c_str(), subtitle);
 

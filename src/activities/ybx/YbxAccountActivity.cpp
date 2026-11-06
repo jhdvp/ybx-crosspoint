@@ -223,12 +223,10 @@ void YbxAccountActivity::button(UiScreen& ui, fui::Rect bounds, int value, const
 }
 void YbxAccountActivity::draw(UiScreen& ui) {
   const auto safe = UITheme::getInstance().getScreenSafeArea(renderer, false);
-  const int pad = UITheme::getInstance().getMetrics().contentSidePadding;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pad = metrics.contentSidePadding;
   const int x = safe.x + pad, width = safe.width - pad * 2;
-  auto heading = ui.theme().bodyText;
-  heading.bold = true;
-  ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 8), static_cast<int16_t>(width), 42},
-                   tr(STR_OPDS_MY_ACCOUNT), heading);
+  const int topY = safe.y + metrics.headerHeight + 12;
   const char* names[] = {tr(STR_YBX_ACCOUNT_YANDEX), tr(STR_YBX_ACCOUNT_WB), tr(STR_YBX_ACCOUNT_LITRES)};
   auto text = ui.theme().smallText;
   text.maxLines = 2;
@@ -238,7 +236,7 @@ void YbxAccountActivity::draw(UiScreen& ui) {
                                                                                      : tr(STR_YBX_ACCOUNT_NOT_LISTED);
     snprintf(rows_[i].data(), rows_[i].size(), "%s: %s", names[i], value);
     ui.target().text(
-        {static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 65 + i * 48), static_cast<int16_t>(width), 40},
+        {static_cast<int16_t>(x), static_cast<int16_t>(topY + i * 48), static_cast<int16_t>(width), 40},
         rows_[i].data(), text);
   }
   const char* status = tr(STR_YBX_ACCOUNT_UNAVAILABLE);
@@ -246,7 +244,7 @@ void YbxAccountActivity::draw(UiScreen& ui) {
   if (state_ == State::Loading) status = tr(STR_LOADING_POPUP);
   if (state_ == State::NotConnected || state_ == State::InvalidToken) status = tr(STR_YBX_SYNC_NOT_PAIRED);
   if (state_ == State::Unsupported) status = tr(STR_YBX_PLUGIN_UPDATE);
-  ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(safe.y + 225), static_cast<int16_t>(width), 45},
+  ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(topY + 160), static_cast<int16_t>(width), 45},
                    status, text);
   const int spacing = 8, cell = (width - spacing * 2) / 3;
   const int y = safe.y + safe.height - 64;
@@ -258,6 +256,9 @@ void YbxAccountActivity::draw(UiScreen& ui) {
 }
 void YbxAccountActivity::render(RenderLock&&) {
   renderer.clearScreen();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
+                 tr(STR_OPDS_MY_ACCOUNT));
   renderUi();
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }

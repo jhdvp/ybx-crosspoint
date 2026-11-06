@@ -9,6 +9,8 @@ class NotesActivity final : public UiListActivity {
  public:
   NotesActivity(GfxRenderer& renderer, MappedInputManager& input) : UiListActivity("NativeNotes", renderer, input) {}
   void onEnter() override;
+  void onExit() override;
+  void onScreenCovered() override;
   void loop() override;
 
  private:
@@ -20,6 +22,7 @@ class NotesActivity final : public UiListActivity {
   const char* headerTitle() const override;
 
   void reload();
+  void releaseRows();
   void startNewNote();
   bool needsReload_ = false;
   size_t rowsUsed_ = 1;

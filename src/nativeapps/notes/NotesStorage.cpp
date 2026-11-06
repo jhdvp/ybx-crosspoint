@@ -73,14 +73,24 @@ bool save(const std::string_view fileName, const Document& value) {
     // Never rotate or delete the previous valid backup if a canonical file
     // has become corrupt/unreadable since the user opened it.
     Document previous;
-    if (!readValid(path, previous)) return false;
+    if (!readValid(path, previous)) {
+      Storage.remove(temp.c_str());
+      return false;
+    }
     // Old backup is redundant while the current canonical file is intact.
-    // On failure, leave canonical and temp untouched.
-    if (Storage.exists(backup.c_str()) && !Storage.remove(backup.c_str())) return false;
-    if (!Storage.rename(path.c_str(), backup.c_str())) return false;
+    // On failure, leave canonical untouched and remove temp.
+    if (Storage.exists(backup.c_str()) && !Storage.remove(backup.c_str())) {
+      Storage.remove(temp.c_str());
+      return false;
+    }
+    if (!Storage.rename(path.c_str(), backup.c_str())) {
+      Storage.remove(temp.c_str());
+      return false;
+    }
   } else if (Storage.exists(backup.c_str())) {
     // An interrupted older commit is awaiting recovery. Do not let a new
     // creation overwrite its only still-valid revision.
+    Storage.remove(temp.c_str());
     return false;
   }
 
@@ -88,6 +98,7 @@ bool save(const std::string_view fileName, const Document& value) {
     if (exists && !Storage.rename(backup.c_str(), path.c_str())) {
       LOG_ERR(kTag, "Restore after failed commit failed (path withheld)");
     }
+    Storage.remove(temp.c_str());
     return false;
   }
   return true;

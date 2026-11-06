@@ -25,6 +25,15 @@ void NoteActionsActivity::onEnter() {
   UiListActivity::onEnter();
 }
 
+void NoteActionsActivity::onExit() {
+  doc_.title.clear();
+  doc_.title.shrink_to_fit();
+  doc_.body.clear();
+  doc_.body.shrink_to_fit();
+  loaded_ = false;
+  UiListActivity::onExit();
+}
+
 void NoteActionsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
@@ -74,14 +83,18 @@ void NoteActionsActivity::startEdit(const bool title) {
   }
   startActivityForResult(std::move(keyboard), [this, title](const ActivityResult& result) {
     if (result.isCancelled) return;
-    nativeapps::notes::Document update = doc_;
-    if (title)
+    nativeapps::notes::Document update;
+    if (title) {
       update.title = std::get<KeyboardResult>(result.data).text;
-    else
+      update.body = std::move(doc_.body);
+    } else {
+      update.title = std::move(doc_.title);
       update.body = std::get<KeyboardResult>(result.data).text;
+    }
 
     if (!nativeapps::notes::validDocument(update) || !nativeapps::notes::save(fileName_, update)) {
       GUI.drawPopup(renderer, tr(STR_YBX_NOTE_SAVE_FAILED));
+      loaded_ = nativeapps::notes::load(fileName_, doc_);
       requestUpdate();
       return;
     }

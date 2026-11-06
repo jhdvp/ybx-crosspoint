@@ -30,9 +30,25 @@ void NotesActivity::reload() {
   needsReload_ = false;
 }
 
+void NotesActivity::releaseRows() {
+  notes_.rows.clear();
+  notes_.rows.shrink_to_fit();
+  rowsUsed_ = 1;
+  needsReload_ = true;
+}
+
 void NotesActivity::onEnter() {
   reload();
   UiListActivity::onEnter();
+}
+
+void NotesActivity::onExit() {
+  releaseRows();
+  UiListActivity::onExit();
+}
+
+void NotesActivity::onScreenCovered() {
+  releaseRows();
 }
 
 void NotesActivity::loop() {
@@ -51,6 +67,9 @@ void NotesActivity::loop() {
 const char* NotesActivity::headerTitle() const { return tr(STR_YBX_NOTES); }
 
 void NotesActivity::buildScreen(UiScreen& screen) {
+  if (needsReload_) {
+    reload();
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
@@ -79,7 +98,8 @@ void NotesActivity::activateIndex(int index) {
     startNewNote();
     return;
   }
-  const auto fileName = notes_.rows[static_cast<size_t>(index - 1)].fileName;
+  const std::string fileName = notes_.rows[static_cast<size_t>(index - 1)].fileName;
+  releaseRows();
   auto details = makeUniqueNoThrow<NoteActionsActivity>(renderer, mappedInput, fileName);
   if (!details) {
     GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
@@ -100,6 +120,7 @@ void NotesActivity::startNewNote() {
     GUI.drawPopup(renderer, tr(STR_YBX_NOTE_LIMIT));
     return;
   }
+  releaseRows();
   auto titleKeyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_YBX_NOTE_TITLE), "",
                                                                 nativeapps::notes::kMaxTitleBytes, InputType::Text);
   if (!titleKeyboard) {
@@ -108,10 +129,15 @@ void NotesActivity::startNewNote() {
   }
 
   startActivityForResult(std::move(titleKeyboard), [this](const ActivityResult& result) {
-    if (result.isCancelled) return;
+    if (result.isCancelled) {
+      needsReload_ = true;
+      requestUpdate();
+      return;
+    }
     const std::string title = std::get<KeyboardResult>(result.data).text;
     if (!nativeapps::notes::validDocument({title, ""})) {
       GUI.drawPopup(renderer, tr(STR_YBX_NOTE_INVALID));
+      needsReload_ = true;
       requestUpdate();
       return;
     }
@@ -119,14 +145,21 @@ void NotesActivity::startNewNote() {
                                                                  nativeapps::notes::kMaxBodyBytes, InputType::Text);
     if (!bodyKeyboard) {
       GUI.drawPopup(renderer, tr(STR_MEMORY_ERROR));
+      needsReload_ = true;
+      requestUpdate();
       return;
     }
     startActivityForResult(std::move(bodyKeyboard), [this, title](const ActivityResult& bodyResult) {
-      if (bodyResult.isCancelled) return;
+      if (bodyResult.isCancelled) {
+        needsReload_ = true;
+        requestUpdate();
+        return;
+      }
       nativeapps::notes::Document document{title, std::get<KeyboardResult>(bodyResult.data).text};
       std::string newFileName;
       if (!nativeapps::notes::create(document, newFileName)) {
         GUI.drawPopup(renderer, tr(STR_YBX_NOTE_SAVE_FAILED));
+        needsReload_ = true;
         requestUpdate();
         return;
       }

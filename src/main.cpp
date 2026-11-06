@@ -491,19 +491,22 @@ void enterDeepSleep(bool fromTimeout = false) {
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
       (fromTimeout &&
        SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT);
-  // Every sleep mode leaves a complete retained frame on the e-ink panel. Keep
-  // it visible until the first useful reader or home paint replaces it.
-  APP_STATE.showBootScreen = false;
-
-  APP_STATE.saveToFile();
+  if (!sdRecoveryBootMode) {
+    // Every sleep mode leaves a complete retained frame on the e-ink panel. Keep
+    // it visible until the first useful reader or home paint replaces it.
+    APP_STATE.showBootScreen = false;
+    APP_STATE.saveToFile();
+  }
 
   activityManager.goToSleep(fromTimeout);
 
-  if (isQuickResumeSleep) {
-    saveSleepFrameBuffer();
-  } else if (Storage.exists(SLEEP_FRAME_FILE)) {
-    // A stale Quick Resume frame must not replace the selected sleep screen during wake.
-    Storage.remove(SLEEP_FRAME_FILE);
+  if (!sdRecoveryBootMode) {
+    if (isQuickResumeSleep) {
+      saveSleepFrameBuffer();
+    } else if (Storage.exists(SLEEP_FRAME_FILE)) {
+      // A stale Quick Resume frame must not replace the selected sleep screen during wake.
+      Storage.remove(SLEEP_FRAME_FILE);
+    }
   }
 
   // Tear down WiFi so the modem power domain isn't held alive across deep sleep.
@@ -861,6 +864,46 @@ void loop() {
     // services were initialized. No ordinary loop path may touch them.
     mappedInputManager.update();
     activityManager.loop();
+
+    // Check user activity to reset auto-sleep timer
+    static unsigned long recoveryLastActivity = millis();
+    int rx = 0;
+    int ry = 0;
+    if (gpio.wasAnyPressed() || gpio.wasAnyReleased() ||
+        (mappedInputManager.hasTouch() && mappedInputManager.wasScreenTapped(rx, ry))) {
+      recoveryLastActivity = millis();
+      powerManager.setPowerSaving(false);
+    }
+
+    // Power button press/hold -> deep sleep
+    static bool recoveryPowerReleased = false;
+    if (!gpio.isPressed(HalGPIO::BTN_POWER)) recoveryPowerReleased = true;
+
+    const bool powerHeld = recoveryPowerReleased && millis() >= allowSleepAt &&
+                           nosd::shouldPowerSleep(gpio.isPressed(HalGPIO::BTN_POWER), gpio.getPowerButtonHeldTime(),
+                                                  SETTINGS.getPowerButtonDuration());
+#if FREEINK_DEVICE_PAPERMONO
+    const bool powerClicked =
+        millis() >= allowSleepAt && mappedInputManager.wasReleased(MappedInputManager::Button::Power);
+#else
+    const bool powerClicked = false;
+#endif
+
+    if (powerHeld || powerClicked) {
+      LOG_DBG("MAIN", "Power button in SD recovery, sleeping");
+      enterDeepSleep();
+      return;
+    }
+
+    // Auto-sleep timeout (default 5 minutes if unset, or SETTINGS.getSleepTimeoutMs())
+    const unsigned long sleepTimeoutMs =
+        SETTINGS.getSleepTimeoutMs() > 0 ? SETTINGS.getSleepTimeoutMs() : nosd::kDefaultSleepTimeoutMs;
+    if (nosd::shouldAutoSleep(millis(), recoveryLastActivity, sleepTimeoutMs)) {
+      LOG_DBG("SLP", "Auto-sleep in SD recovery triggered after %lu ms", sleepTimeoutMs);
+      enterDeepSleep(true);
+      return;
+    }
+
     powerManager.setPowerSaving(true);
     delay(75);
     return;

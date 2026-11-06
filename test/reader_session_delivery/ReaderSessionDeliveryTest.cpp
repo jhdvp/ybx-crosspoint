@@ -126,7 +126,12 @@ struct Device {
       ensureId();
       readersession::Record stale;
       if (readersession::read(files, JOURNAL, stale) && std::string(stale.id) != id) {
-        if (!recoverAtBoot()) return;
+        if (!recoverAtBoot()) {
+          session.reset();
+          id.clear();
+          lastCheckpointMs = 0;
+          return;
+        }
       }
       const readersession::Record record = recordFor(session.summary());
       if (queueAccepted) {
@@ -330,6 +335,8 @@ TEST(ReaderSessionDelivery, AFailedRecoveryKeepsTheOtherSessionsCheckpoint) {
   EXPECT_STREQ(kept.id, "deadbeef-1");
   EXPECT_EQ(kept.durationSeconds, 900u);
   EXPECT_TRUE(device.outbox.empty());
+  EXPECT_TRUE(device.id.empty());
+  EXPECT_EQ(device.session.summary().durationSeconds, 0u);
 }
 
 TEST(ReaderSessionDelivery, FailingCheckpointIsRetriedOnceAMinute) {

@@ -201,7 +201,7 @@ void YbxHomeUi::draw(UiScreen& screen) {
                       screen.target().lineHeight(theme.bodyText.font), screen.target().lineHeight(theme.smallText.font),
                       catalogs, books->size() > 1, metrics.topPadding + metrics.batteryBarHeight);
   // 2rc removed UITheme::getHeaderRect (header rework); same band in screen coords.
-  GUI.drawHeader(renderer, Rect{safe.x, safe.y + metrics.topPadding, safe.width, metrics.batteryBarHeight}, nullptr,
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.batteryBarHeight}, nullptr,
                  nullptr, false);
   const int markY = layout.header.y + metrics.topPadding + metrics.batteryBarHeight + 6;
   screen.target().fill(fui::Rect{layout.header.x, static_cast<int16_t>(markY), 28, 28}, INK, 6);

@@ -133,14 +133,14 @@ void YbxStatisticsActivity::draw(UiScreen& ui) {
     return;
   }
   const auto safe = UITheme::getInstance().getScreenSafeArea(renderer, false);
-  const int pad = UITheme::getInstance().getMetrics().contentSidePadding;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pad = metrics.contentSidePadding;
   const int line = ui.target().lineHeight(ui.theme().smallText.font);
-  const fui::Rect content{static_cast<int16_t>(safe.x + pad), static_cast<int16_t>(safe.y + 8),
-                          static_cast<int16_t>(safe.width - 2 * pad), static_cast<int16_t>(safe.height - 16)};
+  const int top = safe.y + metrics.headerHeight + 4;
+  const fui::Rect content{static_cast<int16_t>(safe.x + pad), static_cast<int16_t>(top),
+                          static_cast<int16_t>(safe.width - 2 * pad),
+                          static_cast<int16_t>(safe.y + safe.height - top - 8)};
   const auto layout = ybxhome::statisticsLayout(content, line);
-  auto title = ui.theme().bodyText;
-  title.bold = true;
-  ui.target().text(layout.title, tr(STR_YBX_STATS), title);
   drawYbxReadingPanel(ui, layout.panel, summary);
   const char* message = statusMessage();
   auto text = ui.theme().smallText;
@@ -199,6 +199,9 @@ const char* YbxStatisticsActivity::datedStatus(const char* message, int64_t valu
 }
 void YbxStatisticsActivity::render(RenderLock&&) {
   renderer.clearScreen();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const char* title = (view == View::Statistics) ? tr(STR_YBX_STATS) : tr(STR_YBX_AWARDS);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight}, title);
   renderUi();
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
@@ -309,16 +312,16 @@ void YbxStatisticsActivity::drawButton(UiScreen& ui, fui::Rect bounds, int actio
 }
 void YbxStatisticsActivity::drawAwards(UiScreen& ui) {
   const auto safe = UITheme::getInstance().getScreenSafeArea(renderer, false);
-  const int pad = UITheme::getInstance().getMetrics().contentSidePadding;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pad = metrics.contentSidePadding;
   const int line = ui.target().lineHeight(ui.theme().smallText.font);
-  const fui::Rect content{static_cast<int16_t>(safe.x + pad), static_cast<int16_t>(safe.y + 8),
-                          static_cast<int16_t>(safe.width - 2 * pad), static_cast<int16_t>(safe.height - 16)};
+  const int top = safe.y + metrics.headerHeight + 4;
+  const fui::Rect content{static_cast<int16_t>(safe.x + pad), static_cast<int16_t>(top),
+                          static_cast<int16_t>(safe.width - 2 * pad),
+                          static_cast<int16_t>(safe.y + safe.height - top - 8)};
   ybx::awardsLayout(awards->layout, content, line);
   const auto& layout = awards->layout;
   auto text = ui.theme().smallText;
-  auto title = ui.theme().bodyText;
-  title.bold = true;
-  ui.target().text(layout.title, tr(STR_YBX_AWARDS), title);
   const auto& page = awards->shown;
   const auto group = static_cast<size_t>(page.section);
   const int tabs = page.totals[2] > 0 ? 3 : 2;
@@ -377,10 +380,13 @@ void YbxStatisticsActivity::drawAwards(UiScreen& ui) {
 }
 void YbxStatisticsActivity::drawAwardDetail(UiScreen& ui) {
   const auto safe = UITheme::getInstance().getScreenSafeArea(renderer, false);
-  const int pad = UITheme::getInstance().getMetrics().contentSidePadding;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pad = metrics.contentSidePadding;
   const int line = ui.target().lineHeight(ui.theme().smallText.font);
-  const fui::Rect content{static_cast<int16_t>(safe.x + pad), static_cast<int16_t>(safe.y + 8),
-                          static_cast<int16_t>(safe.width - 2 * pad), static_cast<int16_t>(safe.height - 16)};
+  const int top = safe.y + metrics.headerHeight + 4;
+  const fui::Rect content{static_cast<int16_t>(safe.x + pad), static_cast<int16_t>(top),
+                          static_cast<int16_t>(safe.width - 2 * pad),
+                          static_cast<int16_t>(safe.y + safe.height - top - 8)};
   const auto& award = awards->shown.cards[detailIndex];
   auto title = ui.theme().bodyText;
   title.bold = true;

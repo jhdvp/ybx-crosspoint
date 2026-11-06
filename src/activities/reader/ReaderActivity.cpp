@@ -192,7 +192,12 @@ void ReaderActivity::flushReaderSession() {
         // That record holds another session's reading time: it may be replaced
         // only once it is queued. If queuing fails, nothing here is rewritten and
         // the checkpoint stays recoverable at the next boot.
-        if (!readersession::recoverPending()) return;
+        if (!readersession::recoverPending()) {
+          readerSession.reset();
+          sessionId[0] = '\0';
+          lastSessionCheckpointMs = 0;
+          return;
+        }
       }
       readersession::Record record;
       snprintf(record.id, sizeof(record.id), "%s", sessionId);

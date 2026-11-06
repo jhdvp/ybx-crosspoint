@@ -56,6 +56,7 @@ TEST_F(NativeNotesStorage, FailedFinalRenameRollsBackPreviousRevision) {
   ASSERT_TRUE(save(name, original));
   Storage.blockFinalRename = true;
   EXPECT_FALSE(save(name, Document{"Updated", "Body2"}));
+  EXPECT_FALSE(Storage.exists((path() + ".tmp").c_str()));
   Storage.blockFinalRename = false;
   Document current;
   ASSERT_TRUE(load(name, current));

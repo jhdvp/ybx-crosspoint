@@ -33,3 +33,21 @@ TEST(NoSdRecovery, IdleAfterFailedAttemptNeverPollsAutomatically) {
   EXPECT_FALSE(gate.consume(7000u, false));
   EXPECT_TRUE(gate.consume(7000u, true));
 }
+
+TEST(NoSdRecovery, AutoSleepTriggersAfterInactivity) {
+  EXPECT_FALSE(nosd::shouldAutoSleep(10000u, 10000u, 300000u));
+  EXPECT_FALSE(nosd::shouldAutoSleep(309999u, 10000u, 300000u));
+  EXPECT_TRUE(nosd::shouldAutoSleep(310000u, 10000u, 300000u));
+}
+
+TEST(NoSdRecovery, AutoSleepHandlesWraparound) {
+  EXPECT_FALSE(nosd::shouldAutoSleep(100u, UINT32_MAX - 50u, 300000u));
+  EXPECT_TRUE(nosd::shouldAutoSleep(300000u, UINT32_MAX - 50u, 300000u));
+}
+
+TEST(NoSdRecovery, PowerButtonHeldTriggersSleep) {
+  EXPECT_FALSE(nosd::shouldPowerSleep(false, 1000u, 500u));
+  EXPECT_FALSE(nosd::shouldPowerSleep(true, 400u, 500u));
+  EXPECT_TRUE(nosd::shouldPowerSleep(true, 501u, 500u));
+}
+

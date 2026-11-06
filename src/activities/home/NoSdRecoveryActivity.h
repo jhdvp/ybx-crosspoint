@@ -18,5 +18,5 @@ class NoSdRecoveryActivity final : public Activity {
   void loop() override;
   void render(RenderLock&& lock) override;
   bool handleHomeGesture() override { return true; }
-  bool preventAutoSleep() override { return true; }
+  bool preventAutoSleep() override { return false; }
 };

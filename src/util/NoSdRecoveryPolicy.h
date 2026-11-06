@@ -20,4 +20,16 @@ struct RetryGate {
   }
 };
 
+// Inactivity timeout for SD recovery mode when settings are not yet loaded.
+inline constexpr uint32_t kDefaultSleepTimeoutMs = 300000;  // 5 minutes
+
+inline bool shouldAutoSleep(uint32_t nowMs, uint32_t lastActivityMs, uint32_t timeoutMs = kDefaultSleepTimeoutMs) {
+  if (timeoutMs == 0) return false;
+  return static_cast<uint32_t>(nowMs - lastActivityMs) >= timeoutMs;
+}
+
+inline bool shouldPowerSleep(bool powerPressed, uint32_t heldTimeMs, uint32_t thresholdMs = 500) {
+  return powerPressed && heldTimeMs > thresholdMs;
+}
+
 }  // namespace nosd

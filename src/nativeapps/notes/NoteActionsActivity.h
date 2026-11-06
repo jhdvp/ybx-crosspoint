@@ -11,6 +11,7 @@ class NoteActionsActivity final : public UiListActivity {
   NoteActionsActivity(GfxRenderer& renderer, MappedInputManager& input, std::string fileName)
       : UiListActivity("NativeNoteActions", renderer, input), fileName_(std::move(fileName)) {}
   void onEnter() override;
+  void onExit() override;
 
  private:
   int listCount() const override { return loaded_ ? 4 : 0; }
