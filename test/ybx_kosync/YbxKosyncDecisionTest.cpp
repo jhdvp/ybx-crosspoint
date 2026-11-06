@@ -12,6 +12,7 @@ using ybxkosync::Outcome;
 using ybxkosync::ProvisionState;
 using ybxkosync::remoteJumpNeedsConsent;
 using ybxkosync::Status;
+using ybxkosync::usePairedKeyForClippings;
 using ybxkosync::ybxDerivedCredentialsRemain;
 
 namespace {
@@ -168,4 +169,24 @@ TEST(YbxKosyncDecision, AgeBucketsSwitchAtHourAndDayLimits) {
   EXPECT_EQ(unit, 1);
   EXPECT_TRUE(describeAge(base, base + 48 * 3600, value, unit));
   EXPECT_EQ(unit, 2);
+}
+
+TEST(YbxKosyncDecision, PairedClippingsKeyNeverLeavesTheVerifiedYbxEndpoint) {
+  const std::string key = "cp_" + std::string(43, 'a');
+  const std::string base = "https://my.ybx.app/api/v1/crosspoint/kosync";
+  EXPECT_TRUE(usePairedKeyForClippings(base, "ybx", key));
+  EXPECT_FALSE(usePairedKeyForClippings("http://my.ybx.app/api/v1/crosspoint/kosync", "ybx", key));
+  EXPECT_FALSE(usePairedKeyForClippings("https://my.ybx.app.evil.test/api/v1/crosspoint/kosync", "ybx", key));
+  EXPECT_FALSE(usePairedKeyForClippings(base + "/steal", "ybx", key));
+  EXPECT_FALSE(usePairedKeyForClippings(base, "other", key));
+  EXPECT_FALSE(usePairedKeyForClippings(base, "ybx", "kosync_" + std::string(43, 'a')));
+  EXPECT_FALSE(usePairedKeyForClippings(base, "ybx", "cp_" + std::string(43, '!')));
+}
+
+TEST(YbxKosyncDecision, PreservesAHandEnteredServerBeforePasswordIsConfigured) {
+  ProvisionState s = paired();
+  s.manualServerUrl = true;
+  EXPECT_EQ(decideAction(s), Action::KeepManual);
+  s.manualServerUrl = false;
+  EXPECT_EQ(decideAction(s), Action::Apply);
 }

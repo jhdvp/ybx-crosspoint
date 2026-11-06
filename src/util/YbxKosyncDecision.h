@@ -60,6 +60,7 @@ struct ProvisionState {
   bool tokenPresent = false;          // it carries a readable reader key
   bool provisioned = false;           // KOSync settings were written by this module
   bool credentialsPresent = false;    // KOSync has any credentials at all
+  bool manualServerUrl = false;       // a non-YBX URL may exist without credentials
   bool pointsAtYbx = false;           // those credentials target the YBX bridge
   bool keyFpMatches = false;          // the stored fingerprint is the key read just now
   bool credentialCarriesKey = false;  // the password on file is that key itself
@@ -74,7 +75,7 @@ inline Action decideAction(const ProvisionState& s) {
   // keep the last configuration and let a refused request report it.
   if (!s.tokenPresent) return Action::None;
   if (!s.provisioned) {
-    if (!s.credentialsPresent) return Action::Apply;
+    if (!s.credentialsPresent) return s.manualServerUrl ? Action::KeepManual : Action::Apply;
     if (!s.pointsAtYbx) return Action::KeepManual;
     if (s.credentialCarriesKey) return Action::Adopt;
     // A hand-edit pass already ran (Abandon keeps the fingerprint it saw): the key
@@ -99,6 +100,20 @@ inline Action decideAction(const ProvisionState& s) {
 inline bool ybxDerivedCredentialsRemain(const std::string_view username, const std::string_view password,
                                         const std::string_view ybxUser, const std::string_view key) {
   return !key.empty() && username == ybxUser && password == key;
+}
+
+// The reader's paired cp_ token may authorise clippings only on the exact
+// verified HTTPS YBX endpoint. No other KOSync server or narrow kosync_ key
+// gets this header, even if it uses the same username or similar hostname.
+inline bool usePairedKeyForClippings(const std::string_view baseUrl, const std::string_view username,
+                                    const std::string_view password) {
+  if (baseUrl != "https://my.ybx.app/api/v1/crosspoint/kosync" || username != "ybx") return false;
+  if (password.size() != 46 || password.substr(0, 3) != "cp_") return false;
+  for (const char c : password.substr(3)) {
+    const bool valid = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_';
+    if (!valid) return false;
+  }
+  return true;
 }
 
 // True when jumping to the server position is far enough that the reader must

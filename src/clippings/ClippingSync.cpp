@@ -14,6 +14,7 @@
 #include "ClippingStore.h"
 #include "network/TlsTransport.h"
 #include "util/YbxDocumentIdentity.h"
+#include "util/YbxKosyncDecision.h"
 #include "util/YbxNoteContextStore.h"
 
 namespace {
@@ -41,6 +42,17 @@ bool request(freeink::SecureHttpClient& http, const std::string& url, char* buff
   }
   http.addHeader("x-auth-user", KOREADER_STORE.getUsername());
   http.addHeader("x-auth-key", KOREADER_STORE.getMd5Password());
+  // QR-paired custom firmware auto-configures cp_ on the verified HTTPS YBX
+  // KOSync endpoint. That paired key has an explicit clippings scope on YBX,
+  // while x-auth-key alone is not accepted on the plugin Clippings v2 alias.
+  // Never forward the broad key to another server, an http:// URL, or a
+  // homograph/prefix path: those continue using their own account KOSync.
+  const std::string& base = KOREADER_STORE.getBaseUrl();
+  const std::string& username = KOREADER_STORE.getUsername();
+  const std::string& password = KOREADER_STORE.getPassword();
+  if (ybxkosync::usePairedKeyForClippings(base, username, password)) {
+    http.addHeader("Authorization", "Bearer " + password);
+  }
   http.addHeader("Content-Type", "application/json");
   size_t received = 0;
   const int status = http.sendRequest(upload ? "PUT" : "GET", reinterpret_cast<const uint8_t*>(buffer), payloadSize,
