@@ -142,6 +142,69 @@ TEST(ReadingStatsDays, RingEvictsOldestAndStopsBeingAWindow) {
   EXPECT_EQ(state.days[MAX_DAYS - 1].sessions, 3);
 }
 
+TEST(ReadingStatsDays, EvictionsCarrySecondsForTheArchive) {
+  State state;
+  EvictedDay evicted[MAX_SESSION_SEGMENTS + 1] = {};
+  EvictionSink evictions{evicted, MAX_SESSION_SEGMENTS + 1, 0};
+  for (int i = 1; i <= MAX_DAYS; i++) {
+    addDaySeconds(state, static_cast<uint16_t>(100 + i), 60, 1, &evictions);
+  }
+  EXPECT_EQ(evictions.count, 0u);
+
+  // A newer day pushes the oldest ring entry out: it is offered to the sink.
+  addDaySeconds(state, 165, 60, 1, &evictions);
+  ASSERT_EQ(evictions.count, 1u);
+  EXPECT_EQ(evicted[0].ordinal, 101);
+  EXPECT_EQ(evicted[0].seconds, 60u);
+  EXPECT_EQ(state.days[0].ordinal, 102);
+
+  // Seconds for a day older than the ring never enter it, but must still reach
+  // the archive; totals already counted them.
+  addDaySeconds(state, 50, 60, 1, &evictions);
+  ASSERT_EQ(evictions.count, 2u);
+  EXPECT_EQ(evicted[1].ordinal, 50);
+  EXPECT_EQ(evicted[1].seconds, 60u);
+  EXPECT_EQ(state.days[0].ordinal, 102);
+  EXPECT_EQ(state.activeDays, MAX_DAYS + 2);
+}
+
+TEST(ReadingStatsDays, EvictionSinkOverflowIsBounded) {
+  State state;
+  EvictedDay evicted[1] = {};
+  EvictionSink evictions{evicted, 1, 0};
+  for (int i = 1; i <= MAX_DAYS + 1; i++) {
+    addDaySeconds(state, static_cast<uint16_t>(100 + i), 60, 1, &evictions);
+  }
+  // Two evictions with capacity one: the sink keeps exactly one entry.
+  EXPECT_EQ(evictions.count, 1u);
+  EXPECT_EQ(evicted[0].ordinal, 101);
+}
+
+TEST(ReadingStatsSessions, AddSessionForwardsRingEvictions) {
+  useZone("UTC");
+  State state;
+  for (int i = 0; i < MAX_DAYS; ++i) {
+    addDaySeconds(state, static_cast<uint16_t>(1000 + i), 60, 1);
+  }
+  // A session across three local days evicts one ring day per new segment.
+  const int64_t start = static_cast<int64_t>(1100) * 86400 + 3600;
+  EvictedDay evicted[MAX_SESSION_SEGMENTS] = {};
+  EvictionSink evictions{evicted, MAX_SESSION_SEGMENTS, 0};
+  EXPECT_EQ(addSession(state, start, 2 * 86400 + 3600, &evictions), 1100);
+  ASSERT_EQ(evictions.count, 3u);
+  EXPECT_EQ(evicted[0].ordinal, 1000);
+  EXPECT_EQ(evicted[1].ordinal, 1001);
+  EXPECT_EQ(evicted[2].ordinal, 1002);
+  for (int i = 0; i < 3; ++i) EXPECT_EQ(evicted[i].seconds, 60u);
+}
+
+TEST(ReadingStatsSessions, AddSessionStillWorksWithoutASink) {
+  useZone("UTC");
+  State state;
+  EXPECT_EQ(addSession(state, utcEpoch(2026, 10, 28, 10, 0), 600), daysFromCivil(2026, 10, 28));
+  EXPECT_EQ(state.totalSeconds, 600u);
+}
+
 TEST(ReadingStatsDays, InsertKeepsAscendingOrder) {
   State state;
   addDaySeconds(state, 20, 60, 1);

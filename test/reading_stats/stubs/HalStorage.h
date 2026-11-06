@@ -7,6 +7,7 @@
 namespace fake_sd {
 struct Disk {
   std::map<std::string, std::string> files;
+  std::string failWritePath;  // writes to this path fail
   bool available = true;
   int operations = 0;
   int failAt = -1;
@@ -23,6 +24,7 @@ struct HalFile {
   bool writing = false;
   size_t write(const void* src, size_t count) {
     if (!opened || !writing) return 0;
+    if (!fake_sd::disk.failWritePath.empty() && path == fake_sd::disk.failWritePath) return 0;
     if (++fake_sd::disk.operations == fake_sd::disk.failAt) {
       if (!fake_sd::disk.tearWrite) return 0;
       count /= 2;
@@ -32,11 +34,18 @@ struct HalFile {
   }
   int read(void* dest, size_t count) {
     if (!opened || writing) return 0;
-    const auto& data = fake_sd::disk.files.at(path);
+    const auto it = fake_sd::disk.files.find(path);
+    if (it == fake_sd::disk.files.end()) return -1;
+    const auto& data = it->second;
+    if (pos >= data.size()) return 0;
     count = std::min(count, data.size() - pos);
     std::copy_n(data.data() + pos, count, static_cast<char*>(dest));
     pos += count;
     return static_cast<int>(count);
+  }
+  size_t fileSize() const {
+    const auto it = fake_sd::disk.files.find(path);
+    return it == fake_sd::disk.files.end() ? 0 : it->second.size();
   }
   void flush() {}
   bool close() {
@@ -79,6 +88,14 @@ struct HalStorage {
     f.pos = 0;
     f.opened = true;
     f.writing = true;
+    return true;
+  }
+  bool openFileForRead(const char*, const char* path, HalFile& f) {
+    if (!fake_sd::disk.available || fake_sd::disk.files.count(path) == 0) return false;
+    f.path = path;
+    f.pos = 0;
+    f.opened = true;
+    f.writing = false;
     return true;
   }
 };

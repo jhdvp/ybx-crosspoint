@@ -178,7 +178,27 @@ inline const Day* findDay(const State& state, const uint16_t ordinal) {
 
 inline bool recordedDay(const State& state, const uint16_t ordinal) { return findDay(state, ordinal) != nullptr; }
 
-inline void addDaySeconds(State& state, const uint16_t ordinal, const uint32_t seconds, const uint16_t sessions) {
+// Reading time that the bounded per-day ring can no longer hold: either a day
+// leaving the MAX_DAYS window, or seconds for a day older than the ring. The
+// session caller forwards these to the monthly archive (ReadingStatsArchive.h),
+// so deep history keeps the seconds; totals are counted before this.
+struct EvictedDay {
+  uint16_t ordinal = 0;
+  uint32_t seconds = 0;
+};
+
+struct EvictionSink {
+  EvictedDay* items = nullptr;
+  size_t capacity = 0;
+  size_t count = 0;
+  void push(const uint16_t ordinal, const uint32_t seconds) {
+    if (items == nullptr || count >= capacity) return;  // archive loss is bounded and logged by the caller
+    items[count++] = {ordinal, seconds};
+  }
+};
+
+inline void addDaySeconds(State& state, const uint16_t ordinal, const uint32_t seconds, const uint16_t sessions,
+                          EvictionSink* evictions = nullptr) {
   if (ordinal == 0 || (seconds == 0 && sessions == 0)) return;
   for (int i = 0; i < state.dayCount; i++) {
     if (state.days[i].ordinal != ordinal) continue;
@@ -189,12 +209,14 @@ inline void addDaySeconds(State& state, const uint16_t ordinal, const uint32_t s
   int pos = 0;
   while (pos < state.dayCount && state.days[pos].ordinal < ordinal) pos++;
   if (state.dayCount == MAX_DAYS) {
-    // A day older than the ring's window still counts as active, but the ring
-    // keeps the newest days only.
-    if (ordinal <= state.days[0].ordinal) {
+    // Reading time older than the ring's window still counts as active, but the
+    // ring keeps the newest days only.
+    if (ordinal < state.days[0].ordinal) {
       state.activeDays = saturatingAdd16(state.activeDays, 1);
+      if (evictions != nullptr) evictions->push(ordinal, seconds);
       return;
     }
+    if (evictions != nullptr) evictions->push(state.days[0].ordinal, state.days[0].seconds);
     std::memmove(&state.days[0], &state.days[1], (MAX_DAYS - 1) * sizeof(Day));
     state.dayCount--;
     if (pos > 0) pos--;
@@ -207,8 +229,10 @@ inline void addDaySeconds(State& state, const uint16_t ordinal, const uint32_t s
 
 // Records one finished reader session. Returns the day the session started on,
 // or 0 when the clock could not date it (those seconds stay in the totals and
-// are reported separately).
-inline uint16_t addSession(State& state, const int64_t startEpoch, const uint32_t duration) {
+// are reported separately). `evictions` receives the per-day seconds that the
+// ring drops or rejects; forward them to the monthly history archive.
+inline uint16_t addSession(State& state, const int64_t startEpoch, const uint32_t duration,
+                           EvictionSink* evictions = nullptr) {
   if (duration == 0) return 0;
   state.totalSeconds = saturatingAdd(state.totalSeconds, duration);
   state.totalSessions = saturatingAdd(state.totalSessions, 1);
@@ -220,7 +244,7 @@ inline uint16_t addSession(State& state, const int64_t startEpoch, const uint32_
     return 0;
   }
   for (int i = 0; i < count; i++) {
-    addDaySeconds(state, segments[i].day, segments[i].seconds, i == 0 ? 1 : 0);
+    addDaySeconds(state, segments[i].day, segments[i].seconds, i == 0 ? 1 : 0, evictions);
     if (segments[i].day > state.lastDay) state.lastDay = segments[i].day;
   }
   if (startEpoch > 0) {
