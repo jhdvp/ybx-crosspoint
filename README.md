@@ -15,7 +15,7 @@
 
 Your connected book libraries on an e-ink reader. YBX Reader is an independent
 [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) fork
-for **Xteink X3 and X4**, with YBX branding and a matching SD-card plugin.
+for **Xteink X3, X4 and X4 Pro**, with YBX branding and a matching SD-card plugin.
 Connect your services in [your YBX account](https://my.ybx.app), then browse
 and download available text books on the reader.
 
@@ -56,7 +56,7 @@ provider permissions; this project does not bypass DRM.
 | --- | --- |
 | YBX branding and dedicated update channel | Implemented; device acceptance pending |
 | Connected-service catalog and search | Implemented with authenticated list loading; device acceptance pending |
-| X3/X4 firmware build | Passing on upstream `a790b144` with its pinned FreeInk SDK |
+| X3/X4/X4 Pro firmware build | Passing on upstream `a790b144` with its pinned FreeInk SDK |
 | Wi-Fi settings loaded before sleep | Included from upstream; fresh-wake behavior still needs a device test |
 | Automatic sleep-card refresh | **Open blocker:** queued events can delay the image request; manual refresh is available |
 | Sleep-card design and statistics | Rendered by the YBX server; successful firmware build does not prove automatic delivery |
