@@ -100,7 +100,10 @@ formatting uses `clang-format` **21**.
 ```sh
 git clone --recursive --branch feat/ybx-native-integration https://github.com/jhdvp/ybx-crosspoint.git
 cd ybx-crosspoint
+# X3 / X4:
 CROSSPOINT_RC_HASH="$(git rev-parse --short=7 HEAD)" pio run -e gh_release_rc
+# X4 Pro:
+CROSSPOINT_RC_HASH="$(git rev-parse --short=7 HEAD)" pio run -e x4pro-gh_release_rc
 ```
 
 This command builds without flashing a device. See the
