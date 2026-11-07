@@ -26,8 +26,8 @@
 #include "activities/reader/ReaderUtils.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "images/YbxSleepLogo4.h"
 #include "images/MoonIcon.h"
+#include "images/YbxSleepLogo4.h"
 
 namespace {
 // Metalio: B/W sleep images use the full 0xF7 waveform instead of HALF (two

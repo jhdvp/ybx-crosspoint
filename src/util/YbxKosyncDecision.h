@@ -106,11 +106,12 @@ inline bool ybxDerivedCredentialsRemain(const std::string_view username, const s
 // verified HTTPS YBX endpoint. No other KOSync server or narrow kosync_ key
 // gets this header, even if it uses the same username or similar hostname.
 inline bool usePairedKeyForClippings(const std::string_view baseUrl, const std::string_view username,
-                                    const std::string_view password) {
+                                     const std::string_view password) {
   if (baseUrl != "https://my.ybx.app/api/v1/crosspoint/kosync" || username != "ybx") return false;
   if (password.size() != 46 || password.substr(0, 3) != "cp_") return false;
   for (const char c : password.substr(3)) {
-    const bool valid = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_';
+    const bool valid =
+        (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_';
     if (!valid) return false;
   }
   return true;
