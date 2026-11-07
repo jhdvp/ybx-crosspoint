@@ -1,3 +1,4 @@
+// Kindle-format append export, adapted from uxjulia/CrossInk (MIT license).
 #include "ClippingsManager.h"
 
 #include <HalClock.h>
