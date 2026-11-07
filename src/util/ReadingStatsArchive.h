@@ -103,8 +103,8 @@ inline void serializeMonth(const Month& month, const uint32_t firstDay, uint8_t 
 }
 
 // Checks structure, magic, the expected first day, month-length bounds, and the
-// checksum. A newer format version is never parsed (and never overwritten);
-// an exact-size, well-formed older record alone loads.
+// checksum. A newer format version is never parsed (and never overwritten),
+// whatever its size; only an exact-size, well-formed version 1 record loads.
 template <class IO>
 bool readSlot(IO& io, const uint32_t firstDay, const uint8_t days, const int8_t slot, bool& exists, bool& valid,
               uint32_t& generation, Month& out) {
@@ -123,11 +123,13 @@ bool readSlot(IO& io, const uint32_t firstDay, const uint8_t days, const int8_t 
     return false;
   }
   out = Month{};
-  if (size != MONTH_BYTES) return true;  // short or oversize copy: present, but not valid
-  if (raw[0] > 1) {
+  // Version precedes the size check so a torn or short newer-format copy is
+  // still identified and refused, never bypassed in favor of its v1 sibling.
+  if (size != 0 && raw[0] > 1) {
     LOG_ERR("RSTA", "refusing newer archive copy: %s", path);
     return false;
   }
+  if (size != MONTH_BYTES) return true;  // short or oversize copy: present, but not valid
   if (raw[0] != 1 || std::memcmp(raw + 1, "YDR", 3) != 0 || detail::take32(raw + 4) != firstDay) return true;
   generation = detail::take32(raw + 8);
   if (detail::take32(raw + MONTH_BYTES - 4) != snapshot::crc32(raw, MONTH_BYTES - 4)) return true;
@@ -142,7 +144,7 @@ bool readSlot(IO& io, const uint32_t firstDay, const uint8_t days, const int8_t 
   return true;
 }
 
-// Older generations load only when the newest copy. Wrap-safe generation
+// Older generations lose to a valid newest copy; wrap-safe generation
 // comparison. I/O errors and unknown versions must never be overwritten.
 template <class IO>
 bool loadMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month) {
@@ -187,8 +189,8 @@ bool loadMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month
 }
 
 // Writes the other slot and verifies it readback; the previous copy stays
-// intact on failure. New months establish the empty recovery copy in slot b
-// first, so even the first real checkpoint can be interrupted safely.
+// intact on failure. The first checkpoint of a new month carries empty data
+// (generation 0), the second one commits the updated copy.
 template <class IO>
 bool saveMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month) {
   const int8_t target = month.slot == 0 ? 1 : 0;
@@ -233,14 +235,18 @@ bool addSeconds(IO& io, const uint16_t ordinal, const uint32_t seconds) {
   const size_t index = static_cast<size_t>(ordinal - firstDay);
   const uint32_t merged = saturatingAdd(month.seconds[index], seconds);
   if (merged == month.seconds[index]) return true;
-  month.seconds[index] = merged;
   if (month.slot < 0) {
     // Establish the empty recovery copy first (slot b, generation 0), so an
-    // interrupted first data checkpoint cannot leave the month unreadable.
-    month.slot = 0;
-    month.generation = UINT32_MAX;
-    if (!saveMonth(io, firstDay, days, month)) return false;
+    // interrupted data checkpoint leaves a valid empty month, not a torn or
+    // half-committed one.
+    Month recovery;
+    recovery.slot = 0;  // saveMonth alternates to slot b when the source is slot a
+    recovery.generation = UINT32_MAX;
+    if (!saveMonth(io, firstDay, days, recovery)) return false;
+    month.slot = recovery.slot;
+    month.generation = recovery.generation;
   }
+  month.seconds[index] = merged;
   return saveMonth(io, firstDay, days, month);
 }
 

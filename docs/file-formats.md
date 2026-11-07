@@ -692,6 +692,9 @@ every enumerated book; it only stops remembering additional identities for
 duplicate-dirent detection, so a damaged FAT may expose duplicates but cannot
 make a real book disappear.
 
+`selfSize` is the expected file size. Comparing it against the real one is a free
+truncation guard: a build cut short by a power failure cannot pass.
+
 ## Daily reading history archive (`/.crosspoint/daily_reading/YYYY-MM.a.bin` / `.b.bin`)
 
 The reading-statistics state keeps only the newest 64 days (`MAX_DAYS` ring in
@@ -716,9 +719,6 @@ reading-session record: the
 affected history day is simply absent from the archive (totals and the chart are
 unaffected), and a replayed delivery cannot double-count archived seconds
 because the snapshot is committed before the archive is touched.
-
-`selfSize` is the expected file size. Comparing it against the real one is a free
-truncation guard: a build cut short by a power failure cannot pass.
 
 ## Clipping store (`/.crosspoint/clippings/epub_<path-hash>.bin`)
 

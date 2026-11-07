@@ -175,7 +175,7 @@ TEST(ReadingStatsDays, EvictionSinkOverflowIsBounded) {
   for (int i = 1; i <= MAX_DAYS + 1; i++) {
     addDaySeconds(state, static_cast<uint16_t>(100 + i), 60, 1, &evictions);
   }
-  // Two evictions with capacity one: the sink keeps exactly one entry.
+  // One eviction with a capacity-one sink: the bounded sink keeps that entry.
   EXPECT_EQ(evictions.count, 1u);
   EXPECT_EQ(evicted[0].ordinal, 101);
 }

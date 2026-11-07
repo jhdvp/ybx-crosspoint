@@ -121,8 +121,11 @@ TEST_F(Fixture, ShortWriteAlsoRollsBack) {
 
 TEST_F(Fixture, FailedRollbackStillReportsFailure) {
   fake::add(ClippingsManager::CLIPPINGS_PATH, "old entry\n==========\n");
-  fake::failWritePath = ClippingsManager::CLIPPINGS_PATH;
+  // A short write leaves partial bytes behind, so the failed rollback is
+  // observable; a zero-byte write alone could not detect a missing truncate.
+  fake::shortWrite = 10;
   fake::failTruncate = 0;
   EXPECT_FALSE(ClippingsManager::saveClipping("Book", "Author", "Chapter", 1, "text"));
-  EXPECT_EQ(text(), "old entry\n==========\n");
+  EXPECT_TRUE(fake::failureTriggered);
+  EXPECT_EQ(text(), "old entry\n==========\nBook (Auth");
 }

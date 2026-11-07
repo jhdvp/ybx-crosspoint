@@ -106,7 +106,34 @@ TEST_F(Fixture, FirstAppendKeepsAnEmptyRecoveryCopyBeforeTheDataCopy) {
   EXPECT_TRUE(addSeconds(io, day, 10));
   EXPECT_EQ(io.files.count(nameOf(2026, 11, 'a')), 1u);
   EXPECT_EQ(io.files.count(nameOf(2026, 11, 'b')), 1u);
+  // Slot b holds the generation-0 marker with no seconds; the data itself is
+  // committed to slot a by the second checkpoint, generation 1.
+  const std::string recovery = io.get(nameOf(2026, 11, 'b'));
+  ASSERT_EQ(recovery.size(), MONTH_BYTES);
+  EXPECT_EQ(readingstats::archive::detail::take32(reinterpret_cast<const uint8_t*>(recovery.data()) + 8), 0u);
+  for (size_t i = 12; i < MONTH_BYTES - 4; ++i) EXPECT_EQ(recovery[i], 0);
+  const std::string data = io.get(nameOf(2026, 11, 'a'));
+  ASSERT_EQ(data.size(), MONTH_BYTES);
+  EXPECT_EQ(readingstats::archive::detail::take32(reinterpret_cast<const uint8_t*>(data.data()) + 8), 1u);
   uint32_t seconds = 0;
+  EXPECT_TRUE(daySeconds(io, day, seconds));
+  EXPECT_EQ(seconds, 10u);
+}
+
+TEST_F(Fixture, FailedDataCheckpointLeavesOnlyTheEmptyRecoveryCopy) {
+  io.failWrite = 1;  // the recovery write succeeds, the data write fails
+  const uint16_t day = ordinalOf(2026, 11, 7);
+  EXPECT_FALSE(addSeconds(io, day, 10));
+  uint32_t seconds = 0;
+  // Nothing was archived: the only copy on the SD card is the empty marker.
+  EXPECT_TRUE(daySeconds(io, day, seconds));
+  EXPECT_EQ(seconds, 0u);
+  EXPECT_EQ(io.files.count(nameOf(2026, 11, 'a')), 0u);
+  const std::string recovery = io.get(nameOf(2026, 11, 'b'));
+  ASSERT_EQ(recovery.size(), MONTH_BYTES);
+  EXPECT_EQ(readingstats::archive::detail::take32(reinterpret_cast<const uint8_t*>(recovery.data()) + 8), 0u);
+  // A retry of the same day archives it idempotently.
+  EXPECT_TRUE(addSeconds(io, day, 10));
   EXPECT_TRUE(daySeconds(io, day, seconds));
   EXPECT_EQ(seconds, 10u);
 }
@@ -201,6 +228,21 @@ TEST_F(Fixture, NewerFormatCopiesAreRefused) {
   io.files[nameOf(2026, 11, 'a')].at(0) = 3;  // unknown version
   EXPECT_FALSE(addSeconds(io, day, 5));
   EXPECT_EQ(io.get(nameOf(2026, 11, 'a')).at(0), 3);
+}
+
+TEST_F(Fixture, ShortNewerFormatCopyIsAlsoRefused) {
+  // The version byte is checked whatever the size, so a torn newer-format
+  // slot cannot be bypassed in favor of its valid sibling and later
+  // overwritten by the next checkpoint write.
+  const uint16_t day = ordinalOf(2026, 11, 7);
+  ASSERT_TRUE(addSeconds(io, day, 10));  // data in slot a, slot b is the marker
+  ASSERT_TRUE(io.put(nameOf(2026, 11, 'a'), std::string("\x02torn", 5)));
+  EXPECT_FALSE(addSeconds(io, day, 5));
+  EXPECT_EQ(io.get(nameOf(2026, 11, 'a')), std::string("\x02torn", 5));  // retained
+  EXPECT_EQ(io.get(nameOf(2026, 11, 'b')).size(), MONTH_BYTES);          // sibling untouched
+  uint32_t seconds = 0;
+  EXPECT_FALSE(daySeconds(io, day, seconds));
+  EXPECT_EQ(seconds, 0u);
 }
 
 TEST_F(Fixture, SecondsBeyondTheMonthLengthMakeTheCopyInvalid) {

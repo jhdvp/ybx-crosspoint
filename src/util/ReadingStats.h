@@ -192,7 +192,7 @@ struct EvictionSink {
   size_t capacity = 0;
   size_t count = 0;
   void push(const uint16_t ordinal, const uint32_t seconds) {
-    if (items == nullptr || count >= capacity) return;  // archive loss is bounded and logged by the caller
+    if (items == nullptr || count >= capacity) return;  // drops silently; archive write loss is logged by the caller
     items[count++] = {ordinal, seconds};
   }
 };
