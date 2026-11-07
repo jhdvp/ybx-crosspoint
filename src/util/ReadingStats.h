@@ -187,10 +187,23 @@ struct EvictedDay {
   uint32_t seconds = 0;
 };
 
+/**
+ * Bounded collection of days evicted from the per-day ring.
+ *
+ * Forwards evicted days to the monthly SD archive so historical reading seconds
+ * are retained beyond the MAX_DAYS ring.
+ */
 struct EvictionSink {
   EvictedDay* items = nullptr;
   size_t capacity = 0;
   size_t count = 0;
+
+  /**
+   * Pushes an evicted day and its seconds into the sink buffer.
+   *
+   * @param ordinal Day ordinal index since 1970-01-01.
+   * @param seconds Archived duration in seconds.
+   */
   void push(const uint16_t ordinal, const uint32_t seconds) {
     if (items == nullptr || count >= capacity) return;  // drops silently; archive write loss is logged by the caller
     items[count++] = {ordinal, seconds};

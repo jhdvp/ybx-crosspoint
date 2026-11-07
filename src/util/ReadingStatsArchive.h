@@ -57,8 +57,14 @@ inline unsigned daysInMonth(const unsigned year, const unsigned month) {
   return LENGTHS[month - 1];
 }
 
-// Range that holds `ordinal`: the day ordinal of the first of that month and
-// the month's length. False when the ordinal cannot map to a calendar month.
+/**
+ * Computes the first day and total days for the month containing the given ordinal.
+ *
+ * @param ordinal Calendar day index since 1970-01-01.
+ * @param firstDay Output day ordinal of the 1st of that month.
+ * @param days Output number of days in that month.
+ * @return True when ordinal maps to a valid calendar month, false otherwise.
+ */
 inline bool monthRange(const uint16_t ordinal, uint32_t& firstDay, uint8_t& days) {
   int year = 0;
   unsigned month = 0;
@@ -70,6 +76,13 @@ inline bool monthRange(const uint16_t ordinal, uint32_t& firstDay, uint8_t& days
   return true;
 }
 
+/**
+ * Constructs the filesystem path for a specific month and storage slot.
+ *
+ * @param firstDay Day ordinal of the 1st of the month.
+ * @param slot Storage slot index (0 for 'a', 1 for 'b').
+ * @param path Output buffer to receive the formatted path.
+ */
 inline void monthPath(const uint32_t firstDay, const int8_t slot, char (&path)[48]) {
   int year = 0;
   unsigned month = 0;
@@ -144,8 +157,18 @@ bool readSlot(IO& io, const uint32_t firstDay, const uint8_t days, const int8_t 
   return true;
 }
 
-// Older generations lose to a valid newest copy; wrap-safe generation
-// comparison. I/O errors and unknown versions must never be overwritten.
+/**
+ * Loads the newest valid monthly copy from the dual-slot storage.
+ *
+ * Older generations lose to a valid newest copy using wrap-safe generation
+ * comparison. I/O errors and unknown versions are never overwritten.
+ *
+ * @param io Storage IO adapter.
+ * @param firstDay Day ordinal of the 1st of the month.
+ * @param days Days in the month.
+ * @param month Output month structure.
+ * @return True if loaded successfully or month is clean, false on corruption/error.
+ */
 template <class IO>
 bool loadMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month) {
   month = Month{};
@@ -188,9 +211,15 @@ bool loadMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month
   return true;
 }
 
-// Writes the other slot and verifies it readback; the previous copy stays
-// intact on failure. The first checkpoint of a new month carries empty data
-// (generation 0), the second one commits the updated copy.
+/**
+ * Alternates to the other slot, writes data, and verifies via readback.
+ *
+ * @param io Storage IO adapter.
+ * @param firstDay Day ordinal of the 1st of the month.
+ * @param days Days in the month.
+ * @param month In/out month structure with updated slot and generation.
+ * @return True on successful write and verified readback.
+ */
 template <class IO>
 bool saveMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month) {
   const int8_t target = month.slot == 0 ? 1 : 0;
@@ -219,8 +248,16 @@ bool saveMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month
   return true;
 }
 
-// Adds seconds to one calendar day's archived total. Additive and saturating:
-// late-arriving seconds for an already archived day are merged again.
+/**
+ * Adds reading seconds to one calendar day's archived monthly total.
+ *
+ * Merges seconds additively and saturatingly into the monthly record.
+ *
+ * @param io Storage IO adapter.
+ * @param ordinal Calendar day index since 1970-01-01.
+ * @param seconds Duration in seconds to add.
+ * @return True on success, false on IO or mapping error.
+ */
 template <class IO>
 bool addSeconds(IO& io, const uint16_t ordinal, const uint32_t seconds) {
   if (ordinal == 0 || seconds == 0) return true;
@@ -250,7 +287,14 @@ bool addSeconds(IO& io, const uint16_t ordinal, const uint32_t seconds) {
   return saveMonth(io, firstDay, days, month);
 }
 
-// Archived seconds for one day; 0 when nothing was archived yet (not an error).
+/**
+ * Retrieves archived reading seconds for one calendar day (0 if none archived yet).
+ *
+ * @param io Storage IO adapter.
+ * @param ordinal Calendar day index since 1970-01-01.
+ * @param seconds Output seconds read from the archive.
+ * @return True on success, false on IO or mapping error.
+ */
 template <class IO>
 bool daySeconds(IO& io, const uint16_t ordinal, uint32_t& seconds) {
   seconds = 0;

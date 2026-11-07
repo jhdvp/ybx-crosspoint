@@ -1,4 +1,8 @@
-// Kindle-format append export, adapted from uxjulia/CrossInk (MIT license).
+// Kindle-format append export, adapted from uxjulia/CrossInk.
+//
+// Copyright (c) 2025 Dave Allie
+// Copyright (c) 2025 CrossPoint Reader organization
+// SPDX-License-Identifier: MIT
 #include "ClippingsManager.h"
 
 #include <HalClock.h>
@@ -19,7 +23,10 @@ constexpr const char* MONTH_NAMES[] = {"January", "February", "March",     "Apri
 bool formatKindleAddedOn(char* buf, const size_t bufSize) {
   if (!buf || bufSize == 0) return false;
   struct tm local;
-  if (!halClock.localTime(local) || local.tm_year < 100 || local.tm_year > 199) return false;
+  if (!halClock.localTime(local) || local.tm_year < 100 || local.tm_year > 199 || local.tm_mon < 0 ||
+      local.tm_mon > 11 || local.tm_wday < 0 || local.tm_wday > 6) {
+    return false;
+  }
 
   int hour12 = local.tm_hour % 12;
   if (hour12 == 0) hour12 = 12;
