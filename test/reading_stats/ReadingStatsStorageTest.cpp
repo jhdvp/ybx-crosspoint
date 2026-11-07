@@ -1,10 +1,15 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <string>
 
 #include "HalStorage.h"
 #include "util/ReadingStats.h"
+#include "util/ReadingStatsArchive.h"
 #include "util/ReadingStatsSnapshot.h"
 
 namespace {
@@ -12,6 +17,29 @@ using namespace readingstats;
 struct Fixture : testing::Test {
   void SetUp() override { fake_sd::disk.reset(); }
 };
+
+// Test-local adapter matching the buffer IO contract for the archive.
+struct SdFakeArchiveIO {
+  bool exists(const char* path) const { return fake_sd::disk.files.count(path) != 0; }
+  bool read(const char* path, uint8_t* dst, const size_t cap, size_t& size) {
+    size = 0;
+    if (!exists(path)) return false;
+    const std::string& data = fake_sd::disk.files.at(path);
+    if (data.size() > cap) return false;
+    std::copy_n(data.data(), data.size(), dst);
+    size = data.size();
+    return true;
+  }
+  bool write(const char* path, const uint8_t* src, const size_t size) {
+    fake_sd::disk.files[path].assign(reinterpret_cast<const char*>(src), size);
+    return true;
+  }
+};
+
+void useZone(const char* zone) {
+  setenv("TZ", zone, 1);
+  tzset();
+}
 std::string stateFile(bool legacy) {
   State state;
   addSession(state, 1730000000, 240);
@@ -111,5 +139,81 @@ TEST_F(Fixture, NoSdDoesNotCreateNewHistory) {
   fake_sd::disk.available = false;
   EXPECT_FALSE(recordSession("facebeef-0000000001", 1730000000, 240, "/books/a.epub"));
   EXPECT_TRUE(fake_sd::disk.files.empty());
+}
+
+// Year-long daily reading evicts days from the MAX_DAYS ring; those seconds
+// must reach the monthly archive under /.crosspoint/daily_reading. The chart
+// keeps reading the ring and is unchanged.
+TEST_F(Fixture, RingEvictionsReachTheMonthlyHistoryArchive) {
+  useZone("UTC");
+  const int64_t base = daysFromCivil(2026, 11, 1);
+  char id[20] = {};
+  for (int i = 0; i < MAX_DAYS; ++i) {
+    snprintf(id, sizeof(id), "facebeef-%010d", i);
+    // One new day per session, filling the ring from oldest to newest.
+    ASSERT_TRUE(recordSession(id, (base - (MAX_DAYS - i)) * 86400 + 3600, 60, "")) << i;
+  }
+  State state;
+  ASSERT_TRUE(loadState(state));
+  EXPECT_EQ(state.totalSeconds, static_cast<uint32_t>(MAX_DAYS) * 60);
+  EXPECT_EQ(state.dayCount, MAX_DAYS);
+  // Filling the ring alone never touches the archive (the snapshot files do).
+  for (const auto& [path, bytes] : fake_sd::disk.files) {
+    (void)bytes;
+    EXPECT_TRUE(path.rfind(archive::DIRECTORY, 0) != 0) << path;
+  }
+
+  // The next day evicts the oldest ring entry into the archive.
+  ASSERT_TRUE(recordSession("facebeef-0000000064", (base + 1) * 86400 + 3600, 120, ""));
+  state = State{};
+  ASSERT_TRUE(loadState(state));
+  EXPECT_EQ(state.totalSeconds, static_cast<uint32_t>(MAX_DAYS) * 60 + 120);
+  EXPECT_EQ(state.dayCount, MAX_DAYS);
+  EXPECT_EQ(state.days[0].ordinal, base - MAX_DAYS + 1);
+
+  // The archived copy holds the evicted day exactly.
+  SdFakeArchiveIO archiveIo;
+  uint32_t seconds = 0;
+  ASSERT_TRUE(archive::daySeconds(archiveIo, static_cast<uint16_t>(base - MAX_DAYS), seconds));
+  EXPECT_EQ(seconds, 60u);
+}
+
+TEST_F(Fixture, FailedArchiveWriteNeverFailsTheSessionRecord) {
+  useZone("UTC");
+  const int64_t base = daysFromCivil(2026, 11, 1);
+  char id[20] = {};
+  for (int i = 0; i < MAX_DAYS; ++i) {
+    snprintf(id, sizeof(id), "facebeef-%010d", i);
+    ASSERT_TRUE(recordSession(id, (base - (MAX_DAYS - i)) * 86400 + 3600, 60, "")) << i;
+  }
+  // The evicted month is 2026-08; fail its first archive write.
+  fake_sd::disk.failWritePath = std::string(archive::DIRECTORY) + "/2026-08.b.bin";
+  ASSERT_TRUE(recordSession("facebeef-0000000064", (base + 1) * 86400 + 3600, 120, ""));
+  fake_sd::disk.failWritePath.clear();
+  State state;
+  ASSERT_TRUE(loadState(state));
+  EXPECT_EQ(state.totalSeconds, static_cast<uint32_t>(MAX_DAYS) * 60 + 120);
+  EXPECT_EQ(state.dayCount, MAX_DAYS);
+  // The session itself is committed; the archive write failed and left an
+  // empty touched slot only.
+  EXPECT_EQ(fake_sd::disk.files.count(std::string(archive::DIRECTORY) + "/2026-08.a.bin"), 0u);
+  EXPECT_EQ(fake_sd::disk.files.at(std::string(archive::DIRECTORY) + "/2026-08.b.bin"), std::string());
+}
+
+TEST_F(Fixture, ReplayAfterArchiveWriteDoesNotDoubleArchiveSeconds) {
+  useZone("UTC");
+  const int64_t base = daysFromCivil(2026, 11, 1);
+  char id[20] = {};
+  for (int i = 0; i < MAX_DAYS; ++i) {
+    snprintf(id, sizeof(id), "facebeef-%010d", i);
+    ASSERT_TRUE(recordSession(id, (base - (MAX_DAYS - i)) * 86400 + 3600, 60, "")) << i;
+  }
+  ASSERT_TRUE(recordSession("facebeef-0000000064", (base + 1) * 86400 + 3600, 120, ""));
+  // A replayed delivery with the same id is a no-op for the archive too.
+  ASSERT_TRUE(recordSession("facebeef-0000000064", (base + 1) * 86400 + 3600, 120, ""));
+  SdFakeArchiveIO archiveIo;
+  uint32_t seconds = 0;
+  ASSERT_TRUE(archive::daySeconds(archiveIo, static_cast<uint16_t>(base - MAX_DAYS), seconds));
+  EXPECT_EQ(seconds, 60u);
 }
 }  // namespace

@@ -8,6 +8,7 @@
 #include <new>
 #include <string>
 
+#include "ReadingStatsArchive.h"
 #include "ReadingStatsSnapshot.h"
 
 namespace {
@@ -17,6 +18,37 @@ constexpr const char* LEGACY_STATE = "/.crosspoint/reading-stats.bin";
 constexpr const char* LEGACY_PENDING_STATE = "/.crosspoint/reading-stats.tmp";
 constexpr const char* LEGACY_BOOKS = "/.crosspoint/reading-books.bin";
 constexpr const char* LEGACY_PENDING_BOOKS = "/.crosspoint/reading-books.tmp";
+
+// Buffer-based month IO for the reading history archive: no held heap
+// allocation, and one file at a time (slot a or b, never open together).
+struct SdMonthIO {
+  static bool exists(const char* path) { return Storage.exists(path); }
+
+  static bool read(const char* path, uint8_t* dst, const size_t cap, size_t& size) {
+    size = 0;
+    HalFile file;
+    if (!Storage.openFileForRead("RSTA", path, file)) return false;
+    const size_t bytes = file.fileSize();
+    if (bytes > cap) {
+      file.close();
+      return false;
+    }
+    const int got = bytes == 0 ? 0 : file.read(dst, bytes);
+    const bool ok = got >= 0 && static_cast<size_t>(got) == bytes && file.close();
+    if (ok) size = bytes;
+    return ok;
+  }
+
+  static bool write(const char* path, const uint8_t* src, const size_t size) {
+    if (!Storage.ensureDirectoryExists(readingstats::archive::DIRECTORY)) return false;
+    HalFile file;
+    if (!Storage.openFileForWrite("RSTA", path, file)) return false;
+    const bool written = file.write(src, size) == size;
+    if (written) file.flush();  // SdFat flush; close must also succeed.
+    const bool closed = file.close();
+    return written && closed;
+  }
+};
 
 struct SdSnapshotIO {
   static bool exists(const char* path) { return Storage.exists(path); }
@@ -140,7 +172,9 @@ bool recordSession(const char* id, int64_t startEpoch, uint32_t durationSeconds,
     return false;
   }
   if (isRecorded(snapshotData->state, id)) return true;
-  const uint16_t bookDay = addSession(snapshotData->state, startEpoch, durationSeconds);
+  EvictedDay evicted[MAX_SESSION_SEGMENTS];
+  EvictionSink evictions{evicted, MAX_SESSION_SEGMENTS, 0};
+  const uint16_t bookDay = addSession(snapshotData->state, startEpoch, durationSeconds, &evictions);
   noteSession(snapshotData->state, id, startEpoch);
   if (!bookPath.empty()) {
     addBook(snapshotData->books, snapshotData->bookCount, bookPath, durationSeconds, 1, bookDay);
@@ -148,6 +182,16 @@ bool recordSession(const char* id, int64_t startEpoch, uint32_t durationSeconds,
   if (!snapshot::save(io, *snapshotData)) {
     LOG_ERR("RSTA", "atomic stats+books snapshot write failed");
     return false;
+  }
+  // Archive the per-day seconds the ring no longer holds. Only after the
+  // snapshot is committed: a retried delivery re-uses the same id, so this
+  // stays idempotent. Archive write failures never fail the session record;
+  // the affected deep-history day is skipped (totals and the chart keep it).
+  SdMonthIO archiveIo;
+  for (size_t i = 0; i < evictions.count; ++i) {
+    if (!archive::addSeconds(archiveIo, evicted[i].ordinal, evicted[i].seconds)) {
+      LOG_ERR("RSTA", "history archive lost day %u", evicted[i].ordinal);
+    }
   }
   return true;
 }

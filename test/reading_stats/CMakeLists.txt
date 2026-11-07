@@ -1,5 +1,5 @@
-add_executable(ReadingStatsTest ReadingStatsTest.cpp ReadingStatsSnapshotTest.cpp)
-target_include_directories(ReadingStatsTest PRIVATE ${REPO_ROOT}/src)
+add_executable(ReadingStatsTest ReadingStatsTest.cpp ReadingStatsSnapshotTest.cpp ReadingStatsArchiveTest.cpp)
+target_include_directories(ReadingStatsTest PRIVATE ${REPO_ROOT}/src stubs)
 target_link_libraries(ReadingStatsTest PRIVATE crosspoint_test_common GTest::gtest_main)
 gtest_discover_tests(ReadingStatsTest)
 
