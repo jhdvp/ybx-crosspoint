@@ -75,7 +75,7 @@ inline void monthPath(const uint32_t firstDay, const int8_t slot, char (&path)[4
   unsigned month = 0;
   unsigned day = 0;
   civilFromDays(firstDay, year, month, day);
-  snprintf(path, sizeof(path), "%s/%04u-%02u.%c.bin", DIRECTORY, year, month, slotSuffix(slot));
+  snprintf(path, sizeof(path), "%s/%04u-%02u.%c.bin", DIRECTORY, static_cast<unsigned>(year), month, slotSuffix(slot));
 }
 
 namespace detail {

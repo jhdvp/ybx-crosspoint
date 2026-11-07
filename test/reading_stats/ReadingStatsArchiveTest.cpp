@@ -69,7 +69,7 @@ uint16_t ordinalOf(const int year, const unsigned month, const unsigned day) {
 
 std::string nameOf(const int year, const unsigned month, const char slot) {
   char stamp[16] = {};
-  snprintf(stamp, sizeof(stamp), "/%04u-%02u.%c.bin", year, month, slot);
+  snprintf(stamp, sizeof(stamp), "/%04u-%02u.%c.bin", static_cast<unsigned>(year), month, slot);
   return std::string(DIRECTORY) + stamp;
 }
 
