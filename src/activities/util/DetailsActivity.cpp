@@ -34,7 +34,7 @@ void DetailsActivity::onEnter() {
   cancelled.isCancelled = true;
   setResult(std::move(cancelled));
   resetUi();
-  app.on(ACTION_PRIMARY, &DetailsActivity::onPrimaryEvent, this);
+  if (spec.hasPrimaryAction) app.on(ACTION_PRIMARY, &DetailsActivity::onPrimaryEvent, this);
   app.on(ACTION_MORE, &DetailsActivity::onMoreEvent, this);
   app.setScreen(&DetailsActivity::detailsScreen, this);
   requestUpdate();
@@ -79,7 +79,7 @@ void DetailsActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     cancel();
-  } else if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  } else if (spec.hasPrimaryAction && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     confirm();
   } else if (mappedInput.wasReleased(MappedInputManager::Button::Right) ||
              mappedInput.wasReleased(MappedInputManager::Button::Down)) {
@@ -195,8 +195,8 @@ void DetailsActivity::buildScreen(UiScreen& screen) {
     button.radius = theme.controlRadius;
     button.minTouchSize = theme.minTouchSize;
   };
-  props.primary.label = asPtr(spec.actionLabel);
-  props.primary.action = ACTION_PRIMARY;
+  props.primary.label = spec.hasPrimaryAction ? asPtr(spec.actionLabel) : nullptr;
+  props.primary.action = spec.hasPrimaryAction ? ACTION_PRIMARY : fui::NO_ACTION;
   styleButton(props.primary);
   if (!spec.description.empty()) {
     props.more.label = tr(STR_DETAILS);

@@ -26,8 +26,8 @@
 #include "activities/reader/ReaderUtils.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "images/Logo120.h"
 #include "images/MoonIcon.h"
+#include "images/YbxSleepLogo4.h"
 
 namespace {
 // Metalio: B/W sleep images use the full 0xF7 waveform instead of HALF (two
@@ -318,6 +318,39 @@ bool renderTransparentOverlayPass(HalFile& file, const OverlayBmpInfo& info, con
   }
 
   return true;
+}
+
+class BwFrameKeeper {
+ public:
+  BwFrameKeeper(GfxRenderer& renderer, const bool keep)
+      : renderer(renderer), keep(keep), stored(!keep || renderer.storeBwBuffer()) {}
+  ~BwFrameKeeper() {
+    if (keep && stored) renderer.restoreBwBuffer();
+  }
+  // False when the B/W frame could not be kept; callers must skip the gray passes.
+  bool ready() const { return stored; }
+  BwFrameKeeper(const BwFrameKeeper&) = delete;
+  BwFrameKeeper& operator=(const BwFrameKeeper&) = delete;
+
+ private:
+  GfxRenderer& renderer;
+  const bool keep;
+  const bool stored;
+};
+
+bool beginOverlayGrayPlane(GfxRenderer& renderer, const Bitmap* grayCover, const GfxRenderer::RenderMode plane,
+                           const bool absolute) {
+  if (grayCover) {
+    if (grayCover->rewindToData() != BmpReaderError::Ok) return false;
+    renderer.clearScreen();
+  } else if (!absolute) {
+    renderer.clearScreen(0x00);
+  }
+  renderer.setRenderMode(plane);
+  if (!grayCover) return true;
+  const auto placement = calculateBitmapPlacement(grayCover->getWidth(), grayCover->getHeight(), renderer);
+  return renderer.drawBitmap(*grayCover, placement.x, placement.y, renderer.getScreenWidth(),
+                             renderer.getScreenHeight(), placement.cropX, placement.cropY);
 }
 
 enum class AlphaOverlayResult : uint8_t { Rendered, NotAlphaOverlay, Error };
@@ -633,21 +666,80 @@ void SleepActivity::renderCustomSleepScreen() const {
 // firmware's only clean refresh in normal operation is the single-pass 0xD7
 // sequence, used once for the sleep image. It never runs the multi-flash GC
 // waveform (0xF7) that FULL_REFRESH selects (#2471's blinking complaint).
+uint8_t sleepLogoLevel(const int x, const int y) {
+  const int index = y * YBX_SLEEP_LOGO_SIZE + x;
+  const auto packed = YbxSleepLogo4[index / 4];
+  return (packed >> (6 - 2 * (index % 4))) & 0x03;
+}
+
+// Pixel-by-pixel painting is intentional. GfxRenderer::drawImage() rotates the
+// destination rectangle but NOT bitmap bits, which turns the sleep logo upside
+// down on the X4 Pro portrait panel. drawPixel() applies the full orientation.
+void paintSleepLogo(GfxRenderer& renderer, const int left, const int top, const bool dark,
+                    const GfxRenderer::RenderMode pass = GfxRenderer::BW) {
+  const bool msb = pass == GfxRenderer::GRAYSCALE_MSB;
+  for (int y = 0; y < YBX_SLEEP_LOGO_SIZE; ++y) {
+    for (int x = 0; x < YBX_SLEEP_LOGO_SIZE; ++x) {
+      const uint8_t brandLevel = sleepLogoLevel(x, y);
+      if (pass == GfxRenderer::BW) {
+        // Draw before dark-mode framebuffer inversion. In both themes the
+        // bright logo strokes are ink in the pre-inversion B/W base.
+        if (brandLevel >= 2) renderer.drawPixel(left + x, top + y, true);
+      } else {
+        // The active sleep theme inverts the paper/background polarity.
+        const uint8_t physicalLevel = dark ? brandLevel : 3 - brandLevel;
+        const auto pixel = grayPlanePixel(physicalLevel, msb, renderer.grayPlanesAreAbsolute());
+        if (pixel.write) renderer.drawPixel(left + x, top + y, pixel.black);
+      }
+    }
+  }
+}
+
+// Four-tone YBX Companion badge. Other custom/cover sleep modes remain intact.
 void SleepActivity::renderDefaultSleepScreen() const {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
+  const int left = (pageWidth - YBX_SLEEP_LOGO_SIZE) / 2;
+  const int top = (pageHeight - YBX_SLEEP_LOGO_SIZE) / 2 - 10;
+  const bool dark = SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT;
 
   renderer.clearScreen();
-  renderer.drawImage(Logo120, (pageWidth - 120) / 2, (pageHeight - 120) / 2, 120, 120);
-  renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 70, tr(STR_CROSSPOINT), true, EpdFontFamily::BOLD);
-  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, tr(STR_SLEEPING));
+  paintSleepLogo(renderer, left, top, dark);
+  renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 105, tr(STR_YBX), true, EpdFontFamily::BOLD);
+  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 130, tr(STR_SLEEPING));
+  if (dark) renderer.invertScreen();
 
-  // Make sleep screen dark unless light is selected in settings
-  if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT) {
-    renderer.invertScreen();
+  const auto mode = sleepGrayscaleMode(renderer);
+  if (!renderer.grayscaleCapabilities(mode).supported()) {
+    renderer.displayBuffer(kSleepClean);
+    return;
   }
 
-  renderer.displayBuffer(kSleepClean);
+  // Keep the B/W page (especially labels) when using overlay gray planes.
+  const bool absolute = mode != HalDisplay::GrayscaleMode::Overlay;
+  const BwFrameKeeper bwFrame(renderer, !absolute);
+  if (!bwFrame.ready()) {
+    renderer.displayBuffer(kSleepClean);
+    return;
+  }
+  cleanBeforeAbsoluteGray(renderer);
+  if (!renderer.displayGrayscaleBase(mode, kSleepClean)) {
+    renderer.displayBuffer(kSleepClean);
+    return;
+  }
+  for (const auto plane : {GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
+    if (!beginOverlayGrayPlane(renderer, nullptr, plane, renderer.grayPlanesAreAbsolute())) {
+      renderer.setRenderMode(GfxRenderer::BW);
+      return;
+    }
+    paintSleepLogo(renderer, left, top, dark, plane);
+    if (plane == GfxRenderer::GRAYSCALE_LSB)
+      renderer.copyGrayscaleLsbBuffers();
+    else
+      renderer.copyGrayscaleMsbBuffers();
+  }
+  renderer.displayGrayBuffer();
+  renderer.setRenderMode(GfxRenderer::BW);
 }
 
 void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool preserveBackground) const {

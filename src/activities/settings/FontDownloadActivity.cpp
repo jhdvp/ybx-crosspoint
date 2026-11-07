@@ -22,6 +22,8 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
+#include "network/TlsTransport.h"
+#include "util/TlsFailureText.h"
 
 namespace fui = freeink::ui;
 
@@ -158,13 +160,19 @@ bool FontDownloadActivity::internString(const char* text, StrRef& outRef) {
 }
 
 bool FontDownloadActivity::fetchAndParseManifest() {
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    fcm->releaseSdFontCaches();
+  }
+  // Rescan installed families before any TLS or JSON buffers exist. The rescan
+  // frees and reallocates every registry entry, which fragments the heap if it
+  // runs while the manifest DOM and the catalog arena are live.
+  clearManifest();
+  fontInstaller_.refreshRegistry();
+
   // Download manifest to a temp file on SD card to avoid holding both
   // TLS buffers and the full JSON string in RAM simultaneously.
   static constexpr const char* MANIFEST_TMP = "/fonts_manifest.tmp";
 
-  if (auto* fcm = renderer.getFontCacheManager()) {
-    fcm->releaseSdFontCaches();
-  }
   if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
       ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
     LOG_ERR("FONT", "Low heap for manifest (%u free, %u max block)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
@@ -172,13 +180,13 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     return false;
   }
 
-  // No downgradeRedirectsToHttp here, unlike the font transfers below: this
-  // response carries the crc32 values that are the only integrity anchor for
-  // those plain-HTTP downloads.
+  // No downgrade on redirect: font assets are served over verified https, and
+  // an https -> http step-down is refused by the downloader.
   auto result = HttpDownloader::downloadToFile(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
   if (result != HttpDownloader::OK) {
     LOG_ERR("FONT", "Failed to fetch manifest from %s", FONT_MANIFEST_URL);
-    errorMessage_ = "Failed to fetch font list";
+    const char* tlsDetail = tlsui::failureDetail(tlspolicy::lastFailure());
+    errorMessage_ = tlsDetail ? tlsDetail : "Failed to fetch font list";
     Storage.remove(MANIFEST_TMP);
     return false;
   }
@@ -228,8 +236,6 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
   baseUrl_ = doc["baseUrl"] | "";
   downloadUrl_.reserve(baseUrl_.size() + 128);
-  clearManifest();
-  fontInstaller_.refreshRegistry();
 
   JsonArray groupsArr = doc["scriptGroups"].as<JsonArray>();
   JsonArray familiesArr = doc["families"].as<JsonArray>();
@@ -572,29 +578,27 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
 
     downloadUrl_.assign(baseUrl_).append(str(file.name));
 
-    auto result = HttpDownloader::downloadToFile(
-        downloadUrl_, destPath,
-        [this](size_t downloaded, size_t total) {
-          fileProgress_ = downloaded;
-          fileTotal_ = total;
-          mappedInput.update(true);
-          if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
-              mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-            cancelRequested_ = true;
-          }
-          // Home cancels immediately; other configured actions are deferred to
-          // the next main-loop pass by the transfer input pump.
-          if (mappedInput.wasHomeGesture()) {
-            cancelRequested_ = true;
-            goHomeRequested_ = true;
-          }
-          requestUpdate(true);
-        },
-        // Bulk font transfers follow GitHub's release-asset redirect over plain
-        // HTTP: the CRC check below (manifest fetched over TLS) covers
-        // integrity, and skipping the second TLS session keeps the C3 heap out
-        // of MEMORY_E territory.
-        &cancelRequested_, "", "", /*headers=*/{}, /*downgradeRedirectsToHttp=*/true);
+    auto result = HttpDownloader::downloadToFile(downloadUrl_, destPath,
+                                                 [this](size_t downloaded, size_t total) {
+                                                   fileProgress_ = downloaded;
+                                                   fileTotal_ = total;
+                                                   mappedInput.update(true);
+                                                   if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
+                                                       mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+                                                     cancelRequested_ = true;
+                                                   }
+                                                   // Home cancels immediately; other configured actions are deferred to
+                                                   // the next main-loop pass by the transfer input pump.
+                                                   if (mappedInput.wasHomeGesture()) {
+                                                     cancelRequested_ = true;
+                                                     goHomeRequested_ = true;
+                                                   }
+                                                   requestUpdate(true);
+                                                 },
+                                                 // Bulk font transfers follow GitHub's release-asset redirect over
+                                                 // verified https: the CA bundle covers both github.com and the
+                                                 // release-assets host, so no transport downgrade is needed.
+                                                 &cancelRequested_, "", "", /*headers=*/{});
 
     if (result == HttpDownloader::ABORTED) {
       fontInstaller_.deleteFamily(str(family.name));
@@ -619,7 +623,8 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = std::string("Download failed: ") + str(file.name);
+      const char* tlsDetail = tlsui::failureDetail(tlspolicy::lastFailure());
+      errorMessage_ = tlsDetail ? tlsDetail : std::string("Download failed: ") + str(file.name);
       return;
     }
 
@@ -836,9 +841,6 @@ void FontDownloadActivity::rebuildFamilyRowItems() {
         item.value = tr(STR_UPDATE_AVAILABLE);
       } else if (family.installed) {
         item.value = tr(STR_INSTALLED);
-        // Dimmed but still tappable (opens the delete prompt): visual-only
-        // disabled state, the row stays enabled for hit registration.
-        item.state = fui::StateDisabled;
       }
     }
     item.actionValue = static_cast<int16_t>(i);
@@ -989,7 +991,13 @@ void FontDownloadActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, tr(STR_FONT_INSTALL_FAILED), true,
                               EpdFontFamily::BOLD);
     if (!errorMessage_.empty()) {
-      renderer.drawCenteredText(UI_10_FONT_ID, centerY + metrics.verticalSpacing, errorMessage_.c_str());
+      // Certificate and clock messages wrap over several lines; a single
+      // centered line would clip them.
+      const int detailY = centerY + metrics.verticalSpacing;
+      const Rect detailBounds{metrics.contentSidePadding, detailY, pageWidth - metrics.contentSidePadding * 2,
+                              pageHeight - detailY};
+      UITheme::drawCenteredWrappedText(renderer, detailBounds, UI_10_FONT_ID, errorMessage_.c_str(), 3, true,
+                                       EpdFontFamily::REGULAR, UITheme::TextVerticalAlignment::TOP);
     }
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_RETRY), "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -997,3 +1005,4 @@ void FontDownloadActivity::render(RenderLock&&) {
 
   renderer.displayBuffer();
 }
+// format-pass-marker

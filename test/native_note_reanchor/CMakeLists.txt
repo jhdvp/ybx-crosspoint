@@ -1,0 +1,14 @@
+find_package(EXPAT REQUIRED)
+add_executable(NativeNoteReanchorTest
+  NativeNoteReanchorTest.cpp
+  ${REPO_ROOT}/lib/Txt/TxtToHtml.cpp
+  ${REPO_ROOT}/lib/FsHelpers/FsHelpers.cpp
+  ${REPO_ROOT}/lib/Utf8/Utf8.cpp
+)
+target_include_directories(NativeNoteReanchorTest PRIVATE
+  ${REPO_ROOT}/src ${REPO_ROOT}/lib/Txt ${REPO_ROOT}/lib/FsHelpers
+  ${REPO_ROOT}/lib/Utf8 ${REPO_ROOT}/lib/Memory
+  ${REPO_ROOT}/test/fs_helpers/stubs ${REPO_ROOT}/test/chapter_html_slim_parser/stubs
+)
+target_link_libraries(NativeNoteReanchorTest PRIVATE crosspoint_test_common GTest::gtest_main EXPAT::EXPAT)
+gtest_discover_tests(NativeNoteReanchorTest)

@@ -9,6 +9,7 @@
 #include <string>
 
 #include "KOReaderCredentialStore.h"
+#include "network/TlsTransport.h"
 
 int KOReaderSyncClient::lastHttpCode = 0;
 
@@ -55,6 +56,18 @@ bool insufficientHeap() {
   }
   return false;
 }
+
+// Configures verified TLS certificates and time for https sync servers,
+// while allowing user-configured local plain http servers to proceed without TLS.
+bool prepareClient(freeink::SecureHttpClient& http, const std::string& url) {
+  if (tlspolicy::isHttpsUrl(url)) {
+    if (!tlspolicy::prepareHttpsClient(http, url)) {
+      LOG_ERR("KOSync", "Verified HTTPS is required for secure sync");
+      return false;
+    }
+  }
+  return true;
+}
 }  // namespace
 
 KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
@@ -69,7 +82,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
   if (insufficientHeap()) return LOW_MEMORY;
 
   freeink::SecureHttpClient http;
-  http.setInsecure();
+  if (!prepareClient(http, url)) return NETWORK_ERROR;
   if (!http.begin(url)) {
     LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
     return NETWORK_ERROR;
@@ -109,7 +122,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::createUser() {
   serializeJson(doc, body);
 
   freeink::SecureHttpClient http;
-  http.setInsecure();
+  if (!prepareClient(http, url)) return NETWORK_ERROR;
   if (!http.begin(url)) {
     LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
     return NETWORK_ERROR;
@@ -143,7 +156,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   if (insufficientHeap()) return LOW_MEMORY;
 
   freeink::SecureHttpClient http;
-  http.setInsecure();
+  if (!prepareClient(http, url)) return NETWORK_ERROR;
   if (!http.begin(url)) {
     LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
     return NETWORK_ERROR;
@@ -277,7 +290,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
   LOG_DBG("KOSync", "Request body: %s", body.c_str());
 
   freeink::SecureHttpClient http;
-  http.setInsecure();
+  if (!prepareClient(http, url)) return NETWORK_ERROR;
   if (!http.begin(url)) {
     LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
     return NETWORK_ERROR;

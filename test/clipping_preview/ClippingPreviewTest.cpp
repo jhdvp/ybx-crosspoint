@@ -314,3 +314,20 @@ TEST(SelectionGeometry, KeepsCursorClearOfHintsOnEitherAxis) {
   EXPECT_EQ(selectionGeometry::keepVisible(735, 20, 40, 700), -15);
   EXPECT_EQ(selectionGeometry::keepVisible(100, 20, 40, 700), 0);
 }
+
+// When Native Notes change between two devices, source offsets for the
+// previous revision cannot safely be painted on the edited text.
+TEST(ClippingPreview, NativeNoteSourceRevisionGuardRejectsOldOffsets) {
+  Clipping clip;
+  clip.spineIndex = 0;
+  clip.startOffset = 100;
+  clip.endOffset = 140;
+  clip.layoutSignature = 0x11223344;
+  EXPECT_TRUE(clippingContainsWord(clip, 0, 9, 10, 0x11223344, 2, 110, 120, true));
+  EXPECT_FALSE(clippingContainsWord(clip, 0, 9, 10, 0x11223345, 2, 110, 120, true));
+  EXPECT_FALSE(clippingContainsWord(clip, 0, 9, 10, 0, 2, 110, 120, true));
+  EXPECT_TRUE(clippingContainsWord(clip, 0, 9, 10, 0, 2, 110, 120));  // EPUB unchanged.
+  clip.startOffset = UINT32_MAX;
+  clip.endOffset = UINT32_MAX;
+  EXPECT_FALSE(clippingContainsWord(clip, 0, 9, 10, 0x11223344, 2, 110, 120, true));
+}

@@ -5,6 +5,7 @@
 #include <Epub/PageLink.h>
 #include <Epub/Section.h>
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <optional>
@@ -16,9 +17,11 @@
 #include "EpubReaderMenuActivity.h"
 #include "LinkNoteTitle.h"
 #include "ProgressMapper.h"
+#include "ProgressWriteGate.h"
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
 #include "components/OptionPopup.h"
+#include "util/YbxNoteReanchor.h"
 
 class EpubReaderActivity final : public ReaderActivity {
   std::shared_ptr<Epub> epub;
@@ -100,6 +103,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void settleOverlayRefresh();
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
+  EpubReaderMenuActivity::MenuAction selectedMenuAction = EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER;
 
   // Footnote support
   std::vector<FootnoteEntry> currentPageFootnotes;
@@ -118,13 +122,22 @@ class EpubReaderActivity final : public ReaderActivity {
   void saveLinkStack() const;
   void loadLinkStack();
 
+  // Source-revision guard for managed Native Notes. Zero means unavailable:
+  // still show quotations in the list, but never paint stale coordinates.
+  uint32_t nativeNoteRevision = 0;
+  std::array<ybxnote::Relocation, ybxnote::kMaxRelocations> nativeNoteReanchors{};
+  uint8_t nativeNoteReanchorCount = 0;
   uint16_t buildViewportWidth = 0;
   uint16_t buildViewportHeight = 0;
   bool partialRebuildStartFailed = false;
 
-  int lastSavedSpineIndex = -1;
-  int lastSavedPage = -1;
-  int lastSavedPageCount = -1;
+  // V1 plain-text Markdown progress cannot be treated as exact V2 page
+  // numbers or visible offsets. The original 4/6/10 bytes are snapshotted
+  // before the metadata migration; the approximation is explained once.
+  bool legacyMarkdownResumeNotice = false;
+  bool legacyMarkdownResumeApproximate = false;
+  readerprogress::ProgressWriteGate progressWriteGate;
+  void persistPendingProgress(bool force = false);
 
   static constexpr int BUILD_PAGES_PER_CHUNK = 8;
   static constexpr int BACKGROUND_BUILD_PAGES_PER_TICK = 2;
@@ -242,6 +255,9 @@ class EpubReaderActivity final : public ReaderActivity {
   ~EpubReaderActivity() override;
 
   void loop() override;
+  void onExit() override;
+  void onScreenCovered() override;
+  void prepareForSleep() override;
   void render(RenderLock&& lock) override;
 
   bool pageTurn(bool isForward) override;

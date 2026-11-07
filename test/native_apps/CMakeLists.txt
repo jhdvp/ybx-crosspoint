@@ -1,0 +1,4 @@
+add_executable(NativeAppCatalogTest NativeAppCatalogTest.cpp)
+target_include_directories(NativeAppCatalogTest PRIVATE ${REPO_ROOT}/src)
+target_link_libraries(NativeAppCatalogTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(NativeAppCatalogTest)

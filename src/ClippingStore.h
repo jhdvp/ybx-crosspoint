@@ -74,6 +74,11 @@ class ClippingStore {
   bool readClippingPreview(size_t index, char* out, size_t outSize, size_t& outLength) const;
   bool readClippingText(size_t index, std::string& out) const;
   bool readClippingText(const Clipping& clipping, std::string& out) const;
+  // Optional local context sidecar, keyed by the stable random clipping ID.
+  // Carries no server protocol or binary-format version changes.
+  std::string contextAnchorPath() const {
+    return loaded && !storeFilePath.empty() ? storeFilePath + ".anchors" : std::string{};
+  }
 
   static bool deleteForFilePath(const std::string& filePath, const std::string& bookType);
   // Move a book or folder together with its clipping stores and deletion journals.
@@ -99,6 +104,7 @@ class ClippingStore {
   bool dirty = false;
 
   bool reserveClippings(size_t count);
+  bool assignUniqueId(Clipping& clipping);
   bool readFromFile();
   bool writeToFile(const std::string* replacementText = nullptr, size_t replacementIndex = SIZE_MAX);
 };
@@ -115,11 +121,21 @@ inline bool clippingStoredRangeMatchesLayout(const Clipping& clipping, const uin
 
 inline bool clippingContainsWord(const Clipping& clipping, const uint16_t spineIndex, const uint16_t page,
                                  const uint16_t pageCount, const uint32_t layoutSignature, const uint16_t wordIndex,
-                                 const uint32_t sourceStart, const uint32_t sourceEnd) {
+                                 const uint32_t sourceStart, const uint32_t sourceEnd,
+                                 const bool requireMatchingSourceRevision = false) {
   if (clipping.spineIndex != spineIndex) return false;
+  if (requireMatchingSourceRevision) {
+    // Native Notes share one stable document key across edits. A clipping
+    // from an older revision can still be listed/synced, but its old source
+    // offsets must NOT paint unrelated text in an edited document.
+    if (!layoutSignature || clipping.layoutSignature != layoutSignature || clipping.startOffset == UINT32_MAX ||
+        clipping.endOffset == UINT32_MAX)
+      return false;
+  }
   if (clipping.startOffset != UINT32_MAX && clipping.endOffset != UINT32_MAX) {
     return sourceStart != UINT32_MAX && sourceEnd > clipping.startOffset && sourceStart < clipping.endOffset;
   }
+  if (requireMatchingSourceRevision) return false;  // no page/word fallback
   return clippingStoredRangeMatchesLayout(clipping, pageCount, layoutSignature) && page >= clipping.startPage &&
          page <= clipping.endPage && (page != clipping.startPage || wordIndex >= clipping.startWordIndex) &&
          (page != clipping.endPage || wordIndex <= clipping.endWordIndex);

@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <WString.h>
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <utility>
@@ -53,6 +54,11 @@ void readRequest(JsonVariantConst node, const char* defaultMethod, RequestSpec& 
 // Percent-encodes a query value ('/' included).
 std::string urlEncodeQuery(const std::string& s);
 
+// Percent-encodes the bytes an HTTP request line cannot carry (controls,
+// space, non-ASCII) and keeps the rest, including existing %XX escapes, so a
+// template filled with raw text (e.g. "{title}") still forms a valid URL.
+std::string escapeUrl(const std::string& url);
+
 // --- token / config files ---
 
 // A manifest file path: relative paths live in the plugin's own folder
@@ -71,6 +77,18 @@ bool saveTokenToFile(const std::string& file, const std::string& path, const std
 // Loads a flat JSON config file into {cfg.KEY} pairs. Missing file = empty.
 void loadConfigFile(const std::string& file, Headers& out);
 
+// --- download destination ---
+
+// Where a catalog plugin lands downloads: a config "dest_dir" when present and
+// allowed, else the manifest's (already validated) directory. "" = SD root.
+std::string pickDownloadDir(const Headers& config, const std::string& manifestDestDir);
+
+// Same choice resolved from disk for an installed plugin folder ("" = none):
+// device.json's download.dest_dir and config.file, with the config file's
+// dest_dir overriding. Lets non-UI code (the home shelf entry) find a plugin's
+// books without loading the catalog screen.
+std::string catalogDownloadDir(const std::string& pluginDir);
+
 // --- bounded transport ---
 // `session` is an optional caller-owned TLS session reused across requests
 // (repeated handshakes permanently fragment the heap); pass nullptr to use a
@@ -79,19 +97,23 @@ void loadConfigFile(const std::string& file, Headers& out);
 // Collects one checked DRAM buffer, capped at maxResponse. Returns HTTP status
 // (including OAuth polling's 4xx bodies), or -1 on OOM, truncation, or transport failure.
 // responseHeaders (optional) receives the response headers in receive order,
-// duplicates kept. shouldAbort (optional) is polled in every wait loop.
+// duplicates kept. shouldAbort is polled in SDK read/TLS waits. DNS and TCP
+// connect can block until the transport timeout; this is not a hard deadline.
 int request(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
             const std::string& body, const Headers& headers, String& out, size_t maxResponse,
-            Headers* responseHeaders = nullptr, const std::function<bool()>& shouldAbort = nullptr);
+            Headers* responseHeaders = nullptr, const std::function<bool()>& shouldAbort = nullptr,
+            uint32_t timeoutMs = 30000);
 
 // Same request, body streamed to a file on SD instead of DRAM.
 int requestToFile(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
-                  const std::string& body, const Headers& headers, const char* destPath, size_t maxResponse);
+                  const std::string& body, const Headers& headers, const char* destPath, size_t maxResponse,
+                  const std::function<bool()>& shouldAbort = nullptr, uint32_t timeoutMs = 30000);
 
 // Password-grant token mint: runs the (already-substituted) auth request and
 // extracts the token at `tokenPath` from a 2xx JSON response.
 bool mintPasswordToken(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
                        const std::string& body, const Headers& headers, const std::string& tokenPath,
-                       std::string& outToken);
+                       std::string& outToken, const std::function<bool()>& shouldAbort = nullptr,
+                       uint32_t timeoutMs = 30000);
 
 }  // namespace pluginhttp

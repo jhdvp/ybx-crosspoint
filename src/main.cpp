@@ -42,14 +42,17 @@
 #include "WifiCredentialStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/home/NoSdRecoveryActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
+#include "util/ReaderSessionJournal.h"
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
+#include "util/YbxKosync.h"
 
 #if CROSSPOINT_VECTOR_FONTS
 // Rendering (incl. FreeType TTF rasterization) runs on the Arduino loop task.
@@ -67,6 +70,8 @@ ActivityManager activityManager(renderer, mappedInputManager);
 FontDecompressor fontDecompressor;
 SdCardFontSystem sdFontSystem;
 FontCacheManager fontCacheManager(renderer.getFontMap(), renderer.getSdCardFonts(), renderer.getTtfFonts());
+// Remain in a storage-free loop if boot failed before settings initialization.
+static bool sdRecoveryBootMode = false;
 static unsigned long allowSleepAt = 0;
 static unsigned long lastX4ProPowerClickAt = 0;
 
@@ -392,29 +397,40 @@ static void deliverSleepPluginEvents(const bool allowNetwork) {
     vars[varCount++] = {"percent", percent};
   }
   pluginevents::emit(pluginevents::Event::SleepEnter, vars, varCount);
-  if (!allowNetwork) return;
+  if (!allowNetwork) {
+    LOG_DBG("MAIN", "Sleep-event network skipped: Bluetooth shutdown incomplete");
+    return;
+  }
   if (WiFi.status() == WL_CONNECTED) {
-    pluginevents::drain(&renderer);
+    pluginevents::drain(&renderer, 4, 15000);
     return;
   }
   // Any connect-flagged queued event justifies the join, not only
   // sleep.enter: reader.session is queued while reading and delivered on this
   // same sleep, and a progress-sync plugin usually subscribes to it alone.
   if (!pluginevents::wantsConnectAny()) return;
-  if (powerManager.getBatteryPercentage() < 20) return;
+  if (powerManager.getBatteryPercentage() < 20) {
+    LOG_DBG("MAIN", "Sleep-event WiFi skipped: battery below 20 percent");
+    return;
+  }
+  // Sleep can be the first WiFi use since boot or deep-sleep wake.
+  WIFI_STORE.loadFromFile();
   const auto cred = WIFI_STORE.findCredential(WIFI_STORE.getLastConnectedSsid());
-  if (!cred) return;
+  if (!cred) {
+    LOG_DBG("MAIN", "Sleep-event WiFi skipped: no saved last-network credential");
+    return;
+  }
 
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   WiFi.mode(WIFI_STA);
   WiFi.begin(cred->ssid.c_str(), cred->password.c_str());
   const unsigned long joinDeadline = millis() + 10000;
-  while (WiFi.status() != WL_CONNECTED && millis() < joinDeadline) {
+  while (WiFi.status() != WL_CONNECTED && static_cast<int32_t>(millis() - joinDeadline) < 0) {
     delay(100);
   }
   if (WiFi.status() == WL_CONNECTED) {
     trustedtime::startSync();  // snap the clock floor while the network is up
-    pluginevents::drain(&renderer);
+    pluginevents::drain(&renderer, 4, 15000);
   } else {
     LOG_DBG("MAIN", "Sleep-event WiFi join timed out; deferring delivery");
   }
@@ -475,19 +491,22 @@ void enterDeepSleep(bool fromTimeout = false) {
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
       (fromTimeout &&
        SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT);
-  // Every sleep mode leaves a complete retained frame on the e-ink panel. Keep
-  // it visible until the first useful reader or home paint replaces it.
-  APP_STATE.showBootScreen = false;
-
-  APP_STATE.saveToFile();
+  if (!sdRecoveryBootMode) {
+    // Every sleep mode leaves a complete retained frame on the e-ink panel. Keep
+    // it visible until the first useful reader or home paint replaces it.
+    APP_STATE.showBootScreen = false;
+    APP_STATE.saveToFile();
+  }
 
   activityManager.goToSleep(fromTimeout);
 
-  if (isQuickResumeSleep) {
-    saveSleepFrameBuffer();
-  } else if (Storage.exists(SLEEP_FRAME_FILE)) {
-    // A stale Quick Resume frame must not replace the selected sleep screen during wake.
-    Storage.remove(SLEEP_FRAME_FILE);
+  if (!sdRecoveryBootMode) {
+    if (isQuickResumeSleep) {
+      saveSleepFrameBuffer();
+    } else if (Storage.exists(SLEEP_FRAME_FILE)) {
+      // A stale Quick Resume frame must not replace the selected sleep screen during wake.
+      Storage.remove(SLEEP_FRAME_FILE);
+    }
   }
 
   // Tear down WiFi so the modem power domain isn't held alive across deep sleep.
@@ -514,7 +533,7 @@ void enterDeepSleep(bool fromTimeout = false) {
   powerManager.startDeepSleep(gpio, wakeOnHeldButton);
 }
 
-void setupDisplayAndFonts(bool seamless = false) {
+void setupDisplayAndFonts(bool seamless = false, bool sdAvailable = true) {
 #if !FREEINK_MCU_C3
   // C3 resolves its controller in HalGPIO::begin() before SPI claims the
   // display pins. X4 Pro skips that C3-only path, so probe here before
@@ -549,8 +568,9 @@ void setupDisplayAndFonts(bool seamless = false) {
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
 
-  // Discover and load SD card fonts
-  sdFontSystem.begin(renderer);
+  // A missing card must not start the SD font scanner. Built-in fonts suffice
+  // for the recovery screen; a successful retry restarts the normal boot.
+  if (sdAvailable) sdFontSystem.begin(renderer);
 
   LOG_DBG("MAIN", "Fonts setup");
 }
@@ -628,9 +648,10 @@ void setup() {
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
-    LOG_ERR("MAIN", "SD card initialization failed");
-    setupDisplayAndFonts(isSilentReboot);
-    activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
+    LOG_ERR("MAIN", "SD card initialization failed; entering isolated recovery");
+    setupDisplayAndFonts(isSilentReboot, false);
+    sdRecoveryBootMode = true;
+    activityManager.replaceActivity(std::make_unique<NoSdRecoveryActivity>(renderer, mappedInputManager));
     return;
   }
 
@@ -680,6 +701,12 @@ void setup() {
   // Restore the monotonic clock floor before anything reads time() (event
   // timestamps, loan-expiry checks).
   trustedtime::init();
+  // A reading session interrupted by a crash or power loss was checkpointed on
+  // SD; queue it now with its original id, so one read is counted once.
+  readersession::recoverPending();
+  // YBX sync switch and history only; the pairing is reconciled when the sync
+  // settings open or the reader starts a sync, so boot reads no plugin files.
+  ybxkosync::begin();
   bleturner::begin(pageturner::host, SETTINGS.ble);
 
   // Brightness and warmth are always restored. A normal wake starts with the
@@ -832,6 +859,56 @@ void setup() {
 }
 
 void loop() {
+  if (sdRecoveryBootMode) {
+    // setup() returned before APP_STATE, SETTINGS, network and SD-backed
+    // services were initialized. No ordinary loop path may touch them.
+    mappedInputManager.update();
+    activityManager.loop();
+
+    // Check user activity to reset auto-sleep timer
+    static unsigned long recoveryLastActivity = millis();
+    int rx = 0;
+    int ry = 0;
+    if (gpio.wasAnyPressed() || gpio.wasAnyReleased() ||
+        (mappedInputManager.hasTouch() && mappedInputManager.wasScreenTapped(rx, ry))) {
+      recoveryLastActivity = millis();
+      powerManager.setPowerSaving(false);
+    }
+
+    // Power button press/hold -> deep sleep
+    static bool recoveryPowerReleased = false;
+    if (!gpio.isPressed(HalGPIO::BTN_POWER)) recoveryPowerReleased = true;
+
+    const bool powerHeld = recoveryPowerReleased && millis() >= allowSleepAt &&
+                           nosd::shouldPowerSleep(gpio.isPressed(HalGPIO::BTN_POWER), gpio.getPowerButtonHeldTime(),
+                                                  SETTINGS.getPowerButtonDuration());
+#if FREEINK_DEVICE_PAPERMONO
+    const bool powerClicked =
+        millis() >= allowSleepAt && mappedInputManager.wasReleased(MappedInputManager::Button::Power);
+#else
+    const bool powerClicked = false;
+#endif
+
+    if (powerHeld || powerClicked) {
+      LOG_DBG("MAIN", "Power button in SD recovery, sleeping");
+      enterDeepSleep();
+      return;
+    }
+
+    // Auto-sleep timeout (default 5 minutes if unset, or SETTINGS.getSleepTimeoutMs())
+    const unsigned long sleepTimeoutMs =
+        SETTINGS.getSleepTimeoutMs() > 0 ? SETTINGS.getSleepTimeoutMs() : nosd::kDefaultSleepTimeoutMs;
+    if (nosd::shouldAutoSleep(millis(), recoveryLastActivity, sleepTimeoutMs)) {
+      LOG_DBG("SLP", "Auto-sleep in SD recovery triggered after %lu ms", sleepTimeoutMs);
+      enterDeepSleep(true);
+      return;
+    }
+
+    powerManager.setPowerSaving(true);
+    delay(75);
+    return;
+  }
+
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;

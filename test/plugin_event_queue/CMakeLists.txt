@@ -1,0 +1,4 @@
+add_executable(PluginEventQueueTest PluginEventQueueTest.cpp PluginQueueStorageTest.cpp PluginEventDeadlineTest.cpp)
+target_include_directories(PluginEventQueueTest PRIVATE ${REPO_ROOT}/src)
+target_link_libraries(PluginEventQueueTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(PluginEventQueueTest)

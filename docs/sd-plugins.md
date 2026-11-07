@@ -177,17 +177,21 @@ of the plugin-system contract, not hardware detection.
 | `plugin_api` | `1` | Numeric plugin contract level for requirements that need a minimum firmware API generation. |
 | `plugin_capabilities` | comma-separated names below | Fine-grained feature advertisement. A catalog entry may require one or more capabilities without hard-coding a firmware version. |
 
-Stock CrossPoint currently advertises these catalog capabilities:
+This YBX fork advertises these catalog capabilities (`catalog.lists.auth`, `catalog.folders.json`, `stats.native.v1` and `ui.dashboard.v1` are fork extensions):
 
 | Capability | What it means | Why it exists in the plugin system |
 |---|---|---|
 | `catalog.lists` | The catalog manifest can expose named browse lists, including lists supplied dynamically through `browse.lists_url`. | Any plugin can split or dynamically publish multiple catalog views without adding plugin-specific firmware logic. Plugin Hub currently uses this for Official/Community catalogs. |
-| `catalog.lists.auth` | Authenticated dynamic list indexes and nested JSON catalog folders. | Supports account-scoped source trees and the All → Series → Books hierarchy. |
+| `catalog.lists.auth` | Dynamic list requests accept explicit `browse.lists_headers`, with the same substitutions as `browse.headers`. Browse headers are never inherited. An empty `lists` array opens the required default `browse.url`; account-specific plugins should point it to an authenticated empty feed. | A service can return only the sources connected to the signed-in account, without placing credentials in URLs. Plugins requiring this behavior must declare this capability in catalog compatibility metadata. A 401 opens device-code sign-in on retry; password grants are refreshed once on 401/403. Other failures show a feed error. Omit static `browse.lists` when using a dynamic index. |
+| `catalog.folders.json` | JSON catalogs may map `browse.fields.folder_url` to an item URL. Dynamic indexes support items with an `id` but no URL as groups, and `parent` to select children. A folder never triggers download; Back returns to its parent. | The YBX 1.9.1 plugin can show connected sources, merged shelves and series without misidentifying folders as EPUB files. JSON folder URLs must use the original HTTPS origin to prevent bearer leakage. |
 | `catalog.notices` | A browse list can display an optional confirmation notice with custom title, message, Confirm, and Cancel labels before opening. | Any plugin can require a generic user notice before entering a catalog or section. Plugin Hub currently uses this for the Community-plugin warning. |
 | `catalog.bundle_install` | A catalog entry can install a multi-file plugin bundle from a base URL plus a file list into the plugin directory. | Any catalog can distribute a plugin or other supported bundle made of multiple files without a dedicated installer in firmware. Plugin Hub currently uses this to install complete plugins. |
 | `catalog.version_tracking` | Catalog item versions are compared with installed plugin manifests to show Installed or Update status. | Any catalog can expose install/update state using the generic installed-plugin version contract. Plugin Hub currently uses it to identify available updates. |
 | `catalog.compatibility` | JSON catalog entries can be filtered by firmware family, minimum plugin API, and required capabilities. | Any catalog can omit entries that require firmware behavior the current device does not provide, while entries with no compatibility metadata remain backward-compatible. Plugin Hub currently uses this for compatibility-aware discovery. |
 | `catalog.item_details` | JSON catalog items can open a Details page with selected-row metadata and optional bounded on-demand HTML/text content. | Any catalog can keep browse rows concise while offering richer information before Fetch/Install/Update. Rich metadata is additive and failure falls back to the normal item details view. |
+| `catalog.encoded_item_fields` | Download, sidecar, and details templates can use the percent-encoded item variables `{id_enc}`, `{title_enc}`, `{author_enc}`, and `{url_enc}`. | A catalog whose URLs carry item text can require this so older firmware, which would send the variable names literally, does not offer the entry. |
+| `stats.native.v1` | The firmware keeps its own bounded reading-session statistics and exposes them on a native screen. | A statistics plugin can require it so it is offered only where local counters exist; the numbers never come from the catalog. |
+| `ui.dashboard.v1` | A `device.json` may declare a `dashboard` with `source: "reading-stats.v1"` and pages of `metric`, `week_bars`, `heatmap_28` and `book_list` widgets, which the firmware renders natively. | A manifest can describe its statistics pages once; the firmware owns layout, fonts and colors and ignores unknown widget types. |
 
 Capability names describe firmware behavior available to the entire plugin system.
 They must not encode Plugin Hub policy or ownership, and another plugin may use the
@@ -195,6 +199,55 @@ same capability whenever it depends on the same generic firmware behavior.
 Additional firmware features should advertise their own capability names only when
 the corresponding runtime support is actually present. Catalog entries that omit
 compatibility metadata remain visible for backward compatibility.
+
+### Reading-statistics dashboard
+
+A device plugin whose manifest declares a dashboard gets a native statistics
+screen in addition to its catalog. The manifest declares the pages; the firmware
+renders them from its own reading-session data, never from a network source.
+
+```jsonc
+"dashboard": {
+  "source": "reading-stats.v1",       // the only source this firmware accepts
+  "pages": [
+    { "title": "Your reading", "widgets": [
+        { "type": "metric", "field": "total_seconds" },
+        { "type": "metric", "field": "sessions" } ] },
+    { "title": "Week", "widgets": [
+        { "type": "week_bars" },
+        { "type": "metric", "field": "today_seconds" } ] },
+    { "title": "Calendar", "widgets": [ { "type": "heatmap_28" } ] },
+    { "title": "Books", "widgets": [ { "type": "book_list" } ] }
+  ]
+}
+```
+
+Widget vocabulary (anything else is skipped, not approximated):
+
+| Widget | What it draws |
+|---|---|
+| `metric` | One label/value row. `field` selects the value; an optional `label` overrides the localized default. |
+| `week_bars` | Seven daily bars ending at today (or the newest recorded day when the clock is unset), with dates and the maximum caption. |
+| `heatmap_28` | A Monday-first 28-day grid; filled cells scale with reading time, hollow cells mean the device recorded nothing that day. |
+| `book_list` | Most-read books with time and a paged "More" row. |
+
+Supported `field` values: `total_seconds`, `sessions`, `active_days`,
+`latest_day_seconds`, `today_seconds`, `week_seconds`, `streak_days`. Unknown
+fields and `scope: "current-book"` render as "—".
+
+Semantics worth relying on:
+
+- Data is the device's own finished reader sessions, recorded even when the
+  plugin is not subscribed. The store is bounded (64-day ring, 32 books) and
+  never reads the vCodex export.
+- A day without data is not zero; it is drawn as absent or reported as "—".
+  With an unset clock, sessions stay in the totals as undated and are reported
+  separately; they are not counted as today.
+- Labels from the manifest are shown verbatim, so their language follows the
+  manifest, not the firmware language.
+- This firmware renders the vocabulary above only; colors, arbitrary widgets,
+  month navigation and per-day detail are not part of `reading-stats.v1`.
+  Server streak/goal/achievements need a separate data source and capability.
 
 ### Schema
 
@@ -212,11 +265,20 @@ download filename/username/password; and sidecar path/body.
 | `{plugin_api}` | numeric plugin API level | template fields |
 | `{plugin_capabilities}` | comma-separated advertised capability names | template fields |
 | `{page}` | current 1-based page | browse |
-| `{limit}` | `page_size + 1` (the extra row detects "more pages") | browse |
-| `{id}` `{title}` `{author}` `{url}` | fields of the selected item | download, sidecar |
+| `{offset}` | rows before the current page: `(page - 1) * page_size` | browse |
+| `{limit}` | `page_size` when the request uses `{page}` and not `{offset}`; otherwise `page_size + 1` (the extra row shows that another page exists) | browse |
+| `{id}` `{title}` `{author}` `{url}` | fields of the selected item, as received (unlike `{query}`, which is encoded, with `{query_raw}` as the raw form) | download, sidecar, item details |
+| `{id_enc}` `{title_enc}` `{author_enc}` `{url_enc}` | the same fields percent-encoded (everything except letters, digits, `-_.~`), for URL query values and path segments; firmware with these advertises `catalog.encoded_item_fields` | download, sidecar, item details |
 | `{md5}` | MD5 hex of the destination file path | sidecar |
 | `{dest}` | sanitized on-SD path of the downloaded file | sidecar |
 | `{device_code}` | from the auth request response | auth poll |
+
+Substitution inserts values as they are. Before a request is sent, spaces,
+control characters, and non-ASCII (UTF-8) bytes in its URL are
+percent-encoded, so a raw `{title}` in a URL path still forms a valid request.
+All other printable ASCII characters are kept, including `&`, `?`, `#`, `/`,
+`+`, `=` and `%`, so use the `_enc` forms for values inside a query string or
+a single path segment.
 
 Two browse formats:
 - **`"json"`** (default) — a paged JSON list, using `items`/`fields` below.
@@ -305,11 +367,16 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
     "body": "{}",
     "url_path": "url",                      // response field with the file URL;
                                             // omit to treat "url" itself as the file URL
+    "require_url": true,                    // json: a row whose mapped "url" field is empty
+                                            // has no file — see "Rows without a file" below
     "username": "{cfg.user}",              // optional HTTP Basic creds for the file GET
     "password": "{cfg.pass}",             // omit for token/header auth
-    "dest_dir": "/ServiceName",             // created if missing; falls back to SD root
+    "dest_dir": "/ServiceName",             // created if missing; a failure to create
+                                            // or write fails the download (no SD-root fallback)
                                             // a "dest_dir" in the config file overrides it,
                                             // so the plugin's web card can offer the setting
+                                            // (the "On Reader" shelf planning/removal always
+                                            // follows this manifest value, never the override)
     "filename": "{title}.epub",             // rendered filename is sanitized to 100 bytes;
                                             // a conventional extension is preserved
     "sidecar": {                            // optional per-book metadata file
@@ -359,11 +426,23 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
   plugin.
 - **Stale tokens**: a 401/403 from browse returns to the sign-in screen rather
   than an error.
-- **Pagination** (json): the browse request should return up to `{limit}`
-  items; the firmware displays `page_size` and uses the extra row to know
-  another page exists. Navigation matches the OPDS browser: a "Previous
-  page" row precedes the items past page 1 and a "Next page" row follows
-  them while more pages exist — tappable and button-reachable like any row.
+- **Pagination** (json): the variables a request uses choose how it pages
+  (`{offset}` takes precedence over `{page}`).
+  - `{page}` with `{limit}` (`?page={page}&per_page={limit}`): `{limit}` is
+    `page_size`, so pages line up with the server's. A full page shows
+    "Next page"; when the last page is exactly full, the next one is empty.
+  - `{offset}` (`?offset={offset}&limit={limit}`): `{limit}` is
+    `page_size + 1`, and the extra row shows that another page exists.
+  - `{page}` without `{limit}` (one file per page, for example
+    `all-{page}.json`): "Next page" appears when the response has more than
+    `page_size` rows, so add one extra row at the end of every file except the
+    last (for example, a copy of the next file's first row).
+  - Neither `{page}` nor `{offset}`: the response is one static list, and the
+    firmware pages through it locally.
+
+  Navigation matches the OPDS browser: a "Previous page" row precedes the
+  items past page 1 and a "Next page" row follows them while more pages
+  exist — tappable and button-reachable like any row.
 - **Lists** (json): with `browse.lists`, opening the catalog shows a picker
   of the named entries first (a single list skips the picker and opens
   directly, after its notice; Back then leaves the catalog); each entry browses with its own url/body
@@ -373,8 +452,12 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
   defaults to the list title, and omitted button labels use the firmware's
   translated Cancel/Confirm defaults. Back from the book list returns to the
   picker.
-- **Authenticated dynamic lists**: a list index can contain entries with `id` and no `url` (groups), and children with matching `parent` plus a browse `url`. Only root entries are shown first; Back moves to the previous group. A single provider skips its redundant outer folder. The list-index GET uses `browse.lists_headers`, or falls back to the normal browse headers, with `{token}` substituted. This is the `catalog.lists.auth` capability.
-- **JSON navigation**: `browse.fields.folder_url` maps a per-item JSON string. An item with a nonempty `folder_url` is a folder, not a downloadable file. Confirm follows its URL using the catalog's authenticated browse request; Back returns to the prior folder. Book rows without `folder_url` retain the original download behavior.
+- **Rows without a file** (json): with `download.require_url`, a row whose mapped
+  `url` field is empty is marked as not available in the list and its Details
+  card offers no action — for a catalog that mixes books with informational rows
+  (the YBX update notice carries an id but no file). Without the flag the row
+  keeps its Fetch action, so a download built from `{id}`/`{title}` still works
+  and a genuinely broken one reports the server error.
 - **XML navigation**: Confirm on a folder (an item carrying `container_element`)
   descends into it, Back climbs out (Back at the root leaves the screen).
   With `resolve_urls`, server-relative URLs resolve against the browse URL's
@@ -400,7 +483,9 @@ JSON catalogs may also map `description`, `detail_author`, and `repository` for 
   containing only the declared field paths, so a page parses into a few KB
   no matter the body size.
 - One TLS session is kept alive across browse requests: repeated handshakes
-  permanently fragment the heap.
+  permanently fragment the heap. Plugin endpoints must use https; the
+  certificate chain and host name are verified against the firmware CA bundle,
+  so a server whose chain is not covered fails instead of downgrading.
 - The book download streams to SD via `HttpDownloader`; file size is
   unconstrained.
 - An XML list is parsed from the temp file in 2KB chunks; the engine stops
@@ -530,3 +615,17 @@ floor can lag real time while the device sits powered off, but it can never
 be rolled back — staying offline delays a due date at most by the powered-off
 gap, it does not suspend it. A book with a due date and no trustworthy clock
 at all refuses to open and asks for one Wi-Fi connection.
+
+## Plugin update notices in the YBX fork
+
+After browsing Plugin Hub, Home shows the cached update count beside Catalogs
+(or Plugins in other layouts). A new catalog version can show one update prompt;
+choosing it opens Plugin Hub at that plugin's details, where the existing update
+action applies it. Cancel dismisses the prompt. Plugin picker rows also show an
+update badge. There is no background network polling; the daily scan reuses an
+already fetched Hub response. Only an installed Plugin Hub enables these notices.
+
+The SD cache retains at most 12 bounded entries. If an unretained plugin changes,
+the aggregate is invalidated and rebuilt on the next Hub visit. Retained entries
+are rechecked against installed manifests before prompting, including dismissed
+ones. Offline counts describe the last catalog snapshot, not a live server check.

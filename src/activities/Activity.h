@@ -32,6 +32,9 @@ class Activity {
   virtual void onExit();
   // Last chance to queue activity-owned state before sleep events are drained.
   virtual void prepareForSleep() {}
+  // Another screen took this activity's page (ActivityManager push). Focus
+  // returns with the activity's next render; most activities ignore this.
+  virtual void onScreenCovered() {}
   virtual void loop() {}
 
   virtual void render(RenderLock&&) {}

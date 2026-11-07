@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 // Device identity for the LCP service: an X25519 keypair generated on first
@@ -12,8 +13,10 @@ namespace lcpdevice {
 
 // Loads the stored identity or generates + enrolls one. False on failure;
 // notEnrollable=true means this build carries no release key (self-compiled)
-// and enrollment can never succeed.
-bool ensureEnrolled(std::string& deviceId, bool& notEnrollable);
+// and enrollment can never succeed. The optional budget/abort bound the
+// enrollment request when the caller runs it inside a fetch window.
+bool ensureEnrolled(std::string& deviceId, bool& notEnrollable, uint32_t timeoutMs = 0,
+                    const std::function<bool()>& shouldAbort = {});
 
 // Drops the stored identity (server answered 401: revoked or registry reset);
 // the next ensureEnrolled() enrolls fresh.

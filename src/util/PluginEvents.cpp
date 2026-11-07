@@ -7,13 +7,17 @@
 #include <esp_random.h>
 #include <time.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
 
+#include "PluginEventDeadline.h"
+#include "PluginEventQueue.h"
 #include "PluginHttp.h"
 #include "PluginLocations.h"
+#include "PluginQueueStorage.h"
 #include "components/UITheme.h"
 #include "network/ProtectedPaths.h"
 
@@ -25,12 +29,26 @@ static_assert(sizeof(EVENT_NAMES) / sizeof(EVENT_NAMES[0]) == static_cast<size_t
               "event name table out of sync");
 
 constexpr const char* OUTBOX_NAME = "/events.jsonl";
-// Drop-oldest wholesale: a plugin that is never drained must not grow a file
-// forever, and by the time 4KB of events piled up the old ones describe stale
-// state anyway.
+struct QueueFiles {
+  bool exists(const std::string& path) { return Storage.exists(path.c_str()); }
+  bool remove(const std::string& path) { return Storage.remove(path.c_str()); }
+  bool rename(const std::string& from, const std::string& to) { return Storage.rename(from.c_str(), to.c_str()); }
+  bool writeComplete(const std::string& path, const std::string_view content) {
+    HalFile file;
+    if (!Storage.openFileForWrite("PEVT", path, file)) return false;
+    const bool complete =
+        file.write(reinterpret_cast<const uint8_t*>(content.data()), content.size()) == content.size();
+    const bool closed = file.close();
+    return complete && closed;
+  }
+};
+
+// Drop-oldest at the cap: a plugin that is never drained must not grow a file
+// forever, but whole events are kept until their space is needed, so a long
+// offline period delivers the newest history instead of discarding all of it.
 constexpr size_t MAX_OUTBOX_BYTES = 4 * 1024;
 constexpr size_t MAX_MANIFEST_SIZE = 8 * 1024;
-constexpr size_t MAX_EVENT_LINE = 512;
+constexpr size_t MAX_EVENT_LINE = 1024;
 // Event handler responses are acknowledgements, not content.
 constexpr size_t MAX_EVENT_RESPONSE = 8 * 1024;
 
@@ -43,6 +61,9 @@ struct Subscriber {
   char dir[64] = {0};       // "<root>/<name>"
   uint8_t mask = 0;         // bit per Event
   uint8_t connectMask = 0;  // events whose handler declares "connect": true
+  // Hash of each handler's "require_meta" key, 0 = unfiltered. A hash keeps
+  // emit() free of manifest reads; a collision only queues an extra event.
+  uint32_t metaKeyHash[static_cast<size_t>(pluginevents::Event::COUNT)] = {};
 };
 Subscriber subscribers[MAX_EVENT_PLUGINS];
 
@@ -56,6 +77,19 @@ int eventFromName(const char* name) {
 }
 
 std::string outboxPath(const Subscriber& sub) { return std::string(sub.dir) + OUTBOX_NAME; }
+
+// FNV-1a, never 0 (0 marks an unfiltered handler).
+uint32_t metaKeyHash(const char* key) {
+  uint32_t hash = 2166136261u;
+  for (; *key; key++) hash = (hash ^ static_cast<uint8_t>(*key)) * 16777619u;
+  return hash == 0 ? 1 : hash;
+}
+
+// The book an event is about: "book", or "path" for book.downloaded.
+const char* eventBook(JsonVariantConst vars) {
+  const char* book = vars["book"] | "";
+  return book[0] != '\0' ? book : (vars["path"] | "");
+}
 
 }  // namespace
 
@@ -87,14 +121,23 @@ void refreshSubscriptions() {
     if (deserializeJson(doc, raw, DeserializationOption::Filter(filter)) != DeserializationError::Ok) continue;
     uint8_t mask = 0;
     uint8_t connectMask = 0;
+    uint32_t metaHashes[static_cast<size_t>(Event::COUNT)] = {};
     for (JsonPairConst kv : doc["events"].as<JsonObjectConst>()) {
       const int e = eventFromName(kv.key().c_str());
       if (e < 0) {
         LOG_DBG("PEVT", "%s: unknown event '%s' ignored", entry.name.c_str(), kv.key().c_str());
         continue;
       }
+      // A filter that is not a string must not fall back to "every book".
+      JsonVariantConst requireMeta = kv.value()["require_meta"];
+      if (!requireMeta.isNull() && !requireMeta.is<const char*>()) {
+        LOG_ERR("PEVT", "%s: %s require_meta is not a string; handler ignored", entry.name.c_str(), kv.key().c_str());
+        continue;
+      }
       mask |= static_cast<uint8_t>(1u << e);
       if (kv.value()["connect"] | false) connectMask |= static_cast<uint8_t>(1u << e);
+      const char* requiredMeta = requireMeta | "";
+      if (requiredMeta[0] != '\0') metaHashes[e] = metaKeyHash(requiredMeta);
     }
     // sleep.enter exists to act before the chip powers down (sleep image,
     // pre-sleep sync), so subscribing implies "connect": true; requiring the
@@ -107,6 +150,7 @@ void refreshSubscriptions() {
     strncpy(sub.dir, entry.dir.c_str(), sizeof(sub.dir) - 1);
     sub.mask = mask;
     sub.connectMask = connectMask;
+    memcpy(sub.metaKeyHash, metaHashes, sizeof(metaHashes));
     LOG_DBG("PEVT", "%s subscribes mask=0x%02x", sub.name, sub.mask);
   }
 }
@@ -128,8 +172,11 @@ uint8_t subscriptionMask(const char* plugin) {
 bool wantsConnectAny() {
   for (const auto& sub : subscribers) {
     if (sub.name[0] == '\0' || sub.connectMask == 0) continue;
+    QueueFiles files;
+    const std::string path = outboxPath(sub);
+    if (!recoverQueue(files, path)) continue;
     std::string raw;
-    if (!Storage.readFileToString("PEVT", outboxPath(sub), MAX_OUTBOX_BYTES + MAX_EVENT_LINE, raw)) continue;
+    if (!Storage.readFileToString("PEVT", path, MAX_OUTBOX_BYTES + MAX_EVENT_LINE, raw)) continue;
     for (size_t i = 0; i < static_cast<size_t>(Event::COUNT); i++) {
       if (!(sub.connectMask & eventBit(static_cast<Event>(i)))) continue;
       char eventField[48];
@@ -140,20 +187,27 @@ bool wantsConnectAny() {
   return false;
 }
 
-void emit(const Event e, const Var* vars, const size_t varCount) {
-  if (!anySubscriber(e)) return;
+void allocateEventId(char* out, const size_t size) {
+  // Unique across queued events and reboots: a per-boot nonce plus an
+  // in-session counter shared with emit(), no SD read-modify-write per event.
+  // ts alone repeats (1-second resolution, and 0 whenever the clock was never set).
+  static const uint32_t bootNonce = esp_random();
+  static uint32_t seq = 0;
+  snprintf(out, size, "%08lx-%lu", static_cast<unsigned long>(bootNonce), static_cast<unsigned long>(++seq));
+}
+
+bool emit(const Event e, const Var* vars, const size_t varCount, const char* explicitId) {
+  if (!anySubscriber(e)) return true;
 
   // One line: {"e":"reader.exit","id":"3fa9c21b-7","ts":1734212345,"vars":{"book":"...","percent":"74"}}
   JsonDocument doc;
   doc["e"] = EVENT_NAMES[static_cast<size_t>(e)];
-  // Unique id for server-side dedupe of at-least-once delivery: a per-boot
-  // nonce plus an in-session counter, unique across queued events and reboots
-  // without an SD read-modify-write per event. ts alone repeats (1-second
-  // resolution, and 0 whenever the clock was never set).
-  static const uint32_t bootNonce = esp_random();
-  static uint32_t seq = 0;
   char id[24];
-  snprintf(id, sizeof(id), "%08lx-%lu", static_cast<unsigned long>(bootNonce), static_cast<unsigned long>(++seq));
+  if (explicitId != nullptr && explicitId[0] != '\0') {
+    snprintf(id, sizeof(id), "%s", explicitId);
+  } else {
+    allocateEventId(id, sizeof(id));
+  }
   doc["id"] = id;
   // Best-effort unix time: 0 when the clock was never set (no RTC, no NTP yet).
   doc["ts"] = static_cast<long long>(time(nullptr));
@@ -167,24 +221,74 @@ void emit(const Event e, const Var* vars, const size_t varCount) {
   line += '\n';
   if (line.size() > MAX_EVENT_LINE) {
     LOG_ERR("PEVT", "event line too large (%u); dropped", static_cast<unsigned>(line.size()));
-    return;
+    return true;  // no retry can shrink it
   }
 
+  // The book's sidecar, read once and shared by every filtered handler.
+  bool queued = true;
+  pluginhttp::Headers meta;
+  bool metaLoaded = false;
   for (const auto& sub : subscribers) {
     if (sub.name[0] == '\0' || !(sub.mask & eventBit(e))) continue;
+    const uint32_t wanted = sub.metaKeyHash[static_cast<size_t>(e)];
+    if (wanted != 0) {
+      // Filtered at queue time, so other books' events take no outbox space
+      // and never make the sleep path bring WiFi up.
+      if (!metaLoaded) {
+        const char* book = eventBook(doc["vars"]);
+        if (book[0] != '\0') pluginhttp::loadConfigFile(std::string(book) + ".meta.json", meta);
+        metaLoaded = true;
+      }
+      bool matched = false;
+      for (const auto& kv : meta) {
+        if (!kv.second.empty() && metaKeyHash(kv.first.c_str()) == wanted) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) continue;
+    }
     const std::string path = outboxPath(sub);
-    HalFile file = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND);
-    if (!file || !file.isOpen()) {
-      LOG_ERR("PEVT", "%s: outbox open failed", sub.name);
+    QueueFiles files;
+    if (!recoverQueue(files, path)) {
+      LOG_ERR("PEVT", "%s: outbox recovery failed; append deferred", sub.name);
+      queued = false;
       continue;
     }
-    if (file.fileSize() > MAX_OUTBOX_BYTES) {
-      // Drop-oldest wholesale (see MAX_OUTBOX_BYTES).
-      file.close();  // explicit: remove follows on the same path
-      Storage.remove(path.c_str());
-      file = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND);
-      if (!file || !file.isOpen()) continue;
-      LOG_DBG("PEVT", "%s: outbox over cap, dropped", sub.name);
+    HalFile file = Storage.open(path.c_str(), O_RDWR | O_CREAT | O_APPEND);
+    if (!file || !file.isOpen()) {
+      LOG_ERR("PEVT", "%s: outbox open failed", sub.name);
+      queued = false;
+      continue;
+    }
+    if (!repairQueueTail(file, MAX_EVENT_LINE)) {
+      LOG_ERR("PEVT", "%s: outbox tail repair failed; append deferred", sub.name);
+      queued = false;
+      continue;
+    }
+    if (file.fileSize() + line.size() > MAX_OUTBOX_BYTES) {
+      // Make room by dropping the oldest complete events; the newest history
+      // survives an offline period.
+      file.close();
+      std::string raw;
+      if (!Storage.readFileToString("PEVT", path, MAX_OUTBOX_BYTES + MAX_EVENT_LINE, raw)) {
+        LOG_ERR("PEVT", "%s: outbox read failed; append deferred", sub.name);
+        queued = false;
+        continue;
+      }
+      trimQueueHead(raw, MAX_OUTBOX_BYTES - line.size());
+      if (!replaceQueue(files, path, raw)) {
+        LOG_ERR("PEVT", "%s: outbox trim failed; append deferred", sub.name);
+        queued = false;
+        continue;
+      }
+      file = Storage.open(path.c_str(), O_RDWR | O_CREAT | O_APPEND);
+      if (!file || !file.isOpen()) {
+        LOG_ERR("PEVT", "%s: outbox reopen failed", sub.name);
+        queued = false;
+        continue;
+      }
+      LOG_DBG("PEVT", "%s: outbox trimmed to fit", sub.name);
     }
     const uint64_t before = file.fileSize64();
     if (file.write(reinterpret_cast<const uint8_t*>(line.data()), line.size()) != line.size()) {
@@ -192,9 +296,11 @@ void emit(const Event e, const Var* vars, const size_t varCount) {
       // both as corrupt: cut back to the last complete line, losing only this one.
       LOG_ERR("PEVT", "%s: short outbox append; event dropped", sub.name);
       file.truncate(before);
+      queued = false;
     }
     file.flush();
   }
+  return queued;
 }
 
 namespace {
@@ -212,6 +318,7 @@ struct DrainManifest {
     // "download" variant: the response streams to `dest` on SD (e.g. a fresh
     // sleep image) instead of being read as an acknowledgement.
     std::string dest;
+    bool latestSnapshot = false;
     bool isDownload() const { return !dest.empty(); }
   };
   std::vector<Handler> handlers;
@@ -255,6 +362,8 @@ bool loadDrainManifest(const Subscriber& sub, DrainManifest& out) {
     } else {
       pluginhttp::readRequest(kv.value()["request"], "POST", h.req);
     }
+    h.latestSnapshot = e == static_cast<int>(Event::SleepEnter) && h.isDownload() && h.req.method == "GET" &&
+                       strcmp(kv.value()["delivery"] | "", "latest") == 0;
     h.toast = kv.value()["toast"] | "";
     if (!h.req.url.empty()) out.handlers.push_back(std::move(h));
   }
@@ -287,7 +396,8 @@ std::string drainSubstituted(std::string tpl, const std::string& token, const pl
 // `token` is shared across the drain: a 401-minted refresh persists to the
 // remaining lines instead of re-minting per line.
 bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::string& token,
-                 const pluginhttp::Headers& config, GfxRenderer* renderer) {
+                 const pluginhttp::Headers& config, GfxRenderer* renderer, const EventDeadline& drainDeadline,
+                 const bool sleepBudget) {
   JsonDocument doc;
   if (deserializeJson(doc, lineText) != DeserializationError::Ok) return true;  // corrupt line: drop
   const int e = eventFromName(doc["e"] | "");
@@ -300,6 +410,19 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
   }
   if (!handler) return true;
 
+  const uint32_t remaining = drainDeadline.remaining(millis());
+  if (remaining == 0) return false;
+  // Reserve time for the snapshot after ordinary telemetry. Auth refresh and
+  // retry share this handler deadline instead of starting fresh time budgets.
+  const uint32_t handlerLimit =
+      sleepBudget ? std::min<uint32_t>(remaining, handler->latestSnapshot ? 8000u : 2000u) : 0;
+  const EventDeadline handlerDeadline(millis(), handlerLimit);
+  const std::function<bool()> shouldAbort = [&]() {
+    return drainDeadline.remaining(millis()) == 0 || handlerDeadline.remaining(millis()) == 0;
+  };
+  const auto timeout = [&]() {
+    return std::min<uint32_t>(30000, std::min(drainDeadline.remaining(millis()), handlerDeadline.remaining(millis())));
+  };
   JsonVariantConst vars = doc["vars"];
   const long long ts = doc["ts"] | 0LL;
   // Lines queued by pre-id firmware substitute {event.id} as empty.
@@ -309,13 +432,14 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
   // flat fields written at download time) as {meta.*} variables, e.g. a
   // service book id for a sync handler.
   pluginhttp::Headers meta;
-  const char* book = vars["book"] | "";
+  const char* book = eventBook(vars);
   if (book[0] != '\0') {
     pluginhttp::loadConfigFile(std::string(book) + ".meta.json", meta);
     for (auto& kv : meta) kv.first = "{meta." + kv.first + "}";
   }
 
   const auto run = [&](const std::string& tok) {
+    if (shouldAbort()) return -1;
     pluginhttp::Headers headers;
     headers.reserve(handler->req.headers.size());
     for (const auto& h : handler->req.headers) {
@@ -337,7 +461,7 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
       const int st = pluginhttp::requestToFile(
           nullptr, drainSubstituted(handler->req.url, tok, config, meta, vars, ts, id), handler->req.method,
           drainSubstituted(handler->req.body, tok, config, meta, vars, ts, id), headers, tmp.c_str(),
-          MAX_EVENT_DOWNLOAD);
+          MAX_EVENT_DOWNLOAD, shouldAbort, timeout());
       if (st >= 200 && st < 300) {
         // rename won't overwrite an existing file, so park the old dest as a
         // backup and restore it if the swap fails: a failed commit must not
@@ -365,14 +489,15 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
       return st;
     }
     String response;
-    return pluginhttp::request(
-        nullptr, drainSubstituted(handler->req.url, tok, config, meta, vars, ts, id), handler->req.method,
-        drainSubstituted(handler->req.body, tok, config, meta, vars, ts, id), headers, response, MAX_EVENT_RESPONSE);
+    return pluginhttp::request(nullptr, drainSubstituted(handler->req.url, tok, config, meta, vars, ts, id),
+                               handler->req.method,
+                               drainSubstituted(handler->req.body, tok, config, meta, vars, ts, id), headers, response,
+                               MAX_EVENT_RESPONSE, nullptr, shouldAbort, timeout());
   };
 
   int status = run(token);
   // A password-grant token expires; on 401/403 mint a fresh one and retry once.
-  if ((status == 401 || status == 403) && mf.hasPasswordGrant()) {
+  if ((status == 401 || status == 403) && mf.hasPasswordGrant() && !shouldAbort()) {
     std::string minted;
     // Same template vocabulary as the delivery request (e.g. a {cfg.*} client
     // secret in an auth header).
@@ -384,7 +509,7 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
     if (pluginhttp::mintPasswordToken(nullptr, drainSubstituted(mf.authReq.url, token, config, meta, vars, ts, id),
                                       mf.authReq.method,
                                       drainSubstituted(mf.authReq.body, token, config, meta, vars, ts, id), authHeaders,
-                                      mf.authTokenPath, minted)) {
+                                      mf.authTokenPath, minted, shouldAbort, timeout())) {
       pluginhttp::saveTokenToFile(mf.tokenFile, mf.tokenPath, minted);
       token = minted;
       status = run(token);
@@ -400,13 +525,15 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
 
 }  // namespace
 
-void drain(GfxRenderer* renderer, const size_t maxEvents) {
+void drain(GfxRenderer* renderer, const size_t maxEvents, const uint32_t maxMillis) {
+  const EventDeadline deadline(millis(), maxMillis);
   size_t budget = maxEvents;
   for (const auto& sub : subscribers) {
-    if (budget == 0) break;
+    if (budget == 0 || deadline.remaining(millis()) == 0) break;
     if (sub.name[0] == '\0') continue;
     const std::string path = outboxPath(sub);
-    if (!Storage.exists(path.c_str())) continue;
+    QueueFiles files;
+    if (!recoverQueue(files, path) || !Storage.exists(path.c_str())) continue;
 
     std::string raw;
     if (!Storage.readFileToString("PEVT", path, MAX_OUTBOX_BYTES + MAX_EVENT_LINE, raw)) continue;
@@ -428,35 +555,25 @@ void drain(GfxRenderer* renderer, const size_t maxEvents) {
     // Pre-build the substitution patterns (see drainSubstituted).
     for (auto& kv : config) kv.first = "{cfg." + kv.first + "}";
 
-    // Walk lines; stop at the first failure so order is preserved.
-    size_t pos = 0;
-    bool stalled = false;
-    while (pos < raw.size() && budget > 0 && !stalled) {
-      size_t nl = raw.find('\n', pos);
-      if (nl == std::string::npos) nl = raw.size();
-      const std::string lineText = raw.substr(pos, nl - pos);
-      if (!lineText.empty()) {
-        if (deliverLine(mf, lineText, token, config, renderer)) {
-          budget--;
-        } else {
-          stalled = true;
-          break;
-        }
-      }
-      pos = nl + 1;
-    }
-
-    if (pos >= raw.size() && !stalled) {
-      Storage.remove(path.c_str());
-    } else if (pos > 0) {
-      // Rewrite the unprocessed tail so delivered events are not replayed.
-      // writeFile keeps the old outbox if the rewrite fails: replaying delivered
-      // events beats losing undelivered ones.
-      if (!Storage.writeFile(path.c_str(), String(raw.c_str() + pos))) {
+    const bool latestSleep = std::any_of(mf.handlers.begin(), mf.handlers.end(),
+                                         [](const DrainManifest::Handler& h) { return h.latestSnapshot; });
+    const auto isLatest = [latestSleep](const std::string_view line) {
+      if (!latestSleep) return false;
+      JsonDocument doc;
+      if (deserializeJson(doc, line.data(), line.size()) != DeserializationError::Ok) return false;
+      return strcmp(doc["e"] | "", "sleep.enter") == 0;
+    };
+    const bool changed = drainQueue(raw, budget, isLatest, [&](const std::string_view line) {
+      return deliverLine(mf, std::string(line), token, config, renderer, deadline, maxMillis != 0);
+    });
+    if (changed) {
+      if (raw.empty()) {
+        Storage.remove(path.c_str());
+      } else if (!replaceQueue(files, path, raw)) {
         LOG_ERR("PEVT", "%s: outbox rewrite failed", sub.name);
       }
     }
-    LOG_DBG("PEVT", "%s: drained (stalled=%d)", sub.name, stalled);
+    LOG_DBG("PEVT", "%s: drain remaining=%u", sub.name, static_cast<unsigned>(raw.size()));
   }
 }
 
