@@ -133,8 +133,8 @@ Action run(const bool forced) {
   Action action = decideAction(state);
   if (action == Action::KeepManual && forced) action = Action::Apply;
   // A hand-typed server while a key is on the card: the status row offers YBX.
-  stateManualConflict = state.enabled && stateTokenPresent &&
-                        (state.manualServerUrl || (state.credentialsPresent && !pointsAtYbx));
+  stateManualConflict =
+      state.enabled && stateTokenPresent && (state.manualServerUrl || (state.credentialsPresent && !pointsAtYbx));
 
   switch (action) {
     case Action::None:

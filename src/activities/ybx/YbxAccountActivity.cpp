@@ -429,9 +429,8 @@ void YbxAccountActivity::draw(UiScreen& ui) {
     ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(topY + 36), static_cast<int16_t>(width), 40},
                      authUserCode_.c_str(), codeStyle);
     const int qrSize = std::min(200, width - 32);
-    authQrRect_ =
-        fui::Rect{static_cast<int16_t>(safe.x + (safe.width - qrSize) / 2), static_cast<int16_t>(topY + 80),
-                  static_cast<int16_t>(qrSize), static_cast<int16_t>(qrSize)};
+    authQrRect_ = fui::Rect{static_cast<int16_t>(safe.x + (safe.width - qrSize) / 2), static_cast<int16_t>(topY + 80),
+                            static_cast<int16_t>(qrSize), static_cast<int16_t>(qrSize)};
     ui.target().text(
         {static_cast<int16_t>(x), static_cast<int16_t>(topY + 80 + qrSize + 8), static_cast<int16_t>(width), 50},
         authVerifyUrl_.c_str(), noteStyle);
@@ -444,9 +443,8 @@ void YbxAccountActivity::draw(UiScreen& ui) {
                           : sources_.connected(static_cast<ybxaccount::SourceKind>(i)) ? tr(STR_CONNECTED)
                                                                                        : tr(STR_YBX_ACCOUNT_NOT_LISTED);
       snprintf(rows_[i].data(), rows_[i].size(), "%s: %s", names[i], value);
-      ui.target().text(
-          {static_cast<int16_t>(x), static_cast<int16_t>(topY + i * 48), static_cast<int16_t>(width), 40},
-          rows_[i].data(), text);
+      ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(topY + i * 48), static_cast<int16_t>(width), 40},
+                       rows_[i].data(), text);
     }
     const char* status = tr(STR_YBX_ACCOUNT_UNAVAILABLE);
     if (state_ == State::Ready) status = fetched_ ? tr(STR_YBX_ACCOUNT_UPDATED) : tr(STR_YBX_ACCOUNT_REFRESH);
