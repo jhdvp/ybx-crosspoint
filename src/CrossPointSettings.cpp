@@ -1,6 +1,7 @@
 #include "CrossPointSettings.h"
 
 #include <BlePageTurnerJson.h>
+#include <HalPowerSettings.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <ObfuscationUtils.h>
@@ -31,6 +32,40 @@ void copyToField(char* dest, const char* src, const size_t maxLen) {
 }
 
 }  // namespace
+
+void CrossPointSettings::loadPowerSettings() {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  HalPowerSettings::load(*this);
+}
+
+bool CrossPointSettings::saveToFile() const {
+  std::lock_guard<std::mutex> lock(storeMutex);
+  HalPowerSettings::save(*this);
+  JsonDocument doc;
+  toJson(doc);
+  return writeDocToFile(getFilePath(), doc);
+}
+
+bool CrossPointSettings::loadFromFile() {
+  bool ok;
+  bool doResave;
+  {
+    std::lock_guard<std::mutex> lock(storeMutex);
+    JsonDocument doc;
+    if (!readDocFromFile(getFilePath(), doc)) return false;
+    // Missing keys on an older SD card use defaults, never another card's mirror.
+    HalPowerSettings::reset(*this);
+    resaveRequested = false;
+    ok = fromJson(doc.as<JsonVariantConst>());
+    doResave = resaveRequested;
+    resaveRequested = false;
+    if (ok) HalPowerSettings::save(*this);
+  }
+  if (ok && doResave && !saveToFile()) {
+    LOG_ERR("PERSIST", "Failed to resave settings after format update");
+  }
+  return ok;
+}
 
 void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings) {
   const uint8_t mapping[] = {settings.frontButtonBack, settings.frontButtonConfirm, settings.frontButtonLeft,

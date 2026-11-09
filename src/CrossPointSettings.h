@@ -17,6 +17,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   friend class PersistableStore<CrossPointSettings>;
 
  public:
+  void loadPowerSettings();
+  bool saveToFile() const;
+  bool loadFromFile();
+
   enum SLEEP_SCREEN_MODE {
     DARK = 0,
     LIGHT = 1,

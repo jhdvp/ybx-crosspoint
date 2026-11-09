@@ -605,6 +605,7 @@ void setup() {
   silentRebootTarget = 0;
   silentRebootPayload = 0;
 
+  SETTINGS.loadPowerSettings();
   gpio.begin();
   powerManager.begin();
 
@@ -623,7 +624,7 @@ void setup() {
   // Sample the wake hold now — a click wake is released within milliseconds of
   // boot — but defer the sleep-or-boot decision until SETTINGS is loaded below:
   // click-to-wake is a setting, and an X4 battery power-off cuts all power, so
-  // only SD state survives to the next boot.
+  // settings must survive a full power-off.
   // The Metalio boots after the button is released, so it skips the check.
   const bool wakeHoldVerified = wakeupReason != HalGPIO::WakeupReason::PowerButton || BoardConfig::isMetalioEInk4() ||
                                 gpio.verifyPowerButtonWakeup();
@@ -860,7 +861,7 @@ void setup() {
 
 void loop() {
   if (sdRecoveryBootMode) {
-    // setup() returned before APP_STATE, SETTINGS, network and SD-backed
+    // setup() returned before APP_STATE, full settings, network and SD-backed
     // services were initialized. No ordinary loop path may touch them.
     mappedInputManager.update();
     activityManager.loop();
@@ -895,9 +896,7 @@ void loop() {
       return;
     }
 
-    // Auto-sleep timeout (default 5 minutes if unset, or SETTINGS.getSleepTimeoutMs())
-    const unsigned long sleepTimeoutMs =
-        SETTINGS.getSleepTimeoutMs() > 0 ? SETTINGS.getSleepTimeoutMs() : nosd::kDefaultSleepTimeoutMs;
+    const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
     if (nosd::shouldAutoSleep(millis(), recoveryLastActivity, sleepTimeoutMs)) {
       LOG_DBG("SLP", "Auto-sleep in SD recovery triggered after %lu ms", sleepTimeoutMs);
       enterDeepSleep(true);

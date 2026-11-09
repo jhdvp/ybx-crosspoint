@@ -242,3 +242,22 @@ have a working exit and a retry. Where each stands now:
    internet. Expect: the heading "Ошибка синхронизации" plus the English reason line,
    Back or Confirm returns to the reader, and the device then sleeps
    normally. Restore internet and trigger Sync again — that re-entry is the retry path.
+
+## Power settings without an SD card
+
+Saving settings also keeps a small copy of power and sleep preferences in internal
+flash. A boot without a readable SD card uses the saved inactivity timeout
+(including Never) and power-button hold behavior. Sleep-screen preferences are
+also retained; custom images and book covers still require the SD card.
+A readable settings file on the SD card takes priority and refreshes the flash
+copy. Missing or invalid flash data uses the normal defaults: 10 minutes of
+inactivity and a 400 ms power-button hold. Unchanged values do not rewrite flash.
+
+To check on a device, save a one-minute timeout and Short Power Button Press =
+Sleep, turn the reader off, remove the card, and boot. After releasing the wake
+button, a short power press should sleep; otherwise one minute of inactivity
+should sleep. Repeat with Never and confirm inactivity does not sleep. Insert a
+card with different settings and restart; after another boot without the card,
+those settings should apply. Repeat the sleep-screen check in all four
+orientations. Invalid or unavailable flash should leave the recovery screen usable
+with the defaults above.

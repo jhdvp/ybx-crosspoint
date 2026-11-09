@@ -21,7 +21,7 @@ void NoSdRecoveryActivity::loop() {
   if (!retryGate.consume(millis(), requested)) return;
 
   if (Storage.begin()) {
-    // No settings, files, networking or event queues have been initialized.
+    // Only flash power settings are loaded; SD services are not initialized.
     // A full restart is required to enter the standard boot path in order.
     rebooting = true;
     LOG_INF("SD", "Recovery mount succeeded, restarting normal boot");
