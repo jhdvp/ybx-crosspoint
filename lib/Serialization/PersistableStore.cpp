@@ -4,13 +4,31 @@
 #include <Logging.h>
 #include <ObfuscationUtils.h>
 
+#include <cstdio>
 #include <cstring>
 #include <limits>
+
+// Longest path that still gets the atomic temp-file swap; longer paths
+// (deep bookmark names) fall back to the legacy direct write.
+constexpr size_t PERSIST_TMP_PATH_MAX = 80;
 
 bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& doc) {
   Storage.mkdir("/.crosspoint");
   String json;
   serializeJson(doc, json);
+  // Crash-safe swap: write the full document to a sibling temp file, then move
+  // it over path — the same replaceFile() swap ReadingStats and the downloaders
+  // use. A power loss mid-write leaves the previous file intact instead of a
+  // truncated one that fails to parse on next boot.
+  char tmpPath[PERSIST_TMP_PATH_MAX];
+  const int tmpLen = snprintf(tmpPath, sizeof(tmpPath), "%s.tmp", path);
+  if (tmpLen > 0 && static_cast<size_t>(tmpLen) < sizeof(tmpPath)) {
+    if (Storage.writeFile(tmpPath, json) && Storage.replaceFile(tmpPath, path)) {
+      return true;
+    }
+    LOG_ERR("PERSIST", "Atomic swap failed for %s; using direct write", path);
+    Storage.remove(tmpPath);
+  }
   if (!Storage.writeFile(path, json)) {
     LOG_ERR("PERSIST", "Failed to write %s", path);
     return false;
