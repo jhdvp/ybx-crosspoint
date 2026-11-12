@@ -135,6 +135,12 @@ bool OtaUpdater::isUpdateNewer() const {
   if (!updateAvailable || latestVersion.empty()) {
     return false;
   }
+  // Refuse a release below the supported baseline even when it parses as newer
+  // than the running build, so OTA cannot roll a device back onto unsupported
+  // firmware.
+  if (!ota_policy::versionMeetsFloor(latestVersion.c_str())) {
+    return false;
+  }
   return ota_policy::updateOfferedIsNewer(CROSSPOINT_VERSION, latestVersion.c_str());
 }
 

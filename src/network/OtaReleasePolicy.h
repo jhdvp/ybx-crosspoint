@@ -78,6 +78,15 @@ bool updateOfferedIsNewer(const char* currentVersion, const char* offeredVersion
 // floor. Anything below is a truncated transfer or an error page, not firmware.
 constexpr size_t kMinAppImageSize = 64u * 1024u;
 
+// Minimum supported firmware version for OTA upgrades. Releases older than this
+// are refused even if they parse as "newer" than the running build, protecting
+// against accidental rollback to an unsupported baseline (X3/X4/X4Pro compat).
+constexpr char kMinSupportedVersion[] = "2.0.0";
+
+// True when the offered version is at least the minimum supported baseline.
+// Used by OtaUpdater before accepting an OTA candidate.
+bool versionMeetsFloor(const char* offeredVersion);
+
 // esp_image_header_t: magic byte and the chip_id field (ESP-IDF puts the target
 // id at offset 12).
 constexpr uint8_t kEspImageMagic = 0xE9;

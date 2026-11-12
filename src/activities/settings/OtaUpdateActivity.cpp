@@ -11,12 +11,44 @@
 #include "fontIds.h"
 #include "network/OtaUpdater.h"
 #include "network/TlsTransport.h"
+#include "util/OtaFailureScreen.h"
 #include "util/TlsFailureText.h"
 
 namespace {
 namespace fui = freeink::ui;
 constexpr fui::ActionId ACTION_RETRY = 1;
 constexpr fui::ActionId ACTION_BACK = 2;
+
+// The detail line under "Update failed", chosen by the failure reason table.
+// nullptr keeps the heading alone, which is right for a cause the strings
+// cannot say anything more specific about.
+const char* detailFor(const otafailure::Reason reason) {
+  switch (reason) {
+    case otafailure::Reason::Memory:
+      return tr(STR_MEMORY_ERROR);
+    case otafailure::Reason::Network:
+      return tr(STR_UPDATE_NETWORK_HINT);
+    case otafailure::Reason::Server:
+      return tr(STR_ERROR_GENERAL_FAILURE);
+    case otafailure::Reason::WrongDevice:
+      return tr(STR_FIRMWARE_WRONG_DEVICE);
+    case otafailure::Reason::NoUpdate:
+      return tr(STR_NO_UPDATE);
+    case otafailure::Reason::FlashWrite:
+      return tr(STR_FIRMWARE_WRITE_FAILED);
+    case otafailure::Reason::UntrustedSource:
+      return tr(STR_UPDATE_SOURCE_UNTRUSTED);
+    case otafailure::Reason::ImageSize:
+      return tr(STR_UPDATE_DOES_NOT_FIT);
+    case otafailure::Reason::CorruptImage:
+      return tr(STR_UPDATE_IMAGE_CORRUPT);
+    case otafailure::Reason::Tls:
+      return tlsui::failureDetail(tlspolicy::lastFailure());
+    case otafailure::Reason::Generic:
+      break;
+  }
+  return nullptr;
+}
 }  // namespace
 
 void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
@@ -58,10 +90,8 @@ void OtaUpdateActivity::runUpdateCheck() {
   }
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update check failed: %d", res);
-    const char* detail = res == OtaUpdater::TLS_ERROR   ? tlsui::failureDetail(tlspolicy::lastFailure())
-                         : res == OtaUpdater::OOM_ERROR ? tr(STR_MEMORY_ERROR)
-                                                        : tr(STR_UPDATE_NETWORK_HINT);
-    enterFailed(detail, true);
+    const auto failure = otafailure::classify(res);
+    enterFailed(detailFor(failure.reason), failure.allowRetry);
     return;
   }
 
@@ -242,17 +272,8 @@ void OtaUpdateActivity::runUpdateInstall() {
 
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update failed: %d", res);
-    const char* detail = nullptr;
-    if (res == OtaUpdater::WRONG_DEVICE_ERROR) {
-      detail = tr(STR_FIRMWARE_WRONG_DEVICE);
-    } else if (res == OtaUpdater::TLS_ERROR) {
-      detail = tlsui::failureDetail(tlspolicy::lastFailure());
-    } else if (res == OtaUpdater::HTTP_ERROR) {
-      detail = tr(STR_UPDATE_NETWORK_HINT);
-    }
-    // A wrong-device image fails the same way on every attempt; a truncated
-    // download or a failed flash write is worth re-running.
-    enterFailed(detail, res != OtaUpdater::WRONG_DEVICE_ERROR);
+    const auto failure = otafailure::classify(res);
+    enterFailed(detailFor(failure.reason), failure.allowRetry);
     return;
   }
 

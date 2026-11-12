@@ -227,6 +227,39 @@ TEST(OtaReleasePolicy, UnparsableVersionsAreNeverNewer) {
   EXPECT_FALSE(ota_policy::updateOfferedIsNewer("2.0.1", "9999999999999.0.0"));
 }
 
+// --- Rule: OTA refuses versions below the supported floor --------------------
+
+TEST(OtaReleasePolicy, VersionFloorConstantIsDocumentedBaseline) {
+  EXPECT_STREQ(ota_policy::kMinSupportedVersion, "2.0.0");
+}
+
+TEST(OtaReleasePolicy, VersionMeetsFloorAcceptsAtOrAboveBaseline) {
+  EXPECT_TRUE(ota_policy::versionMeetsFloor("2.0.0"));
+  EXPECT_TRUE(ota_policy::versionMeetsFloor("v2.0.0"));
+  EXPECT_TRUE(ota_policy::versionMeetsFloor("2.0.1"));
+  EXPECT_TRUE(ota_policy::versionMeetsFloor("2.1.0"));
+  EXPECT_TRUE(ota_policy::versionMeetsFloor("3.0.0"));
+  // Preview tags at or above the floor still meet it; channel gating is separate.
+  EXPECT_TRUE(ota_policy::versionMeetsFloor("2.0.0rc"));
+  EXPECT_TRUE(ota_policy::versionMeetsFloor("2.0.1-dev-topic-abc1234"));
+}
+
+TEST(OtaReleasePolicy, VersionMeetsFloorRejectsBelowBaseline) {
+  EXPECT_FALSE(ota_policy::versionMeetsFloor("1.9.9"));
+  EXPECT_FALSE(ota_policy::versionMeetsFloor("1.0.0"));
+  EXPECT_FALSE(ota_policy::versionMeetsFloor("0.9.9"));
+  EXPECT_FALSE(ota_policy::versionMeetsFloor("v1.9.9"));
+}
+
+TEST(OtaReleasePolicy, VersionMeetsFloorRejectsUnparsableInput) {
+  EXPECT_FALSE(ota_policy::versionMeetsFloor(nullptr));
+  EXPECT_FALSE(ota_policy::versionMeetsFloor(""));
+  EXPECT_FALSE(ota_policy::versionMeetsFloor("garbage"));
+  EXPECT_FALSE(ota_policy::versionMeetsFloor("2.0"));
+  EXPECT_FALSE(ota_policy::versionMeetsFloor("2.0.2.3"));
+  EXPECT_FALSE(ota_policy::versionMeetsFloor("9999999999999.0.0"));
+}
+
 // --- Rule: the downloaded body must be a complete app image -----------------
 
 TEST(OtaReleasePolicy, MinimumAppImageSizeMatchesTheSdCardFloor) {

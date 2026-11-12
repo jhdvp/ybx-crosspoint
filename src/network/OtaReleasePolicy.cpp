@@ -161,4 +161,22 @@ bool hasEspImageMagic(const uint8_t* data, size_t len) {
   return data != nullptr && len >= kEspImageChipIdReadLen && data[0] == kEspImageMagic;
 }
 
+bool versionMeetsFloor(const char* offeredVersion) {
+  int offeredMajor, offeredMinor, offeredPatch;
+  const char* offeredSuffix = nullptr;
+  if (!readCore(skipTagPrefix(offeredVersion), offeredMajor, offeredMinor, offeredPatch, offeredSuffix)) return false;
+  // readCore stops at the first non-digit after PATCH, so "2.0.2.3" parses as
+  // 2.0.2 with suffix ".3". That is not a valid MAJOR.MINOR.PATCH tag and must
+  // be rejected here, just as updateOfferedIsNewer rejects it via channelOfSuffix.
+  if (offeredSuffix[0] != '\0' && channelOfSuffix(offeredSuffix) == Channel::Unknown) return false;
+
+  int floorMajor, floorMinor, floorPatch;
+  const char* floorSuffix = nullptr;
+  if (!readCore(kMinSupportedVersion, floorMajor, floorMinor, floorPatch, floorSuffix)) return false;
+
+  if (offeredMajor != floorMajor) return offeredMajor > floorMajor;
+  if (offeredMinor != floorMinor) return offeredMinor > floorMinor;
+  return offeredPatch >= floorPatch;
+}
+
 }  // namespace ota_policy
