@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pgm
+*.png
+frame.json
+bin/
