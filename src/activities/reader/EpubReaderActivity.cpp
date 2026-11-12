@@ -716,11 +716,16 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
         }
       }
       exported = ClippingsManager::saveClipping(bookTitle, author, chapterTitle, startPage + 1, clipping.text);
+      if (addResult == ClippingStore::AddResult::Added && !exported)
+        LOG_ERR("CLIP", "Clipping saved, but Kindle export to %s failed; binary store and sync are unaffected",
+                ClippingsManager::CLIPPINGS_PATH);
     }
-    clippingMessage = addResult == ClippingStore::AddResult::LimitReached ? StrId::STR_CLIPPING_LIMIT_REACHED
-                      : exported                                          ? StrId::STR_CLIPPING_SAVED
-                      : addResult == ClippingStore::AddResult::Added      ? StrId::STR_CLIPPING_EXPORT_FAILED
-                                                                          : StrId::STR_CLIPPING_FAILED;
+    // The append to /My Clippings.txt is best-effort: a failure there never
+    // fails the quote save or its sync, which rest on the binary store.
+    clippingMessage = addResult == ClippingStore::AddResult::LimitReached         ? StrId::STR_CLIPPING_LIMIT_REACHED
+                      : addResult == ClippingStore::AddResult::Added && !exported ? StrId::STR_CLIPPING_EXPORT_FAILED
+                      : addResult == ClippingStore::AddResult::Added              ? StrId::STR_CLIPPING_SAVED
+                                                                                  : StrId::STR_CLIPPING_FAILED;
     showClippingMessage = true;
     clippingMessageTime = millis();
     requestUpdate();

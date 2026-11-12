@@ -756,6 +756,31 @@ make a real book disappear.
 `selfSize` is the expected file size. Comparing it against the real one is a free
 truncation guard: a build cut short by a power failure cannot pass.
 
+## Daily reading history archive (`/.crosspoint/daily_reading/YYYY-MM.a.bin` / `.b.bin`)
+
+The reading-statistics state keeps only the newest 64 days (`MAX_DAYS` ring in
+`reading-snapshot.bin`). When a session evicts a day from the ring, the day's
+seconds are appended to a monthly archive so reading history outlives the ring;
+the stats dashboard itself still reads only the ring.
+
+Each month holds two 140-byte slot files with a little-endian layout:
+
+* 12-byte header: version 1, magic `YDR`, first day (days since 1970-01-01 for
+  the 1st of the month), incrementing generation
+* 31 × uint32 seconds, indexed by day of month minus one (zero beyond the
+  month length)
+* 4-byte CRC-32 over the preceding 136 bytes
+
+Writes alternate between the slots and are verified by reading them back, so a
+power cut or write failure always leaves the newest committed copy readable; a
+month's first entry is preceded by an empty recovery copy in slot `b`. A lone
+torn slot `b` is therefore safe to reinitialize; any other copy without a valid
+sibling is retained, never overwritten. Archive write failures never fail the
+reading-session record: the
+affected history day is simply absent from the archive (totals and the chart are
+unaffected), and a replayed delivery cannot double-count archived seconds
+because the snapshot is committed before the archive is touched.
+
 ## Clipping store (`/.crosspoint/clippings/epub_<path-hash>.bin`)
 
 Version 4 retains the version 3 header and page-local range fields. After each
