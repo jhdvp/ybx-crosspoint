@@ -74,6 +74,9 @@ void YbxAccountActivity::onEnter() {
   authDeviceCode_.clear();
   transportFailureText_ = nullptr;
   authQrRect_ = {};
+  // Read the persisted server choice here, on the main task: draw() runs on the
+  // render task under the render lock and must not touch SD.
+  serverMode_ = serverModeLabel();
   resetUi();
   app.on(1, &YbxAccountActivity::action, this);
   app.setScreen(&YbxAccountActivity::screen, this);
@@ -414,6 +417,7 @@ void YbxAccountActivity::activate(int value) {
     const auto next = static_cast<ybxmirror::Mode>((static_cast<uint8_t>(ybxmirror::currentMode()) + 1) %
                                                    ybxmirror::MODE_COUNT);
     ybxmirror::setMode(next);
+    serverMode_ = serverModeLabel();
     LOG_DBG("YBXA", "Server mode: %s", ybxmirror::modeName(next));
     requestUpdate();
     return;
@@ -494,7 +498,7 @@ void YbxAccountActivity::draw(UiScreen& ui) {
   // The server choice cycles Auto -> Main -> Europe -> Portugal. Auto is the
   // only mode that probes another host, and only after a connection failure.
   snprintf(serverLabel_.data(), serverLabel_.size(), "%s: %s", tr(STR_YBX_SERVER),
-           I18n::getInstance().get(serverModeLabel()));
+           I18n::getInstance().get(serverMode_));
   button(ui, {static_cast<int16_t>(x + (cell + spacing) * 4), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48},
          4, serverLabel_.data());
 }

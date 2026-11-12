@@ -16,7 +16,8 @@ constexpr char DEFAULT_SERVER_URL[] = "https://sync.crosspointreader.com";
 constexpr char LEGACY_DEFAULT_SERVER_URL[] = "https://sync.koreader.rocks:443";
 
 // Bumped when a change to defaults would alter behavior for existing configs.
-constexpr uint8_t CONFIG_VERSION = 3;
+// v4: the default document match method became BINARY (content hash).
+constexpr uint8_t CONFIG_VERSION = 4;
 }  // namespace
 
 void KOReaderCredentialStore::toJson(JsonDocument& doc) const {
@@ -77,9 +78,16 @@ bool KOReaderCredentialStore::fromJson(JsonVariantConst doc) {
     }
   }
 
-  // A stored FILENAME stays FILENAME; only a missing or invalid key takes the
-  // default, which is the content hash.
-  uint8_t method = doc["matchMethod"] | static_cast<uint8_t>(DocumentMatchMethod::BINARY);
+  // v4 changed the default match method to the content hash. A config written
+  // before v4 that never stored the key was syncing by filename, so pin that
+  // rather than silently changing every document id under the user. Fresh
+  // setups and any config that stored a method keep the new default.
+  const JsonVariantConst methodValue = doc["matchMethod"];
+  const uint8_t fallback =
+      cfgVersion < CONFIG_VERSION && methodValue.isNull()
+          ? static_cast<uint8_t>(DocumentMatchMethod::FILENAME)
+          : static_cast<uint8_t>(DocumentMatchMethod::BINARY);
+  const uint8_t method = methodValue | fallback;
   if (method <= static_cast<uint8_t>(DocumentMatchMethod::BINARY)) {
     setMatchMethod(static_cast<DocumentMatchMethod>(method));
   } else {

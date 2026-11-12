@@ -1382,16 +1382,33 @@ void PluginCatalogActivity::computeOnReaderStatus() {
     const std::string record = provenanceRecordFor(path);
     // Stat the record first: most rows were never downloaded by this firmware,
     // and only a stamped path is worth opening.
-    const bool stamped = Storage.exists(record.c_str());
-    const bool book = stamped && isRegularFile(path);
-    if (stamped && !book) {
+    bool stamped = Storage.exists(record.c_str());
+    // Upgrade path: a book downloaded by the marker-era firmware carries a
+    // ".downloaded" sibling and no record. Adopt it once into the protected
+    // record directory, then drop the marker so nothing in the download folder
+    // can grant shelf status any more.
+    const std::string marker = path + pluginshelf::MARKER_SUFFIX;
+    const bool legacy = !stamped && Storage.exists(marker.c_str());
+    if (!stamped && !legacy) continue;
+    const bool book = isRegularFile(path);
+    if (legacy) {
+      if (!book) {
+        Storage.remove(marker.c_str());  // nothing to adopt
+      } else if (Storage.ensureDirectoryExists(pluginshelf::PROVENANCE_DIR) &&
+                 Storage.writeFile(record.c_str(), String("none"))) {
+        stamped = true;
+        Storage.remove(marker.c_str());
+      }
+    }
+    if (stamped && !book && !Storage.exists(path.c_str())) {
       // The book was deleted outside the shelf (e.g. the file browser) while
       // its record survived: forget the record, or a user file later copied
       // under the same name would look firmware-downloaded and become
-      // removable through this feature.
+      // removable through this feature. A transient open failure is not a
+      // deletion, so only a path that is really gone clears the record.
       Storage.remove(record.c_str());
     }
-    item.onReader = book;
+    item.onReader = stamped && book;
   }
 }
 

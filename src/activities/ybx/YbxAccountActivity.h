@@ -1,5 +1,7 @@
 #pragma once
 
+#include <I18n.h>
+
 #include <array>
 #include <string>
 
@@ -63,4 +65,6 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
   freeink::ui::ButtonProps props_;
   std::array<std::array<char, 96>, 3> rows_{};
   std::array<char, 48> serverLabel_{};
+  // Cached on the main task so draw() never reads the persisted server choice.
+  StrId serverMode_ = StrId::STR_YBX_SERVER_AUTO;
 };

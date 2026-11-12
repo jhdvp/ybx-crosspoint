@@ -182,9 +182,10 @@ class Plan {
   std::string urlAt(uint8_t index) const;
   // Report the outcome so the next request probes the right host first.
   // `answered` means the host produced an HTTP reply or a body error: either
-  // way it is reachable, so Auto keeps it and stops probing.
-  void answered(uint8_t index) const;
-  void allFailed() const;
+  // way it is reachable, so Auto keeps it and stops probing. Both update the
+  // shared preference table, not this Plan.
+  void answered(uint8_t index);
+  void allFailed();
 
  private:
   std::string url_;

@@ -62,11 +62,19 @@ class HalStorage {
     return ::String(found == fakefs::files.end() ? "" : found->second.c_str());
   }
 
+  // Models the real HAL: SDCardManager::writeFile() writes a sibling ".tmp"
+  // and swaps it in only when the copy is complete. The swap is remove-then-
+  // rename, so a failure leaves the previous destination untouched.
   bool writeFile(const char* path, const ::String& content) {
     if (fakefs::failAllWrites) return false;
     if (fakefs::countdownReached(fakefs::failWrite)) return false;
     fakefs::writes++;
-    fakefs::files[path] = content.c_str();
+    const std::string tmp = std::string(path) + ".tmp";
+    fakefs::files[tmp] = content.c_str();
+    if (!replaceFile(tmp.c_str(), path)) {
+      fakefs::files.erase(tmp);
+      return false;
+    }
     return true;
   }
 

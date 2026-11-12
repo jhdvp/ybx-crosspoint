@@ -16,7 +16,7 @@
 
 | Task | State | Branch | Evidence and next action |
 |---|---|---|---|
-| rc-fw-01 | DONE | [rescue/rc-fw-01-persistable-store-20261112](https://github.com/jhdvp/ybx-crosspoint/tree/rescue/rc-fw-01-persistable-store-20261112) | The 15-minute timeout was recorded as "no code saved", but the atomic `PersistableStore` swap and its `test/persistable_store` suite were left uncommitted in the worktree. Rescued 2026-11-12 (tag `archive/rc-fw-01-persistable-store-20261112`) and landed on main; 9 host cases. |
+| rc-fw-01 | DONE | local branch `rescue/rc-fw-01-persistable-store-20261112` | The 15-minute timeout was recorded as "no code saved", but the atomic `PersistableStore` swap and its `test/persistable_store` suite were left uncommitted in the worktree. Rescued 2026-11-12 (local tag `archive/rc-fw-01-persistable-store-20261112`, not pushed). Review then found the SDK's `Storage.writeFile()` already does the temp-file swap, so the extra layer was removed as redundant; the suite now covers the HAL contract. |
 | rc-fw-02 | BLOCKED | — | Tools operated inside npm package instead of firmware worktree; no code saved. **Next:** Re-run credential/logging audit with absolute paths |
 | rc-fw-03 | WIP | [agents/ratecloud/rc-fw-03](https://github.com/jhdvp/ybx-crosspoint/tree/agents/ratecloud/rc-fw-03) | Commit a52e4b5d; stack-buffer HTTP JSON optimization; no firmware build. **Next:** Build X3/X4/X4Pro, JSON boundary tests, heap/stack measurement |
 | rc-fw-04 | BLOCKED | — | Wrong OpenCode tool directory; no code saved. **Next:** Reproduce one offline/expired-login UI case |

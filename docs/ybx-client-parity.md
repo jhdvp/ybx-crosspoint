@@ -89,12 +89,23 @@ account screen (Home → More → My account), persisted in
   unaffected.
 
 The mirror sits in `pluginhttp::request`, `requestStream` and `requestToFile`,
-which every native YBX call and every plugin request already goes through;
-`mintPasswordToken` inherits it from `request`.
+which the native account, catalog, reading-data and plugin-event calls and every
+plugin request already go through; `mintPasswordToken` inherits it from
+`request`. One absolute budget is shared across the candidates, so a dead
+service cannot block the caller for three times the timeout.
+
+**Known gap:** `KOReaderSyncClient` builds its own `SecureHttpClient` and does
+not go through `pluginhttp`, so KOSync traffic is not mirrored yet. Of the three
+host families, only `my.ybx.app` is currently requested by native firmware; the
+`opds.*` and `sync.*` families are carried because the plugin's host map defines
+them and the KOSync/OPDS paths are meant to move onto them. Wiring those two
+clients through the same plan is the follow-up.
 
 KOSync now defaults to `DocumentMatchMethod::BINARY` (content hash) instead of
 `FILENAME`, matching what the YBX provisioning path already wrote. A stored
-`FILENAME` is preserved; only a missing or invalid key takes the new default.
+method is preserved, and a pre-v4 config that never stored one keeps `FILENAME`
+so an upgrade cannot change every document id under the user. Config version 4
+records the new default.
 
 Not device-tested: real reachability of the mirrors, the five-minute probe
 behaviour on a dropping network, and the account screen's five-button row on

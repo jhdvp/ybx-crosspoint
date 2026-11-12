@@ -51,6 +51,14 @@ freeink::SecureHttpClient* openClient(freeink::SecureHttpClient* session, freein
 bool hasKnownLength(const freeink::SecureHttpClient& http) {
   return http.hasContentLength() && http.getHeader("transfer-encoding").empty();
 }
+
+// One absolute budget for a whole mirror sequence. Handing each candidate a
+// fresh timeoutMs would let a dead service block the caller for count times the
+// timeout, which on the main task is a frozen reader.
+uint32_t mirrorBudget(const uint32_t deadline) {
+  const int32_t left = static_cast<int32_t>(deadline - millis());
+  return left > 0 ? static_cast<uint32_t>(left) : 0;
+}
 }  // namespace
 
 namespace pluginhttp {
@@ -252,7 +260,7 @@ std::string catalogDownloadDir(const std::string& pluginDir) {
   return pickDownloadDir(config, manifestDir);
 }
 
-int requestOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
+static int requestOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
                 const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
                 Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs,
                 bool& connectionFailure) {
@@ -300,7 +308,9 @@ int requestOnce(freeink::SecureHttpClient* session, const std::string& url, cons
   if (responseHeaders) *responseHeaders = http.getHeaders();
   // No HTTP answer at all is a connection failure; an answer whose body was
   // cut short or over the cap is not, and must not move the request elsewhere.
-  if (status < 0) connectionFailure = true;
+  // A lost answer mid-request is NOT a connection failure: the request was
+  // already sent, so retrying it elsewhere could replay a POST or re-send a
+  // streamed response's headers. Only a failed connect earns another host.
   // Error statuses still return their body: OAuth device-code polling carries
   // its state ("authorization_pending") in 4xx response bodies.
   if (overflow || status < 0 || !http.responseComplete()) {
@@ -314,23 +324,30 @@ int requestOnce(freeink::SecureHttpClient* session, const std::string& url, cons
 int request(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
             const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
             Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
-  const ybxmirror::Plan plan(url);
+  ybxmirror::Plan plan(url);
+  const uint32_t deadline = millis() + timeoutMs;
   int status = -1;
+  uint8_t attempted = 0;
   for (uint8_t i = 0; i < plan.count(); i++) {
+    const uint32_t budget = mirrorBudget(deadline);
+    if (budget == 0) break;
     bool connectionFailure = false;
     status = requestOnce(session, plan.urlAt(i), method, body, headers, out, maxResponse, responseHeaders, shouldAbort,
-                         timeoutMs, connectionFailure);
+                         budget, connectionFailure);
+    attempted = i + 1;
     if (!connectionFailure) {
       plan.answered(i);
       return status;
     }
     if (shouldAbort && shouldAbort()) break;
   }
-  plan.allFailed();
+  // Only an exhausted sequence proved every host unreachable. An abort or a
+  // spent budget must not pin a mirror for the whole retry window.
+  if (attempted == plan.count()) plan.allFailed();
   return status;
 }
 
-int requestStreamOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
+static int requestStreamOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
                       const std::string& body, const Headers& headers, const StreamStart& onStart,
                       const StreamData& onData, bool& complete, const std::function<bool()>& shouldAbort,
                       const uint32_t timeoutMs, bool& connectionFailure) {
@@ -365,7 +382,9 @@ int requestStreamOnce(freeink::SecureHttpClient* session, const std::string& url
   complete = status >= 0 && !stopped && http.responseComplete();
   // An empty body never calls onData, so start here.
   if (complete && !started && !start()) complete = false;
-  if (status < 0) connectionFailure = true;
+  // A lost answer mid-request is NOT a connection failure: the request was
+  // already sent, so retrying it elsewhere could replay a POST or re-send a
+  // streamed response's headers. Only a failed connect earns another host.
   if (!complete) {
     LOG_ERR("PHTP", "Streamed request failed: status=%d started=%d stopped=%d %s", status, started, stopped,
             url.c_str());
@@ -376,23 +395,28 @@ int requestStreamOnce(freeink::SecureHttpClient* session, const std::string& url
 int requestStream(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
                   const std::string& body, const Headers& headers, const StreamStart& onStart, const StreamData& onData,
                   bool& complete, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
-  const ybxmirror::Plan plan(url);
+  ybxmirror::Plan plan(url);
+  const uint32_t deadline = millis() + timeoutMs;
   int status = -1;
+  uint8_t attempted = 0;
   for (uint8_t i = 0; i < plan.count(); i++) {
+    const uint32_t budget = mirrorBudget(deadline);
+    if (budget == 0) break;
     bool connectionFailure = false;
     status = requestStreamOnce(session, plan.urlAt(i), method, body, headers, onStart, onData, complete, shouldAbort,
-                               timeoutMs, connectionFailure);
+                               budget, connectionFailure);
+    attempted = i + 1;
     if (!connectionFailure) {
       plan.answered(i);
       return status;
     }
     if (shouldAbort && shouldAbort()) break;
   }
-  plan.allFailed();
+  if (attempted == plan.count()) plan.allFailed();
   return status;
 }
 
-int requestToFileOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
+static int requestToFileOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
                       const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
                       const std::function<bool()>& shouldAbort, const uint32_t timeoutMs, bool& connectionFailure) {
   WifiPowerSaveGuard psGuard;
@@ -431,7 +455,9 @@ int requestToFileOnce(freeink::SecureHttpClient* session, const std::string& url
     if (!file.close()) writeOk = false;
     // Close before checking/removing the temp file or committing the download.
   }
-  if (status < 0) connectionFailure = true;
+  // A lost answer mid-request is NOT a connection failure: the request was
+  // already sent, so retrying it elsewhere could replay a POST or re-send a
+  // streamed response's headers. Only a failed connect earns another host.
   if (!writeOk || status < 0 || !http.responseComplete()) {
     LOG_ERR("PHTP", "API request (to file) failed: status=%d writeOk=%d complete=%d %s", status, writeOk,
             http.responseComplete(), url.c_str());
@@ -444,19 +470,24 @@ int requestToFileOnce(freeink::SecureHttpClient* session, const std::string& url
 int requestToFile(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
                   const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
                   const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
-  const ybxmirror::Plan plan(url);
+  ybxmirror::Plan plan(url);
+  const uint32_t deadline = millis() + timeoutMs;
   int status = -1;
+  uint8_t attempted = 0;
   for (uint8_t i = 0; i < plan.count(); i++) {
+    const uint32_t budget = mirrorBudget(deadline);
+    if (budget == 0) break;
     bool connectionFailure = false;
     status = requestToFileOnce(session, plan.urlAt(i), method, body, headers, destPath, maxResponse, shouldAbort,
-                               timeoutMs, connectionFailure);
+                               budget, connectionFailure);
+    attempted = i + 1;
     if (!connectionFailure) {
       plan.answered(i);
       return status;
     }
     if (shouldAbort && shouldAbort()) break;
   }
-  plan.allFailed();
+  if (attempted == plan.count()) plan.allFailed();
   return status;
 }
 

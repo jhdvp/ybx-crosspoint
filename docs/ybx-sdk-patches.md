@@ -144,8 +144,9 @@ AAAA fallback on an up global-IPv6 interface, and deadline-bounded waits when
 lookup slots are occupied. The TLS stage was rebased over those sources without
 removing chain or hostname verification. Exhausted busy slots map to a timeout;
 IPv6 Timeout/Aborted outcomes propagate without being replaced by IPv4 failure.
-Both stages have regenerated exact source digests. The SDK commit remains
-`44427f8`; the patch assets explain its local source modifications.
+Both stages have regenerated exact source digests. At that update the SDK commit
+was still `44427f8`; the patch assets explained its local source modifications.
+(Superseded by the pin advance below — the current pin is `6a208c0c`.)
 
 The firmware clock gate now accepts a request budget and cancellation callback.
 OPDS and plugin requests forward it to the existing SNTP wait, checked every

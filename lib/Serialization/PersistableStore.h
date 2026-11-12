@@ -46,9 +46,11 @@ class PersistableStoreBase {
   // instead of instantiating serializeJson/deserializeJson in their own TU —
   // that per-TU duplication is exactly what this class exists to prevent.
 
-  // Serializes doc and writes it to path atomically (temp file + rename),
-  // ensuring /.crosspoint exists. Falls back to a direct write when the swap
-  // cannot run (overlong path) or fails. Logs on failure.
+  // Serializes doc and writes it to path, ensuring /.crosspoint exists. Logs on
+  // failure. Storage.writeFile() writes a sibling ".tmp" and swaps it in only
+  // when the copy is complete, so a short write leaves the previous document
+  // intact. The swap is remove-then-rename, so a power cut inside that window
+  // can leave only the ".tmp"; readDocFromFile does not recover it.
   static bool writeDocToFile(const char* path, const JsonDocument& doc);
 
   // Reads path and parses it into doc. Returns false silently when the file

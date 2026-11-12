@@ -24,7 +24,7 @@ It is the port line (`port/ybx-unified-on-2rc-20261105`, itself upstream
 | `992a8257` | SDK pin `44427f8d` → `5e94fe74` (upstream 2.0.0's pin), both SecureNet stages re-ported, digests regenerated |
 | `b53a6d87` | SDK pin → `6a208c0c` (develop's pin), needed by `SDCardManager::sdUsedBytes(uint64_t&)` |
 | `9f3236d6` | merge of `upstream/develop` (48 commits) from the saved resolutions, plus two repairs |
-| `18b8abd3` | crash-safe `PersistableStore` temp-file swap + its 9-case host suite |
+| `18b8abd3` | crash-safe `PersistableStore` persistence + its 9-case host suite (the redundant extra temp layer was removed after review — see §2.1) |
 | `c2c5fdbc` | PR #29: monthly reading-history archive, `My Clippings.txt` hardening, export-failure logging |
 | `ee94cf7c` | OTA minimum-version floor (`2.0.0`) wired into `isUpdateNewer()`, per-cause failure taxonomy |
 | `b0c9e394` | shelf removal gated on firmware-owned provenance records instead of a plantable `.downloaded` marker |
@@ -84,9 +84,45 @@ Build logs are in `.build-logs/` (gitignored).
   bounded JSON previews) but does not device-test them.
 - The mirror's five-minute probe behaviour on a dropping network is covered by
   host tests of the policy, not by a device on a real network.
-- No new host test for the KOSync `BINARY` default: the store needs an
+- No dedicated host test for the KOSync `BINARY` default: the store needs an
   MD5/base64/obfuscation stub harness that does not exist yet. The change is
-  three lines and the YBX provisioning path already wrote `BINARY`.
+  covered by inspection and by the YBX provisioning path, which already wrote
+  `BINARY`.
+
+## 2.1 Independent review and the fixes it produced
+
+Four read-only reviewers (correctness, architecture, embedded resources,
+i18n/docs) inspected the diff. Their verified findings were fixed as one batch;
+both firmware profiles and the 1349-test host suite were re-run green afterwards.
+
+| Finding | Fix |
+| --- | --- |
+| **The rescued `PersistableStore` layer was redundant.** `SDCardManager::writeFile()` already writes `path.tmp` and swaps it in — at `44427f8d` too. The extra layer produced `path.tmp.tmp`, doubling every save's SD writes and adding a second remove/rename window without adding a guarantee. | Removed the layer; `writeDocToFile()` calls `Storage.writeFile()` once. The host stub now models the real HAL contract and the 9 cases test that, instead of a guarantee the device never had. The header states the remaining remove-then-rename window honestly. |
+| **A mirror retry could re-send a streamed response.** `requestStreamOnce` flagged any `status < 0` as a connection failure, including a mid-body drop after `onStart` had already sent `200` + headers to the browser. The retry then sent a second response. The same shape could replay a POST. | `connectionFailure` now means only "the connect failed" (`openClient()` returned null). A lost answer mid-request stays on the host that produced it. |
+| **Three candidates each got the full timeout**, so a dead YBX host froze the main task for 90 s instead of 30 s. | One absolute deadline is shared across the sequence; each attempt gets the remaining budget. |
+| **An abort or a spent budget was recorded as "every host failed"**, pinning a mirror for five minutes without evidence. | `allFailed()` only runs when the loop exhausted its candidates. |
+| **Shelf provenance had no upgrade path**: books downloaded by the marker-era firmware lost On-Reader status and their markers were orphaned. | `computeOnReaderStatus()` adopts an existing `.downloaded` marker into a protected record once, then removes the marker. |
+| **A transient open failure deleted a provenance record**, making a book permanently unremovable. | The record is only cleared when the path is really gone (`Storage.exists`). |
+| **The KOSync default change could flip very old configs.** A config written before the key existed would silently move from filename to content-hash ids. | `CONFIG_VERSION` bumped to 4; a pre-v4 config with no stored method keeps `FILENAME`. Fresh setups get `BINARY`. |
+| **The first SD read of the server choice happened on the render task under the render lock.** | The mode is read in `onEnter()` and cached; `draw()` only formats the cached label. |
+| `Plan` parsed the caller's string, not its own copy; `const` mutators hid shared-state writes; the single-attempt helpers had external linkage. | Parse `url_`; dropped `const`; made the helpers `static`. |
+| Stale/incorrect docs: README test count, guide language count, the parity doc's claim that KOSync goes through the mirror, a historical SDK-pin line, a link to an unpushed branch. | All corrected. The parity doc now states the KOSync gap explicitly. |
+
+Findings deliberately **not** acted on, with reasons:
+
+- **`opds.*` / `sync.*` families are inert today.** Only `my.ybx.app` is
+  requested by native firmware, and `KOReaderSyncClient` bypasses `pluginhttp`.
+  The families are kept because the owner asked for the plugin 1.6.17 host map;
+  wiring the KOSync and OPDS clients onto them is recorded as a follow-up.
+- **The monthly reading archive has no firmware consumer.** `archive::daySeconds`
+  is called only from tests. That is PR #29's own shape, ported as asked; adding
+  a reader UI for it is a separate feature.
+- **The mirror preference table is process-global and unsynchronised.** All
+  current callers run on the main task; the worst case is a lost preference
+  update, not corruption. Revisit if a request path moves to another task.
+- **The fifth account button shrinks the row ~22 %.** Geometry is derived from
+  the safe area and the label wraps to two lines; whether it fits each panel is
+  device acceptance, not a code change.
 
 ## 3. Archive tags — the safety net
 
@@ -369,11 +405,19 @@ Owner decisions, deliberately **not** taken by the agent (survey §5 P2/P3):
     (`18b8abd3`). Note that `pluginhttp::saveTokenToFile()` still writes the
     plugin token with a direct `Storage.writeFile()`; routing it through the same
     swap is a small follow-up if the owner wants one mechanism everywhere.
-12. Submit both SecureNet stages upstream to the FreeInk SDK. When released,
+12. Wire `KOReaderSyncClient` and the native OPDS path through the same mirror
+    plan. They build their own `SecureHttpClient`, so today only the
+    `my.ybx.app` family is actually mirrored; the `opds.*` and `sync.*` families
+    are carried but inert.
+13. Submit both SecureNet stages upstream to the FreeInk SDK. When released,
     delete the patch assets and script and bump the pin instead of carrying them
     (`docs/ybx-sdk-patches.md` §"Updating the SDK pin", step 4).
-13. `test/test_release_license.py` arrived with develop but is not registered in
+14. `test/test_release_license.py` arrived with develop but is not registered in
     `test/CMakeLists.txt` — upstream does not register it either.
+15. Host coverage for the mirror retry wrappers themselves: the policy has 11
+    cases, but the `connectionFailure` classification and the shared-deadline
+    loop in `PluginHttp.cpp` are exercised only by inspection and the device
+    build. A stub-transport suite would close that gap.
 
 Roadmap packages explicitly **not implemented** in any branch (vCodex stats
 import, EPUB content profiles, bilingual EPUB, saved articles/RSS, flashcards,

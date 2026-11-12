@@ -72,7 +72,7 @@ const char* modeName(const Mode mode) {
   return "auto";
 }
 
-Plan::Plan(const std::string& url) : url_(url), parsed_(parseUrl(url)) {
+Plan::Plan(const std::string& url) : url_(url), parsed_(parseUrl(url_)) {
   if (!parsed_.mirrorable) return;
   family_ = familyForHost(parsed_.host);
   schemeIndex_ = parsed_.scheme == "http" ? 0 : 1;
@@ -86,12 +86,12 @@ std::string Plan::urlAt(const uint8_t index) const {
   return withHost(url_, parsed_, FAMILY_HOSTS[family_][slots_[index]]);
 }
 
-void Plan::answered(const uint8_t index) const {
+void Plan::answered(const uint8_t index) {
   if (family_ < 0 || index >= count_) return;
   prefs[family_][schemeIndex_] = afterSuccess(slots_[index], prefs[family_][schemeIndex_], millis());
 }
 
-void Plan::allFailed() const {
+void Plan::allFailed() {
   if (family_ < 0) return;
   prefs[family_][schemeIndex_] = afterAllFailed(first_, millis());
 }

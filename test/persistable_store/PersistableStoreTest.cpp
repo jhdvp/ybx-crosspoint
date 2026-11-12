@@ -6,10 +6,11 @@
 
 #include <string>
 
-// Regression tests for the atomic settings/state persistence swap in
-// PersistableStoreBase::writeDocToFile: every save goes temp-file ->
-// replaceFile(), so a failure at any point leaves the previously persisted
-// document intact instead of a truncated one that fails to parse on next boot.
+// Regression tests for settings/state persistence: every save goes through
+// Storage.writeFile(), which the HAL implements as temp-file -> replaceFile(),
+// so a failure at any point leaves the previously persisted document intact
+// instead of a truncated one that fails to parse on next boot. The stub models
+// that HAL contract; PersistableStore must not add a second temp layer.
 
 namespace {
 
@@ -41,8 +42,7 @@ class TestStore : public PersistableStore<TestStore> {
   bool migrateNextLoad = false;
 };
 
-// Path beyond the temp-path buffer: these saves must still succeed through the
-// legacy direct-write fallback.
+// A deep bookmark path: the swap must not depend on a fixed-size path buffer.
 class LongPathStore : public PersistableStore<LongPathStore> {
   friend class PersistableStore<LongPathStore>;
 
@@ -82,15 +82,17 @@ TEST_F(PersistableStoreTest, SaveSwapsTempOverDestination) {
   EXPECT_FALSE(fakefs::files.count(STORE_TMP));
 }
 
-TEST_F(PersistableStoreTest, SwapFailureFallsBackToDirectWrite) {
+TEST_F(PersistableStoreTest, SwapFailureLeavesPreviousFileIntact) {
+  fakefs::setFile(STORE_PATH, "{\"value\":4}");
   fakefs::failSwap = 0;  // replaceFile fails on the first call.
   TestStore::getInstance().value = 9;
 
-  EXPECT_TRUE(TestStore::getInstance().saveToFile());
+  EXPECT_FALSE(TestStore::getInstance().saveToFile());
 
-  // Two writes: the temp attempt plus the direct fallback.
-  EXPECT_EQ(fakefs::writes, 2u);
-  EXPECT_NE(fakefs::fileContents(STORE_PATH).find("\"value\":9"), std::string::npos);
+  // One write attempt, no second layer: the previous document survives and the
+  // failed temp file is cleaned up.
+  EXPECT_EQ(fakefs::writes, 1u);
+  EXPECT_EQ(fakefs::fileContents(STORE_PATH), "{\"value\":4}");
   EXPECT_FALSE(fakefs::files.count(STORE_TMP)) << "failed temp file must be cleaned up";
 }
 
@@ -159,10 +161,12 @@ TEST_F(PersistableStoreTest, MigrationResaveUsesAtomicSwap) {
   EXPECT_FALSE(fakefs::files.count(STORE_TMP));
 }
 
-TEST_F(PersistableStoreTest, OverlongPathFallsBackToDirectWrite) {
+TEST_F(PersistableStoreTest, OverlongPathStillSwaps) {
+  // No path-length cliff: the HAL builds the temp name from a String, so a deep
+  // bookmark path gets the same swap as a short one.
   ASSERT_TRUE(LongPathStore::getInstance().saveToFile());
 
-  EXPECT_EQ(fakefs::swaps, 0u);
+  EXPECT_EQ(fakefs::swaps, 1u);
   EXPECT_EQ(fakefs::writes, 1u);
   EXPECT_NE(fakefs::fileContents(LongPathStore::getFilePath()).find("\"ok\":1"), std::string::npos);
 }

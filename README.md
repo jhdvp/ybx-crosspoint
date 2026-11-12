@@ -65,7 +65,7 @@ provider permissions; this project does not bypass DRM.
 | Extended YBX book actions | Planned |
 | HTTPS certificate verification | Implemented: the peer chain and host name are verified against the firmware CA bundle, a connection without a trust anchor is refused, and an https→http redirect is refused unless the caller opts in. Real handshakes still need device acceptance |
 
-The host suite passes **1338 CTest checks**, and `pio run -e default` and
+The host suite passes **1349 CTest checks**, and `pio run -e default` and
 `pio run -e x4pro` both build. These results apply to this preview; they do not
 establish hardware rendering, battery use, runtime memory or OTA recovery. See
 [fork details](YBX_FORK.md) for the limits and the device acceptance checklist.
@@ -96,6 +96,11 @@ Do not copy it onto a stock firmware that lacks that capability.
 Use [pioarduino PlatformIO Core](https://github.com/pioarduino/platformio-core)
 and the pinned SDK submodule. The verified toolchain is pioarduino **6.1.19**;
 formatting uses `clang-format` **21**.
+
+`ybx/main-20261112` is the consolidated main branch. Until it is pushed and made
+the repository default (see `docs/CONSOLIDATION_20261112.md`), clone the current
+default `feat/ybx-native-integration` instead — it is an older lineage without
+the TLS verification and SDK pin this branch carries.
 
 ```sh
 git clone --recursive --branch ybx/main-20261112 https://github.com/jhdvp/ybx-crosspoint.git
