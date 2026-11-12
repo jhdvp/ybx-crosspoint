@@ -34,6 +34,28 @@ constexpr uint8_t SLOT_COUNT = 3;
 // is not probed on every request.
 constexpr uint32_t RETRY_WINDOW_MS = 5u * 60u * 1000u;
 
+// Smallest probe worth starting. One transport timeout covers DNS, TCP and the
+// whole handshake, including a TLS 1.2 retry, so a slice under this usually
+// ends in a false negative: a live host recorded as unreachable.
+constexpr uint32_t MIN_CONNECT_MS = 5000;
+
+// DNS+TCP+handshake slice for one candidate of a mirror sequence that shares a
+// single absolute budget. The transport spends that whole timeout on one
+// connect, so handing every candidate all of the remaining budget would let a
+// blackhole host burn it before a mirror is tried (the reader stays frozen on
+// the main task for the full timeout with nothing fetched). Each probe gets an
+// equal share of what is left, raised to MIN_CONNECT_MS when the budget can
+// still carry a probe of that size and cut to 0 when it cannot; the last
+// candidate takes everything remaining, so a live host is never shorted by the
+// split. The response phase is not sliced: once the transport is connected the
+// request gets what is left of the deadline.
+inline uint32_t connectSliceMs(const uint32_t remainingMs, const uint8_t candidatesLeft) {
+  if (candidatesLeft <= 1) return remainingMs;
+  const uint32_t share = remainingMs / candidatesLeft;
+  if (share < MIN_CONNECT_MS) return remainingMs < MIN_CONNECT_MS ? 0 : MIN_CONNECT_MS;
+  return share;
+}
+
 inline constexpr const char* FAMILY_HOSTS[][SLOT_COUNT] = {
     {"my.ybx.app", "emy.ybx.app", "pmy.ybx.app"},
     {"opds.ybx.app", "eopds.ybx.app", "popds.ybx.app"},
@@ -163,6 +185,11 @@ inline Preference afterAllFailed(uint8_t first, uint32_t now) {
   next.retryAt = now + RETRY_WINDOW_MS;
   return next;
 }
+
+// Whether a finished sequence may apply afterAllFailed: only candidates that
+// were actually probed count, and a user abort is not evidence about hosts. A
+// sequence that stopped early on a spent budget still throttles what it proved.
+inline bool recordsAllFailed(const uint8_t probed, const bool aborted) { return !aborted && probed > 0; }
 
 // The persisted server choice. Auto is the default; a manual mode pins one host.
 Mode currentMode();

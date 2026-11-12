@@ -147,3 +147,53 @@ TEST(YbxServerMirror, DeadlineComparisonSurvivesMillisWraparound) {
   EXPECT_EQ(m::firstSlot(pref, nearWrap + 100), m::SLOT_EU);
   EXPECT_EQ(m::firstSlot(pref, nearWrap + m::RETRY_WINDOW_MS), m::SLOT_MAIN);
 }
+
+TEST(YbxServerMirror, ConnectSliceLeavesBudgetForTheOtherCandidates) {
+  // A blackhole main host must not eat a whole 30-second sequence budget: with
+  // three candidates the first probe is bounded, and what is left still covers
+  // the eu and pt probes.
+  const uint32_t budget = 30000;
+  const uint32_t first = m::connectSliceMs(budget, 3);
+  EXPECT_EQ(first, 10000u);
+  EXPECT_GE(budget - first, 2u * m::connectSliceMs(budget - first, 2));
+  const uint32_t second = m::connectSliceMs(budget - first, 2);
+  const uint32_t third = m::connectSliceMs(budget - first - second, 1);
+  // Shares of what is left add up exactly to the budget: no candidate is
+  // skipped because the earlier ones overran it.
+  EXPECT_EQ(first + second + third, budget);
+}
+
+TEST(YbxServerMirror, ConnectSliceGivesTheLastCandidateEverythingLeft) {
+  EXPECT_EQ(m::connectSliceMs(7000, 1), 7000u);
+  EXPECT_EQ(m::connectSliceMs(7000, 0), 7000u);
+  // A spent budget stays spent: the caller must not start a doomed probe.
+  EXPECT_EQ(m::connectSliceMs(0, 3), 0u);
+  // One millisecond left is no time for a handshake; the caller stops.
+  EXPECT_EQ(m::connectSliceMs(1, 3), 0u);
+}
+
+TEST(YbxServerMirror, ConnectSliceNeverStartsAProbeThatCannotSucceed) {
+  // A short caller budget must not split into shares too small for a
+  // handshake. Each probe gets at least MIN_CONNECT_MS while the budget can
+  // carry one, and the last candidate still takes the remainder.
+  const uint32_t budget = 12000;
+  const uint32_t first = m::connectSliceMs(budget, 3);
+  EXPECT_EQ(first, m::MIN_CONNECT_MS);
+  const uint32_t second = m::connectSliceMs(budget - first, 2);
+  EXPECT_EQ(second, m::MIN_CONNECT_MS);
+  EXPECT_EQ(m::connectSliceMs(budget - first - second, 1), budget - first - second);
+  // Below one whole probe the caller stops instead of recording a false
+  // negative for a host it could not have reached anyway.
+  EXPECT_EQ(m::connectSliceMs(m::MIN_CONNECT_MS - 1, 2), 0u);
+}
+
+TEST(YbxServerMirror, OnlyProbedCandidatesRecordAllFailed) {
+  // One probe that failed is enough to throttle, even when the sequence ran out
+  // of budget before the mirrors: without it every later request pays again.
+  EXPECT_TRUE(m::recordsAllFailed(1, false));
+  EXPECT_TRUE(m::recordsAllFailed(2, false));
+  EXPECT_FALSE(m::recordsAllFailed(0, false));
+  // A user abort says nothing about the hosts, on any candidate.
+  EXPECT_FALSE(m::recordsAllFailed(1, true));
+  EXPECT_FALSE(m::recordsAllFailed(3, true));
+}

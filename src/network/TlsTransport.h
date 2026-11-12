@@ -42,8 +42,11 @@ bool prepareHttpsClient(freeink::SecureHttpClient& client, const std::string& ur
 Failure failureFromConnect(freeink::SecureClient::ConnectFailure failure);
 
 // The most recent trust failure from any request path, for the UI to explain
-// a failure right after it happened. Clear at the start of an operation so a
-// stale failure cannot describe a new error; only trust failures are kept.
+// a failure right after it happened. Clear at the start of an operation (one
+// request, mirror candidates included) so a stale failure cannot describe a new
+// error, and never between candidates: a mirror that was only reached as a
+// timeout must not hide the certificate problem that explains the sequence.
+// Only trust failures are kept.
 void clearFailure();
 void recordFailure(Failure failure);
 Failure lastFailure();

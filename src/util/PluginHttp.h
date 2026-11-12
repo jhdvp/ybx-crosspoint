@@ -93,12 +93,22 @@ std::string catalogDownloadDir(const std::string& pluginDir);
 // `session` is an optional caller-owned TLS session reused across requests
 // (repeated handshakes permanently fragment the heap); pass nullptr to use a
 // per-call stack client.
+//
+// `timeoutMs` is one budget for the whole request, mirror candidates included:
+// each probe gets an equal share of what is left for DNS, TCP and the handshake
+// (raised to ybxmirror::MIN_CONNECT_MS where the budget can carry it, and the
+// last candidate takes the rest) so a blackhole host cannot spend the budget
+// before the mirrors are tried, and a connected host runs its response on the
+// remainder. Body reads keep their per-operation deadlines, so a steady stream
+// is not cut off at timeoutMs; none of this is a hard wall-clock deadline.
+// shouldAbort is polled in SDK read and TLS waits. An abort ends the sequence
+// without preferring any host, and so does a host whose handshake spent the
+// whole budget: it was reached, and said nothing.
 
 // Collects one checked DRAM buffer, capped at maxResponse. Returns HTTP status
 // (including OAuth polling's 4xx bodies), or -1 on OOM, truncation, or transport failure.
 // responseHeaders (optional) receives the response headers in receive order,
-// duplicates kept. shouldAbort is polled in SDK read/TLS waits. DNS and TCP
-// connect can block until the transport timeout; this is not a hard deadline.
+// duplicates kept.
 int request(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
             const std::string& body, const Headers& headers, String& out, size_t maxResponse,
             Headers* responseHeaders = nullptr, const std::function<bool()>& shouldAbort = nullptr,

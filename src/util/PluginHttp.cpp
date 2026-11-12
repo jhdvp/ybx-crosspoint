@@ -15,26 +15,46 @@
 #include "network/ProtectedPaths.h"
 #include "network/TlsTransport.h"
 #include "network/WifiPowerSaveGuard.h"
+#include "util/PluginShelf.h"
 #include "util/YbxServerMirror.h"
 
 namespace {
 constexpr size_t MAX_TOKEN_FILE_SIZE = 2 * 1024;
 constexpr size_t MAX_DEVICE_MANIFEST_SIZE = 8 * 1024;
 
+// Millis() units at which one mirror sequence must stop. Everything left of it
+// is the budget; handing each candidate a fresh timeoutMs would let a dead
+// service block the caller for count times the timeout, which on the main task
+// is a frozen reader.
+uint32_t mirrorBudget(const uint32_t deadline) {
+  const int32_t left = static_cast<int32_t>(deadline - millis());
+  return left > 0 ? static_cast<uint32_t>(left) : 0;
+}
+
 // Resolves the caller's reused TLS session (or `tmp`) into a configured,
-// connected client, or nullptr if begin() or the connection failed.
+// connected client, or nullptr when the caller aborted, begin() failed or the
+// connection failed. `connectMs` (always non-zero, from mirrorSequence) bounds
+// DNS, TCP and the handshake for this candidate; the response then runs on what
+// the sequence deadline still allows.
+//
+// `hostReached` reports the one failure that is not about reachability: the
+// transport connected, then no budget was left for a response. Such a host is
+// neither remembered nor throttled (mirrorSequence records nothing), and the
+// connection is closed here so a reused session does not keep a socket and its
+// TLS working set until the next request.
 freeink::SecureHttpClient* openClient(freeink::SecureHttpClient* session, freeink::SecureHttpClient& tmp,
                                       const std::string& url, const pluginhttp::Headers& headers,
-                                      const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
-  if (timeoutMs == 0 || (shouldAbort && shouldAbort())) return nullptr;
+                                      const std::function<bool()>& shouldAbort, const uint32_t connectMs,
+                                      const uint32_t deadlineMs, bool& hostReached) {
+  if (shouldAbort && shouldAbort()) return nullptr;
   freeink::SecureHttpClient& http = session ? *session : tmp;
   http.setUserAgent("YBX");
-  http.setTimeout(timeoutMs);
+  http.setTimeout(connectMs);
   if (!http.begin(pluginhttp::escapeUrl(url))) return nullptr;
   // Plugin endpoints carry the reader's YBX token: https only, with the peer
   // chain and host name verified against the firmware CA bundle, and only
   // once the clock can validate certificate dates.
-  if (!tlspolicy::prepareHttpsClient(http, url, timeoutMs, shouldAbort)) return nullptr;
+  if (!tlspolicy::prepareHttpsClient(http, url, connectMs, shouldAbort)) return nullptr;
   // Handshake first: the client's copy of a large header (a session cookie can
   // be several KB) would otherwise take heap the handshake needs.
   if (!http.connect(shouldAbort)) {
@@ -43,6 +63,15 @@ freeink::SecureHttpClient* openClient(freeink::SecureHttpClient* session, freein
     }
     return nullptr;
   }
+  // Connected: a bounded probe must not shorten the real transfer, so the
+  // response gets the rest of the sequence budget.
+  const uint32_t responseMs = mirrorBudget(deadlineMs);
+  if (responseMs == 0) {
+    hostReached = true;
+    http.end();
+    return nullptr;
+  }
+  http.setTimeout(responseMs);
   for (const auto& h : headers) http.addHeader(h.first, h.second);
   return &http;
 }
@@ -52,12 +81,58 @@ bool hasKnownLength(const freeink::SecureHttpClient& http) {
   return http.hasContentLength() && http.getHeader("transfer-encoding").empty();
 }
 
-// One absolute budget for a whole mirror sequence. Handing each candidate a
-// fresh timeoutMs would let a dead service block the caller for count times the
-// timeout, which on the main task is a frozen reader.
-uint32_t mirrorBudget(const uint32_t deadline) {
-  const int32_t left = static_cast<int32_t>(deadline - millis());
-  return left > 0 ? static_cast<uint32_t>(left) : 0;
+// What one attempt proved about the host it was given. Only a reply (or a body
+// error) and an unreachable transport are evidence the mirror preference can
+// act on: a host whose handshake spent the whole remaining budget was reached,
+// yet said nothing, so the sequence records neither.
+enum class Attempt : uint8_t { Answered, Unreachable, ReachedWithoutAnswer };
+
+// One mirror sequence: probe the plan's candidates in order against a single
+// absolute deadline, and record what the probes proved. `once` performs one
+// attempt for the candidate it is given.
+//
+// Each candidate gets its own bounded slice of the deadline for DNS, TCP and
+// the handshake (ybxmirror::connectSliceMs); a blackhole host then costs one
+// slice instead of the whole budget and the mirrors are still reached. The
+// response phase is not sliced, because only a failed connect says anything
+// about the host: an HTTP reply (including 4xx and 5xx) or a body error stays
+// on the host that produced it.
+//
+// Preference rules: a host that replied is remembered; every candidate probed
+// and not reached is what afterAllFailed throttles; a reached-but-unanswered
+// host and a user abort record nothing.
+template <typename OnceFn>
+int mirrorSequence(const std::string& url, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs,
+                   const OnceFn& once) {
+  ybxmirror::Plan plan(url);
+  const uint32_t deadline = millis() + timeoutMs;
+  int status = -1;
+  uint8_t probed = 0;
+  bool aborted = false;
+  for (uint8_t i = 0; i < plan.count(); i++) {
+    const uint32_t budget = mirrorBudget(deadline);
+    const uint32_t connectMs = ybxmirror::connectSliceMs(budget, plan.count() - i);
+    // No slice means no time for even one probe. Stopping here keeps `probed`
+    // honest: a host we never reached is not evidence that it is dead.
+    if (connectMs == 0) break;
+    Attempt attempt = Attempt::Answered;
+    status = once(plan.urlAt(i), connectMs, deadline, attempt);
+    if (attempt == Attempt::Answered) {
+      plan.answered(i);
+      return status;
+    }
+    if (attempt == Attempt::ReachedWithoutAnswer) return status;
+    if (shouldAbort && shouldAbort()) {
+      aborted = true;
+      break;
+    }
+    probed = i + 1;
+  }
+  // Throttle what was actually proved unreachable. Probing stops early when the
+  // budget is spent, and forgetting that would make every later request pay for
+  // the dead host all over again.
+  if (ybxmirror::recordsAllFailed(probed, aborted)) plan.allFailed();
+  return status;
 }
 }  // namespace
 
@@ -170,9 +245,11 @@ std::string inPluginDir(const std::string& pluginDir, const char* path) {
   return pluginDir + "/" + path;
 }
 
-// A manifest may not point the firmware at a credential store.
+// A manifest may not point the firmware at a credential store, and not at a
+// file in the reserved marker namespace either: token and config writes are
+// plugin-supplied paths too.
 static bool allowedFile(const std::string& file) {
-  if (protectedpaths::isPluginPath(file)) return true;
+  if (pluginshelf::isWriteTargetAllowed(file)) return true;
   LOG_ERR("PHTP", "Manifest file not allowed: %s", file.c_str());
   return false;
 }
@@ -261,15 +338,16 @@ std::string catalogDownloadDir(const std::string& pluginDir) {
 }
 
 static int requestOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
-                const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
-                Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs,
-                bool& connectionFailure) {
+                       const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
+                       Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t connectMs,
+                       const uint32_t deadlineMs, Attempt& attempt) {
   WifiPowerSaveGuard psGuard;
-  tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
-  freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
+  bool hostReached = false;
+  freeink::SecureHttpClient* httpPtr =
+      openClient(session, tmp, url, headers, shouldAbort, connectMs, deadlineMs, hostReached);
   if (!httpPtr) {
-    connectionFailure = true;
+    attempt = hostReached ? Attempt::ReachedWithoutAnswer : Attempt::Unreachable;
     return -1;
   }
   freeink::SecureHttpClient& http = *httpPtr;
@@ -324,39 +402,30 @@ static int requestOnce(freeink::SecureHttpClient* session, const std::string& ur
 int request(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
             const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
             Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
-  ybxmirror::Plan plan(url);
-  const uint32_t deadline = millis() + timeoutMs;
-  int status = -1;
-  uint8_t attempted = 0;
-  for (uint8_t i = 0; i < plan.count(); i++) {
-    const uint32_t budget = mirrorBudget(deadline);
-    if (budget == 0) break;
-    bool connectionFailure = false;
-    status = requestOnce(session, plan.urlAt(i), method, body, headers, out, maxResponse, responseHeaders, shouldAbort,
-                         budget, connectionFailure);
-    attempted = i + 1;
-    if (!connectionFailure) {
-      plan.answered(i);
-      return status;
-    }
-    if (shouldAbort && shouldAbort()) break;
-  }
-  // Only an exhausted sequence proved every host unreachable. An abort or a
-  // spent budget must not pin a mirror for the whole retry window.
-  if (attempted == plan.count()) plan.allFailed();
-  return status;
+  // The trust diagnosis is cleared once per request, not per candidate: a
+  // certificate problem on the main host must still explain the failure after
+  // the mirrors were only reached as timeouts.
+  tlspolicy::clearFailure();
+  return mirrorSequence(
+      url, shouldAbort, timeoutMs,
+      [&](const std::string& candidate, const uint32_t connectMs, const uint32_t deadline, Attempt& attempt) {
+        return requestOnce(session, candidate, method, body, headers, out, maxResponse, responseHeaders, shouldAbort,
+                           connectMs, deadline, attempt);
+      });
 }
 
 static int requestStreamOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
-                      const std::string& body, const Headers& headers, const StreamStart& onStart,
-                      const StreamData& onData, bool& complete, const std::function<bool()>& shouldAbort,
-                      const uint32_t timeoutMs, bool& connectionFailure) {
+                             const std::string& body, const Headers& headers, const StreamStart& onStart,
+                             const StreamData& onData, bool& complete, const std::function<bool()>& shouldAbort,
+                             const uint32_t connectMs, const uint32_t deadlineMs, Attempt& attempt) {
   complete = false;
   WifiPowerSaveGuard psGuard;
   freeink::SecureHttpClient tmp;
-  freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
+  bool hostReached = false;
+  freeink::SecureHttpClient* httpPtr =
+      openClient(session, tmp, url, headers, shouldAbort, connectMs, deadlineMs, hostReached);
   if (!httpPtr) {
-    connectionFailure = true;
+    attempt = hostReached ? Attempt::ReachedWithoutAnswer : Attempt::Unreachable;
     return -1;
   }
   freeink::SecureHttpClient& http = *httpPtr;
@@ -395,36 +464,26 @@ static int requestStreamOnce(freeink::SecureHttpClient* session, const std::stri
 int requestStream(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
                   const std::string& body, const Headers& headers, const StreamStart& onStart, const StreamData& onData,
                   bool& complete, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
-  ybxmirror::Plan plan(url);
-  const uint32_t deadline = millis() + timeoutMs;
-  int status = -1;
-  uint8_t attempted = 0;
-  for (uint8_t i = 0; i < plan.count(); i++) {
-    const uint32_t budget = mirrorBudget(deadline);
-    if (budget == 0) break;
-    bool connectionFailure = false;
-    status = requestStreamOnce(session, plan.urlAt(i), method, body, headers, onStart, onData, complete, shouldAbort,
-                               budget, connectionFailure);
-    attempted = i + 1;
-    if (!connectionFailure) {
-      plan.answered(i);
-      return status;
-    }
-    if (shouldAbort && shouldAbort()) break;
-  }
-  if (attempted == plan.count()) plan.allFailed();
-  return status;
+  tlspolicy::clearFailure();
+  return mirrorSequence(
+      url, shouldAbort, timeoutMs,
+      [&](const std::string& candidate, const uint32_t connectMs, const uint32_t deadline, Attempt& attempt) {
+        return requestStreamOnce(session, candidate, method, body, headers, onStart, onData, complete, shouldAbort,
+                                 connectMs, deadline, attempt);
+      });
 }
 
 static int requestToFileOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
-                      const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
-                      const std::function<bool()>& shouldAbort, const uint32_t timeoutMs, bool& connectionFailure) {
+                             const std::string& body, const Headers& headers, const char* destPath,
+                             const size_t maxResponse, const std::function<bool()>& shouldAbort,
+                             const uint32_t connectMs, const uint32_t deadlineMs, Attempt& attempt) {
   WifiPowerSaveGuard psGuard;
-  tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
-  freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
+  bool hostReached = false;
+  freeink::SecureHttpClient* httpPtr =
+      openClient(session, tmp, url, headers, shouldAbort, connectMs, deadlineMs, hostReached);
   if (!httpPtr) {
-    connectionFailure = true;
+    attempt = hostReached ? Attempt::ReachedWithoutAnswer : Attempt::Unreachable;
     return -1;
   }
   freeink::SecureHttpClient& http = *httpPtr;
@@ -470,25 +529,13 @@ static int requestToFileOnce(freeink::SecureHttpClient* session, const std::stri
 int requestToFile(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
                   const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
                   const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
-  ybxmirror::Plan plan(url);
-  const uint32_t deadline = millis() + timeoutMs;
-  int status = -1;
-  uint8_t attempted = 0;
-  for (uint8_t i = 0; i < plan.count(); i++) {
-    const uint32_t budget = mirrorBudget(deadline);
-    if (budget == 0) break;
-    bool connectionFailure = false;
-    status = requestToFileOnce(session, plan.urlAt(i), method, body, headers, destPath, maxResponse, shouldAbort,
-                               budget, connectionFailure);
-    attempted = i + 1;
-    if (!connectionFailure) {
-      plan.answered(i);
-      return status;
-    }
-    if (shouldAbort && shouldAbort()) break;
-  }
-  if (attempted == plan.count()) plan.allFailed();
-  return status;
+  tlspolicy::clearFailure();
+  return mirrorSequence(
+      url, shouldAbort, timeoutMs,
+      [&](const std::string& candidate, const uint32_t connectMs, const uint32_t deadline, Attempt& attempt) {
+        return requestToFileOnce(session, candidate, method, body, headers, destPath, maxResponse, shouldAbort,
+                                 connectMs, deadline, attempt);
+      });
 }
 
 bool mintPasswordToken(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
