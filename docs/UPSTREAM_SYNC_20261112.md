@@ -39,16 +39,68 @@ code is never dropped.
 | `test/CMakeLists.txt` | Both appended `add_subdirectory` blocks; upstream repeated one the fork already had. | Keep the fork's superset list, drop the duplicate line. |
 | `test/plugin_catalog_paging/PluginCatalogPagingTest.cpp` | add/add: upstream adds hidden-row paging tests. | Take upstream's file (superset of the fork's tests). |
 
-## Merge 2 — upstream/develop
+## Merge 2 — upstream/develop: resolved, then reverted
 
-(Recorded after the second merge commit; see the section appended below.)
+`git merge --no-ff upstream/develop` (48 commits, 5 November to 11 November
+2026) produced 16 conflicted paths. All 16 were resolved, and the merged tree
+passed the host suite: 1305 of 1305 tests (upstream adds 23 over the 2.0.0
+state). The merge was then reverted with `git merge --abort`, because the same
+tree does not build for the device.
+
+| File | Conflict | Decision |
+| --- | --- | --- |
+| `src/activities/settings/AboutActivity.h` | the fork ends the row list with MAC address; upstream adds three SD card rows | Union: keep position-sync and the SD rows, `ITEM_COUNT = 15`. |
+| `src/activities/settings/AboutActivity.cpp` | both sides extend `menuNames` | Upstream's 14 labels plus `Position Sync` after `Firmware`, in the order of the merged `MenuItem` enum. |
+| `src/activities/ActivityManager.{h,cpp}` | upstream drops the OPDS argument from `goToPlugins()` | `goToPlugins(std::string updateTarget = {})`: the fork update target stays, the OPDS argument goes, `goToYbxCatalog()` stays. |
+| `src/activities/home/HomeActivity.cpp` | upstream rewrites the cover-grid render into a `drawGrid()` lambda that paints once | Take the lambda and move the fork update toast and its label choice inside it; keep the touch-only hint guard. Menu row: upstream gating plus the fork label with update count. `onPluginsOpen()` loses the removed OPDS argument. |
+| `src/activities/plugins/PluginCatalogActivity.h` | upstream deletes the OPDS row | Delete `showOpds`; keep `updateTarget` and the built-in YBX catalog. |
+| `src/activities/plugins/PluginCatalogActivity.cpp` | five hunks: constructor, uninstall, `openList()`, `rowCount()`, Plugin Hub row mapping | Upstream row layout plus the fork catalog name, update target, folders and on-reader shelf. Uninstall clears the upstream notice markers and the fork update cache. `openList()` keeps the fork group trail and adds the upstream "don't ask again" check. `rowCount()` uses upstream's Plugin Hub count with the fork folder-aware list count. |
+| `src/clippings/ClippingSync.cpp` | the fork adds a paired-key bearer token, upstream adds Basic auth | Both: the paired YBX key wins, otherwise Basic auth, and a configured `Authorization` still replaces both. A request never carries two. |
+| `test/clipping_sync/ClippingSyncTest.cpp` + both stubs | upstream records every header and asserts one `Authorization` per request; the fork records only a counter | Take upstream's header recording into the fork fixture, keep the fork anchor and TLS cases, and drop the counter. The exact request count becomes "one header set per request" because the fork flow makes extra anchor calls. |
+| `test/CMakeLists.txt`, `lib/I18n/translations/english.yaml`, `docs/file-formats.md`, `docs/sd-plugins.md` | both sides add at the same place | Keep both additions (upstream button-remap test, section version 74 and named-list notice docs; fork downloadability test, statistics/awards strings and `download.require_url`). |
+| `freeink-sdk` | 2.0.0 pins `5e94fe74`, develop pins `6a208c0c`, the fork pins `44427f8d` | Keep `44427f8d`, as in merge 1. |
+
+Why the merge cannot stay. With the fork SDK pin kept, `pio run -e default`
+stops in the display HAL:
+
+```text
+lib/hal/HalDisplay.h:18:59: error: 'const EInkDisplay'
+  {aka 'const class freeink::FreeInkDisplay'} has no member named 'getControllerName'
+```
+
+`getControllerName()` — used by upstream's new "Display Controller" About row —
+does not exist at `44427f8d` and appears at develop's `6a208c0c`. The SDK range
+between them is 144 files and 7562 added lines, including new display driver
+APIs. So merge 2 needs the newer SDK.
+
+Advancing the SDK pin is not mechanical. Between `44427f8d` and `6a208c0c`
+upstream changes SecureNet five times (`c8a13c6` bounded catalog requests,
+`e49d6b8` connection-owned buffers, `7ca28e5` fail-fast on an unresolvable host
+name, `9ded431` no resend after `connect()`, `6a208c0` oversized GitHub CSP
+headers) — the same files the fork's two reviewed patch series change. Probing
+in a throwaway SDK worktree at `6a208c0c`: stage `0001-deadline-dns-tcp.patch`
+leaves conflicts in `SecureHttpClient.h`, `SecureClient.cpp` (six hunks),
+`test/host/run.sh` and `test_resumable_fetch.cpp`; stage `0002-tls-verify.patch`
+does not apply at all. Re-porting both stages means regenerating the reviewed
+SHA-256 digests for the transport that enforces peer and host-name
+verification. `scripts/patch_securenet.py` deliberately fails the build rather
+than compiling an unreviewed transport, so that port belongs to the owner under
+`docs/ybx-sdk-patches.md` §"Updating the SDK pin"; it is not something to fold
+into a dependency merge.
+
+The resolved merge is kept outside the repository, so whoever takes it next does
+not redo the conflict work:
+`~/.local/state/ybx-pocket-agents/reports/merge2-resolutions.diff` (whole diff)
+and `merge2-resolved.tar.gz` (the 16 files as verified). Only the SDK decision
+is missing.
 
 ## Checks run for this sync
 
 - Host unit tests: `cmake -S test -B build/test -G Ninja` +
-  `ctest --test-dir build/test` — 1282 of 1282 pass.
-- Firmware build: `pio run -e default` — SUCCESS with the merged tree and the
-  fork's SDK pin.
+  `ctest --test-dir build/test` — 1282 of 1282 pass at the committed state
+  (merge 1), 1305 of 1305 with the reverted merge 2 resolutions.
+- Firmware build: `pio run -e default` and `pio run -e x4pro` — both SUCCESS
+  with the merged tree and the fork's SDK pin.
 - Not checked here: `bin/clang-format-fix` (no clang-format on this host) and
   the SDK `test/host/run.sh` harness (unchanged pin, so unchanged series).
 - Hardware behaviour (TLS trust, QR pairing, clippings sync, shelf, sleep art)
@@ -65,3 +117,8 @@ code is never dropped.
 2. Re-check the fork's `catalog.list_index_mapping` support against the YBX
    `parent` field: the merge extended it with `listsParentPath`, which is
    documented in `docs/sd-plugins.md` only as a fork addition.
+3. Take `upstream/develop` only after the SDK decision above. Its 48 commits
+   include the OPDS browser move into File Transfer, clipping-sync Basic auth,
+   named-list "don't ask again" notices, the settings reorder and the About
+   hardware rows; none of them conflict with YBX features any more, so the
+   recorded resolutions can be reused as they are.
