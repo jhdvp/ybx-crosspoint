@@ -63,8 +63,11 @@ bool KOReaderCredentialStore::fromJson(JsonVariantConst doc) {
   // v3 replaces hostname-based enhanced-progress detection with an explicit
   // protocol profile. Preserve previous behavior on upgrade: only the built-in
   // CrossPoint URL was enhanced, while every custom URL was strict KOSync.
+  // The bound is the version that introduced the key, not CONFIG_VERSION: a
+  // v3-or-newer file that stored a serverType holds a human choice, and bumping
+  // the default of another field must not re-derive (and so silently change) it.
   const JsonVariantConst serverTypeValue = doc["serverType"];
-  if (cfgVersion < CONFIG_VERSION || serverTypeValue.isNull()) {
+  if (cfgVersion < 3 || serverTypeValue.isNull()) {
     setServerType(getBaseUrl() == DEFAULT_SERVER_URL ? KOReaderServerType::CROSSPOINT : KOReaderServerType::KOSYNC);
     needsResave = true;
   } else {
@@ -81,12 +84,11 @@ bool KOReaderCredentialStore::fromJson(JsonVariantConst doc) {
   // v4 changed the default match method to the content hash. A config written
   // before v4 that never stored the key was syncing by filename, so pin that
   // rather than silently changing every document id under the user. Fresh
-  // setups and any config that stored a method keep the new default.
+  // setups and any config that stored a method keep the new default. The bound
+  // is the version that changed the default, so a later bump cannot re-pin it.
   const JsonVariantConst methodValue = doc["matchMethod"];
-  const uint8_t fallback =
-      cfgVersion < CONFIG_VERSION && methodValue.isNull()
-          ? static_cast<uint8_t>(DocumentMatchMethod::FILENAME)
-          : static_cast<uint8_t>(DocumentMatchMethod::BINARY);
+  const uint8_t fallback = cfgVersion < 4 && methodValue.isNull() ? static_cast<uint8_t>(DocumentMatchMethod::FILENAME)
+                                                                  : static_cast<uint8_t>(DocumentMatchMethod::BINARY);
   const uint8_t method = methodValue | fallback;
   if (method <= static_cast<uint8_t>(DocumentMatchMethod::BINARY)) {
     setMatchMethod(static_cast<DocumentMatchMethod>(method));

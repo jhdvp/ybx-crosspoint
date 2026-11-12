@@ -39,3 +39,26 @@ target_link_libraries(KOReaderSyncClientTlsTest PRIVATE
   GTest::gtest_main
 )
 gtest_discover_tests(KOReaderSyncClientTlsTest)
+
+add_executable(KOReaderCredentialStoreMigrationTest
+  KOReaderCredentialStoreMigrationTest.cpp
+  ${REPO_ROOT}/lib/KOReaderSync/KOReaderCredentialStore.cpp
+)
+target_include_directories(KOReaderCredentialStoreMigrationTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${REPO_ROOT}/test/library_builder/stubs
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/KOReaderSync
+  ${REPO_ROOT}/lib/HttpHeader
+  ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/Memory
+)
+target_include_directories(KOReaderCredentialStoreMigrationTest SYSTEM PRIVATE
+  ${arduinojson_SOURCE_DIR}/src
+  ${REPO_ROOT}/.pio/libdeps/default/ArduinoJson/src
+)
+target_link_libraries(KOReaderCredentialStoreMigrationTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+gtest_discover_tests(KOReaderCredentialStoreMigrationTest)
