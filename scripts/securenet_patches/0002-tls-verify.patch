@@ -58,7 +58,7 @@ diff --git a/libs/network/SecureNet/include/ResumableFetch.h b/libs/network/Secu
 diff --git a/libs/network/SecureNet/include/SecureClient.h b/libs/network/SecureNet/include/SecureClient.h
 --- a/libs/network/SecureNet/include/SecureClient.h
 +++ b/libs/network/SecureNet/include/SecureClient.h
-@@ -35,9 +35,29 @@
+@@ -40,9 +40,29 @@
    // Return true to abandon an in-progress connect.
    using AbortCallback = std::function<bool()>;
  
@@ -88,12 +88,12 @@ diff --git a/libs/network/SecureNet/include/SecureClient.h b/libs/network/Secure
  
    // Polled while DNS resolves, between the TCP connect and the handshake, on
    // every handshake round-trip, and between the two handshake attempts. A
-@@ -90,6 +110,7 @@
+@@ -98,6 +118,7 @@
    WiFiClient _transport;
    AbortCallback _shouldAbort;
    bool _aborted = false;
 +  ConnectFailure _failure = ConnectFailure::None;
-   void* _recordBuf = nullptr;  // full-record buffer this connection owns, if any
+   bool _tcpConnected = false;  // the last connectWithMethod() reached the handshake
    const char* _rootCA = nullptr;
    bool _insecure = false;
 diff --git a/libs/network/SecureNet/include/SecureHttpClient.h b/libs/network/SecureNet/include/SecureHttpClient.h
@@ -122,7 +122,7 @@ diff --git a/libs/network/SecureNet/include/SecureHttpClient.h b/libs/network/Se
        _scheme = scheme;
        _host = host;
        _path = path;
-@@ -318,6 +323,10 @@
+@@ -328,6 +333,10 @@
    bool responseComplete() const { return _bodyComplete; }
    bool callbackAborted() const { return _callbackAborted; }
    bool aborted() const { return _aborted; }
@@ -133,7 +133,7 @@ diff --git a/libs/network/SecureNet/include/SecureHttpClient.h b/libs/network/Se
    bool hasContentLength() const { return _haveContentLength; }
    size_t getContentLength() const { return _contentLength; }
  
-@@ -388,6 +397,28 @@
+@@ -398,6 +407,28 @@
  
    static bool isRedirectStatus(int status) {
      return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
@@ -166,15 +166,15 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
 --- a/libs/network/SecureNet/src/SecureClient.cpp
 +++ b/libs/network/SecureNet/src/SecureClient.cpp
 @@ -9,6 +9,8 @@
- #include <freertos/FreeRTOS.h>
- #include <freertos/task.h>
+ // integration point for the TLS 1.3 transport.
+ #if defined(FREEINK_NET_WOLFSSL)
  #include <wolfssl/ssl.h>
 +#include <wolfssl/error-ssl.h>
 +#include <wolfssl/wolfcrypt/error-crypt.h>
- #include <wolfssl/wolfcrypt/memory.h>
- // ssl->max_fragment, to skip the full-record buffer when small records were agreed.
+ #if defined(FREEINK_WOLFSSL_RETAIN_INPUT_BUFFER)
  #include <wolfssl/internal.h>
-@@ -105,6 +107,33 @@
+ #include <atomic>
+@@ -68,6 +70,33 @@
    // an out-of-memory handshake spin until the deadline instead of failing fast.
    return err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE;
  }
@@ -208,7 +208,7 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
  }  // namespace
  
  int SecureClient::connectWithMethod(const char* host, const IPAddress& address, uint16_t port, void* method,
-@@ -120,26 +149,32 @@
+@@ -83,26 +112,33 @@
  #endif
    const uint32_t started = millis();
    stop();
@@ -224,11 +224,13 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
      return 0;
    }
    _transport.setConnectionTimeout(tcpBudget);
+   _tcpConnected = false;
    if (!_transport.connect(address, port)) {
 +    _failure = ConnectFailure::Transport;
      if (Serial) Serial.printf("[SecureClient] TCP connect failed (%s): %s:%u\n", label, host, port);
      return 0;
    }
+   _tcpConnected = true;
    if (abortRequested()) {
 +    _failure = ConnectFailure::Aborted;
      _transport.stop();
@@ -237,20 +239,17 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
  
    auto* ctx = wolfSSL_CTX_new(static_cast<WOLFSSL_METHOD*>(method));
    if (!ctx) {
--    if (Serial)
--      Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
 +    _failure = ConnectFailure::Memory;
-+    if (Serial) Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
+     if (Serial) Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
      _transport.stop();
      return 0;
-   }
-@@ -147,17 +182,32 @@
+@@ -111,15 +147,31 @@
  
    if (_insecure) {
      wolfSSL_CTX_set_verify(ctx, WOLFSSL_VERIFY_NONE, nullptr);
 -  } else if (_rootCA) {
--    wolfSSL_CTX_load_verify_buffer(ctx, reinterpret_cast<const unsigned char*>(_rootCA), strlen(_rootCA),
--                                   WOLFSSL_FILETYPE_PEM);
+-    wolfSSL_CTX_load_verify_buffer(ctx, reinterpret_cast<const unsigned char*>(_rootCA),
+-                                   strlen(_rootCA), WOLFSSL_FILETYPE_PEM);
 +  } else {
 +    // Fail closed: a verified connection needs a trust anchor, and a bundle
 +    // wolfSSL cannot parse must stop the handshake here rather than continue
@@ -275,14 +274,11 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
  
    auto* ssl = wolfSSL_new(ctx);
    if (!ssl) {
--    if (Serial)
--      Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
 +    _failure = ConnectFailure::Memory;
-+    if (Serial) Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
+     if (Serial) Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
      stop();
      return 0;
-   }
-@@ -165,6 +215,18 @@
+@@ -128,6 +180,18 @@
    wolfSSL_SetIOReadCtx(ssl, &_transport);
    wolfSSL_SetIOWriteCtx(ssl, &_transport);
    wolfSSL_UseSNI(ssl, WOLFSSL_SNI_HOST_NAME, host, strlen(host));
@@ -301,7 +297,7 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
  #if defined(WOLFSSL_TLS13) && defined(HAVE_CURVE25519)
    // MEMFIX-PORT: pin the TLS 1.3 key_share to X25519. wolfSSL's default is a
    // P-256 share, generated with fast-math bignums that WOLFSSL_SMALL_STACK
-@@ -192,16 +254,19 @@
+@@ -155,16 +219,19 @@
    while ((ret = wolfSSL_connect(ssl)) != WOLFSSL_SUCCESS) {
      const int err = wolfSSL_get_error(ssl, ret);
      if (!isWantIo(err)) {
@@ -321,7 +317,7 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
        if (Serial) {
          Serial.printf("[SecureClient] handshake timeout (%s): last err %d, transport %s, free heap %u\n", label, err,
                        _transport.connected() ? "up" : "down", (unsigned)ESP.getFreeHeap());
-@@ -211,6 +276,7 @@
+@@ -174,6 +241,7 @@
      }
      delay(5);
    }
@@ -329,14 +325,15 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
    _connected = true;
    // The connect budget is a deadline, not the socket's steady-state timeout:
    // a DNS lookup that used most of it must not make later body reads time out.
-@@ -248,12 +314,25 @@
+@@ -218,6 +286,7 @@
  
  int SecureClient::connect(const char* host, uint16_t port) {
    _aborted = false;
 +  _failure = ConnectFailure::None;
+   stop();
+   if (abortRequested()) return 0;
    // One budget for DNS, TCP and the whole handshake, including the TLS 1.2
-   // retry below: no step starts a fresh clock after the previous one.
-   const uint32_t deadlineMs = deadlineAfter(millis(), static_cast<uint32_t>(getTimeout()));
+@@ -226,6 +295,18 @@
    IPAddress address;
    const DeadlineDns::Status dns = DeadlineDns::resolve(host, deadlineMs, address, [this] { return abortRequested(); });
    if (dns != DeadlineDns::Status::Ok) {
@@ -355,10 +352,10 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
      if (Serial) {
        const char* reason = "failed";
        if (dns == DeadlineDns::Status::Timeout)
-@@ -275,6 +354,10 @@
-   // offers it (WOLFSSL_TLS13 is enabled) and falls back to 1.2 otherwise.
+@@ -248,6 +329,10 @@
    if (connectWithMethod(host, address, port, wolfSSLv23_client_method(), "auto", deadlineMs)) return 1;
-   if (_aborted) return 0;
+   // Only a failed handshake can be a TLS version problem; don't retry a dead host.
+   if (_aborted || !_tcpConnected) return 0;
 +  // Only an I/O-level failure earns the TLS 1.2 retry. A rejected certificate,
 +  // host-name mismatch, bad clock, or missing CA config was already decided by
 +  // verification and would fail identically (and needlessly) a second time.
@@ -366,13 +363,10 @@ diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNe
    if (remainingUntil(millis(), deadlineMs) == 0) {
      if (Serial) Serial.println("[SecureClient] TLS 1.2 retry skipped: deadline exhausted");
      return 0;
-@@ -361,8 +444,8 @@
- #else  // !FREEINK_NET_WOLFSSL — inert stub so the SDK builds without wolfSSL.
+@@ -322,6 +407,7 @@
  
  int SecureClient::connect(const char* host, uint16_t port) {
--  (void)host;
--  (void)port;
-+  (void)host; (void)port;
+   (void)host; (void)port;
 +  _failure = ConnectFailure::Configuration;
    if (Serial) Serial.println("[SecureClient] TLS 1.3 unavailable: build with -DFREEINK_NET_WOLFSSL=1");
    return 0;

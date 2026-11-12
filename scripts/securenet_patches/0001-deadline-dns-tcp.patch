@@ -1,6 +1,5 @@
 diff --git a/libs/network/SecureNet/include/DeadlineDns.h b/libs/network/SecureNet/include/DeadlineDns.h
 new file mode 100644
-index 0000000..7d559c3
 --- /dev/null
 +++ b/libs/network/SecureNet/include/DeadlineDns.h
 @@ -0,0 +1,61 @@
@@ -66,10 +65,9 @@ index 0000000..7d559c3
 +
 +}  // namespace freeink
 diff --git a/libs/network/SecureNet/include/SecureClient.h b/libs/network/SecureNet/include/SecureClient.h
-index a9a895c..e3514f9 100644
 --- a/libs/network/SecureNet/include/SecureClient.h
 +++ b/libs/network/SecureNet/include/SecureClient.h
-@@ -39,14 +39,13 @@ class SecureClient : public Client {
+@@ -44,14 +44,13 @@
    void setCACert(const char* rootCA);
    void setInsecure();  // skip peer verification (testing only)
  
@@ -86,8 +84,8 @@ index a9a895c..e3514f9 100644
 +  // the handshake (including the TLS 1.2 retry) share one absolute deadline.
    void setAbortCallback(AbortCallback cb) { _shouldAbort = std::move(cb); }
  
-   // For bulk downloads: allocate a buffer for a full 16KB record and lend it
-@@ -81,7 +80,8 @@ class SecureClient : public Client {
+   // Bulk downloads: pre-grow this connection's wolfSSL input buffer after
+@@ -89,7 +88,8 @@
    static bool tls13Available();
  
   private:
@@ -98,19 +96,9 @@ index a9a895c..e3514f9 100644
    // Polls _shouldAbort and latches _aborted so callers can tell a cancel from
    // a failure after connect() returns 0.
 diff --git a/libs/network/SecureNet/include/SecureHttpClient.h b/libs/network/SecureNet/include/SecureHttpClient.h
-index 9e9687b..12ea710 100644
 --- a/libs/network/SecureNet/include/SecureHttpClient.h
 +++ b/libs/network/SecureNet/include/SecureHttpClient.h
-@@ -37,14 +37,15 @@
- 
- #include <algorithm>
- #include <cctype>
--#include <iterator>
- #include <cstdint>
- #include <cstdlib>
- #include <functional>
-+#include <iterator>
- #include <string>
+@@ -45,6 +45,7 @@
  #include <utility>
  #include <vector>
  
@@ -118,31 +106,7 @@ index 9e9687b..12ea710 100644
  #include "SecureClient.h"
  
  namespace freeink {
-@@ -266,8 +267,10 @@ class SecureHttpClient {
-         } else if (name == "connection") {
-           std::string v = value;
-           std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return static_cast<char>(tolower(c)); });
--          if (v.find("close") != std::string::npos) keepAlive = false;
--          else if (v.find("keep-alive") != std::string::npos) keepAlive = true;
-+          if (v.find("close") != std::string::npos)
-+            keepAlive = false;
-+          else if (v.find("keep-alive") != std::string::npos)
-+            keepAlive = true;
-         }
-       }
-       if (_aborted) {
-@@ -412,9 +415,7 @@ class SecureHttpClient {
-     return !host.empty() && (scheme == "http" || scheme == "https");
-   }
- 
--  std::string hostHeader() const {
--    return hostHeaderFor(_scheme, _host, _port);
--  }
-+  std::string hostHeader() const { return hostHeaderFor(_scheme, _host, _port); }
- 
-   static std::string hostHeaderFor(const std::string& scheme, const std::string& host, uint16_t port) {
-     const uint16_t defaultPort = scheme == "https" ? 443 : 80;
-@@ -432,11 +433,12 @@ class SecureHttpClient {
+@@ -442,11 +443,12 @@
  
    // Reuse the kept-alive connection when it matches, else (re)connect.
    //
@@ -160,7 +124,7 @@ index 9e9687b..12ea710 100644
    bool ensureConnected(const AbortCallback& shouldAbort = nullptr) {
      if (connectionMatches()) return true;
      closeConnection();
-@@ -455,9 +457,24 @@ class SecureHttpClient {
+@@ -465,9 +467,24 @@
        _conn = &_secure;
        _connHttps = true;
      } else {
@@ -183,13 +147,12 @@ index 9e9687b..12ea710 100644
 +      // NetworkClient keeps one timeout for connect, write and read; restore
 +      // the configured one after the shortened connect budget.
        _plain.setConnectionTimeout(_timeoutMs);
--      if (!_plain.connect(_host.c_str(), _port)) return false;
+-      if (!hostResolves(_host.c_str()) || !_plain.connect(_host.c_str(), _port)) return false;
        _conn = &_plain;
        _connHttps = false;
      }
 diff --git a/libs/network/SecureNet/src/DeadlineDns.cpp b/libs/network/SecureNet/src/DeadlineDns.cpp
 new file mode 100644
-index 0000000..7a4879d
 --- /dev/null
 +++ b/libs/network/SecureNet/src/DeadlineDns.cpp
 @@ -0,0 +1,217 @@
@@ -411,18 +374,18 @@ index 0000000..7a4879d
 +
 +}  // namespace freeink
 diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNet/src/SecureClient.cpp
-index ab34587..15301dc 100644
 --- a/libs/network/SecureNet/src/SecureClient.cpp
 +++ b/libs/network/SecureNet/src/SecureClient.cpp
-@@ -1,5 +1,7 @@
+@@ -1,6 +1,8 @@
  #include "SecureClient.h"
  
-+#include "DeadlineDns.h"
+ #include <Network.h>
 +
++#include "DeadlineDns.h"
+ 
  // wolfSSL is only pulled in when explicitly enabled. This keeps the default SDK
  // build free of the wolfSSL dependency while leaving a single, well-defined
- // integration point for the TLS 1.3 transport.
-@@ -105,7 +107,8 @@ bool isWantIo(const int err) {
+@@ -68,7 +70,8 @@
  }
  }  // namespace
  
@@ -432,55 +395,26 @@ index ab34587..15301dc 100644
  #if defined(FREEINK_WOLFSSL_DEBUG)
    // Routes wolfSSL's internal trace through wolfSSL_Arduino_Serial_Print (the
    // application provides that hook). Shows exactly where a handshake stalls.
-@@ -117,10 +120,14 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -80,11 +83,15 @@
  #endif
    const uint32_t started = millis();
    stop();
 -  const uint32_t timeoutMs = getTimeout();
    if (abortRequested()) return 0;
 -  _transport.setConnectionTimeout(timeoutMs);
--  if (!_transport.connect(host, port)) {
 +  const uint32_t tcpBudget = remainingUntil(millis(), deadlineMs);
 +  if (tcpBudget == 0) {
 +    if (Serial) Serial.printf("[SecureClient] TCP connect skipped (%s): deadline exhausted\n", label);
 +    return 0;
 +  }
 +  _transport.setConnectionTimeout(tcpBudget);
+   _tcpConnected = false;
+-  if (!_transport.connect(host, port)) {
 +  if (!_transport.connect(address, port)) {
      if (Serial) Serial.printf("[SecureClient] TCP connect failed (%s): %s:%u\n", label, host, port);
      return 0;
    }
-@@ -131,7 +138,8 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
- 
-   auto* ctx = wolfSSL_CTX_new(static_cast<WOLFSSL_METHOD*>(method));
-   if (!ctx) {
--    if (Serial) Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
-+    if (Serial)
-+      Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
-     _transport.stop();
-     return 0;
-   }
-@@ -140,15 +148,16 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
-   if (_insecure) {
-     wolfSSL_CTX_set_verify(ctx, WOLFSSL_VERIFY_NONE, nullptr);
-   } else if (_rootCA) {
--    wolfSSL_CTX_load_verify_buffer(ctx, reinterpret_cast<const unsigned char*>(_rootCA),
--                                   strlen(_rootCA), WOLFSSL_FILETYPE_PEM);
-+    wolfSSL_CTX_load_verify_buffer(ctx, reinterpret_cast<const unsigned char*>(_rootCA), strlen(_rootCA),
-+                                   WOLFSSL_FILETYPE_PEM);
-   }
-   wolfSSL_SetIORecv(ctx, wcRecv);
-   wolfSSL_SetIOSend(ctx, wcSend);
- 
-   auto* ssl = wolfSSL_new(ctx);
-   if (!ssl) {
--    if (Serial) Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
-+    if (Serial)
-+      Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
-     stop();
-     return 0;
-   }
-@@ -179,7 +188,6 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -144,7 +151,6 @@
    // The recv callback is non-blocking (returns WANT_READ when no bytes are
    // buffered), so wolfSSL_connect must be retried across handshake round-trips
    // rather than called once.
@@ -488,7 +422,7 @@ index ab34587..15301dc 100644
    int ret;
    while ((ret = wolfSSL_connect(ssl)) != WOLFSSL_SUCCESS) {
      const int err = wolfSSL_get_error(ssl, ret);
-@@ -193,7 +201,7 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -158,7 +164,7 @@
        stop();
        return 0;
      }
@@ -497,7 +431,7 @@ index ab34587..15301dc 100644
        if (Serial) {
          Serial.printf("[SecureClient] handshake timeout (%s): last err %d, transport %s, free heap %u\n", label, err,
                        _transport.connected() ? "up" : "down", (unsigned)ESP.getFreeHeap());
-@@ -204,6 +212,9 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
+@@ -169,6 +175,9 @@
      delay(5);
    }
    _connected = true;
@@ -507,10 +441,12 @@ index ab34587..15301dc 100644
    if (Serial) {
      Serial.printf("[SecureClient] handshake ok (%s): %s / %s in %lu ms\n", label, wolfSSL_get_version(ssl),
                    wolfSSL_get_cipher(ssl), (unsigned long)(millis() - started));
-@@ -237,21 +248,50 @@ bool SecureClient::abortRequested() {
- 
+@@ -210,23 +219,52 @@
  int SecureClient::connect(const char* host, uint16_t port) {
    _aborted = false;
+   stop();
+-  if (abortRequested() || !hostResolves(host)) return 0;
++  if (abortRequested()) return 0;
 +  // One budget for DNS, TCP and the whole handshake, including the TLS 1.2
 +  // retry below: no step starts a fresh clock after the previous one.
 +  const uint32_t deadlineMs = deadlineAfter(millis(), static_cast<uint32_t>(getTimeout()));
@@ -538,7 +474,8 @@ index ab34587..15301dc 100644
    // offers it (WOLFSSL_TLS13 is enabled) and falls back to 1.2 otherwise.
 -  if (connectWithMethod(host, port, wolfSSLv23_client_method(), "auto")) return 1;
 +  if (connectWithMethod(host, address, port, wolfSSLv23_client_method(), "auto", deadlineMs)) return 1;
-   if (_aborted) return 0;
+   // Only a failed handshake can be a TLS version problem; don't retry a dead host.
+   if (_aborted || !_tcpConnected) return 0;
 +  if (remainingUntil(millis(), deadlineMs) == 0) {
 +    if (Serial) Serial.println("[SecureClient] TLS 1.2 retry skipped: deadline exhausted");
 +    return 0;
@@ -560,72 +497,10 @@ index ab34587..15301dc 100644
    char host[16];
    snprintf(host, sizeof(host), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
    return connect(host, port);
-@@ -292,7 +332,10 @@ int SecureClient::available() {
- }
- 
- void SecureClient::stop() {
--  if (_ssl) { wolfSSL_free(static_cast<WOLFSSL*>(_ssl)); _ssl = nullptr; }
-+  if (_ssl) {
-+    wolfSSL_free(static_cast<WOLFSSL*>(_ssl));
-+    _ssl = nullptr;
-+  }
-   if (_recordBuf) {
-     // wolfSSL_free() returned the buffer if it was lent; freeing a lent one
-     // would leave wolfSSL with a dangling pointer, so leak it instead.
-@@ -305,7 +348,10 @@ void SecureClient::stop() {
-     }
-     _recordBuf = nullptr;
-   }
--  if (_ctx) { wolfSSL_CTX_free(static_cast<WOLFSSL_CTX*>(_ctx)); _ctx = nullptr; }
-+  if (_ctx) {
-+    wolfSSL_CTX_free(static_cast<WOLFSSL_CTX*>(_ctx));
-+    _ctx = nullptr;
-+  }
-   _transport.stop();
-   _connected = false;
- }
-@@ -315,15 +361,31 @@ uint8_t SecureClient::connected() { return _connected && _transport.connected();
- #else  // !FREEINK_NET_WOLFSSL — inert stub so the SDK builds without wolfSSL.
- 
- int SecureClient::connect(const char* host, uint16_t port) {
--  (void)host; (void)port;
-+  (void)host;
-+  (void)port;
-   if (Serial) Serial.println("[SecureClient] TLS 1.3 unavailable: build with -DFREEINK_NET_WOLFSSL=1");
-   return 0;
- }
--int SecureClient::connect(IPAddress ip, uint16_t port) { (void)ip; (void)port; return 0; }
--size_t SecureClient::write(const uint8_t* buf, size_t size) { (void)buf; (void)size; return 0; }
--int SecureClient::read(uint8_t* buf, size_t size) { (void)buf; (void)size; return -1; }
-+int SecureClient::connect(IPAddress ip, uint16_t port) {
-+  (void)ip;
-+  (void)port;
-+  return 0;
-+}
-+size_t SecureClient::write(const uint8_t* buf, size_t size) {
-+  (void)buf;
-+  (void)size;
-+  return 0;
-+}
-+int SecureClient::read(uint8_t* buf, size_t size) {
-+  (void)buf;
-+  (void)size;
-+  return -1;
-+}
- int SecureClient::available() { return 0; }
--void SecureClient::stop() { _transport.stop(); _connected = false; }
-+void SecureClient::stop() {
-+  _transport.stop();
-+  _connected = false;
-+}
- void SecureClient::reserveFullRecord() {}
- uint8_t SecureClient::connected() { return 0; }
- 
 diff --git a/libs/network/SecureNet/test/host/run.sh b/libs/network/SecureNet/test/host/run.sh
-index ba37c98..6d6f295 100755
 --- a/libs/network/SecureNet/test/host/run.sh
 +++ b/libs/network/SecureNet/test/host/run.sh
-@@ -1,9 +1,13 @@
+@@ -1,6 +1,7 @@
  #!/bin/sh
 -# Builds and runs the fetchResumable host test against a scripted fake
 -# WiFiClient (stubs/); https is never exercised.
@@ -635,17 +510,17 @@ index ba37c98..6d6f295 100755
  set -e
  cd "$(dirname "$0")"
  BUILD_DIR="${TMPDIR:-/tmp}/freeink-securenet-host-tests"
- mkdir -p "$BUILD_DIR"
- c++ -std=c++17 -Wall -Wextra -Werror -Istubs -I../../include test_resumable_fetch.cpp -o "$BUILD_DIR/test_resumable_fetch"
- "$BUILD_DIR/test_resumable_fetch"
+@@ -10,3 +11,6 @@
+ 
+ c++ -std=c++17 -Wall -Wextra -Werror -DFREEINK_NET_WOLFSSL=1 -fsanitize=address,undefined -Istubs -I../../include test_bulk_request.cpp -o "$BUILD_DIR/test_bulk_request"
+ "$BUILD_DIR/test_bulk_request"
 +c++ -std=c++17 -Wall -Wextra -Werror -pthread -DESP_PLATFORM -Istubs -I../../include \
 +  test_deadline_dns.cpp ../../src/DeadlineDns.cpp -o "$BUILD_DIR/test_deadline_dns"
 +"$BUILD_DIR/test_deadline_dns"
 diff --git a/libs/network/SecureNet/test/host/stubs/Arduino.h b/libs/network/SecureNet/test/host/stubs/Arduino.h
-index bafcf7e..2692886 100644
 --- a/libs/network/SecureNet/test/host/stubs/Arduino.h
 +++ b/libs/network/SecureNet/test/host/stubs/Arduino.h
-@@ -1,11 +1,15 @@
+@@ -1,10 +1,14 @@
  #pragma once
 -// Host stub: a virtual clock (delay advances it instantly) and the small
 -// String/IPAddress surface SecureHttpClient touches.
@@ -657,13 +532,12 @@ index bafcf7e..2692886 100644
  #include <cstdint>
  #include <cstring>
  #include <string>
- 
-+#include "lwip/ip_addr.h"
 +
++#include "lwip/ip_addr.h"
+ 
  inline unsigned long& fakeNow() {
    static unsigned long now = 0;
-   return now;
-@@ -22,4 +26,117 @@ class String {
+@@ -22,4 +26,117 @@
    std::string s_;
  };
  
@@ -784,7 +658,6 @@ index bafcf7e..2692886 100644
 +};
 diff --git a/libs/network/SecureNet/test/host/stubs/lwip/dns.h b/libs/network/SecureNet/test/host/stubs/lwip/dns.h
 new file mode 100644
-index 0000000..df7c355
 --- /dev/null
 +++ b/libs/network/SecureNet/test/host/stubs/lwip/dns.h
 @@ -0,0 +1,117 @@
@@ -907,7 +780,6 @@ index 0000000..df7c355
 +}
 diff --git a/libs/network/SecureNet/test/host/stubs/lwip/ip6_addr.h b/libs/network/SecureNet/test/host/stubs/lwip/ip6_addr.h
 new file mode 100644
-index 0000000..01361ac
 --- /dev/null
 +++ b/libs/network/SecureNet/test/host/stubs/lwip/ip6_addr.h
 @@ -0,0 +1,11 @@
@@ -924,7 +796,6 @@ index 0000000..01361ac
 +#define ip6_addr_isglobal(ip6addr) ((reinterpret_cast<const uint8_t*>(&(ip6addr)->addr)[0] & 0xe0U) == 0x20U)
 diff --git a/libs/network/SecureNet/test/host/stubs/lwip/ip_addr.h b/libs/network/SecureNet/test/host/stubs/lwip/ip_addr.h
 new file mode 100644
-index 0000000..d9c2029
 --- /dev/null
 +++ b/libs/network/SecureNet/test/host/stubs/lwip/ip_addr.h
 @@ -0,0 +1,33 @@
@@ -963,7 +834,6 @@ index 0000000..d9c2029
 +#define ip4_addr_get_u32(ip4addr) ((ip4addr)->addr)
 diff --git a/libs/network/SecureNet/test/host/stubs/lwip/netif.h b/libs/network/SecureNet/test/host/stubs/lwip/netif.h
 new file mode 100644
-index 0000000..7e7a8f1
 --- /dev/null
 +++ b/libs/network/SecureNet/test/host/stubs/lwip/netif.h
 @@ -0,0 +1,36 @@
@@ -1005,7 +875,6 @@ index 0000000..7e7a8f1
 +#define netif_ip6_addr_state(netif, i) ((netif)->ip6_addr_state[i])
 diff --git a/libs/network/SecureNet/test/host/stubs/lwip/tcpip.h b/libs/network/SecureNet/test/host/stubs/lwip/tcpip.h
 new file mode 100644
-index 0000000..063c2e8
 --- /dev/null
 +++ b/libs/network/SecureNet/test/host/stubs/lwip/tcpip.h
 @@ -0,0 +1,4 @@
@@ -1013,9 +882,23 @@ index 0000000..063c2e8
 +// Host stub: the core lock is not needed by the single-threaded fake resolver.
 +#define LOCK_TCPIP_CORE() (void)0
 +#define UNLOCK_TCPIP_CORE() (void)0
+diff --git a/libs/network/SecureNet/test/host/test_bulk_request.cpp b/libs/network/SecureNet/test/host/test_bulk_request.cpp
+--- a/libs/network/SecureNet/test/host/test_bulk_request.cpp
++++ b/libs/network/SecureNet/test/host/test_bulk_request.cpp
+@@ -46,6 +46,11 @@
+ uint8_t SecureClient::connected() { return _transport.connected(); }
+ bool SecureClient::tls13Available() { return true; }
+ bool hostResolves(const char*) { return true; }
++
++// No resolver backend in this binary: keep the hostname connect.
++DeadlineDns::Status DeadlineDns::resolve(const char*, uint32_t, IPAddress&, const AbortFn&) {
++  return DeadlineDns::Status::Unavailable;
++}
+ }  // namespace freeink
+ 
+ void reset(std::initializer_list<const char*> replies) {
 diff --git a/libs/network/SecureNet/test/host/test_deadline_dns.cpp b/libs/network/SecureNet/test/host/test_deadline_dns.cpp
 new file mode 100644
-index 0000000..d99bcef
 --- /dev/null
 +++ b/libs/network/SecureNet/test/host/test_deadline_dns.cpp
 @@ -0,0 +1,259 @@
@@ -1279,33 +1162,23 @@ index 0000000..d99bcef
 +  return 0;
 +}
 diff --git a/libs/network/SecureNet/test/host/test_resumable_fetch.cpp b/libs/network/SecureNet/test/host/test_resumable_fetch.cpp
-index b7809fb..3182edc 100644
 --- a/libs/network/SecureNet/test/host/test_resumable_fetch.cpp
 +++ b/libs/network/SecureNet/test/host/test_resumable_fetch.cpp
-@@ -20,8 +20,15 @@ int SecureClient::read(uint8_t*, size_t) { return -1; }
- int SecureClient::peek() { return -1; }
- void SecureClient::flush() {}
+@@ -22,9 +22,15 @@
  void SecureClient::stop() {}
-+void SecureClient::reserveFullRecord() {}
  uint8_t SecureClient::connected() { return 0; }
  bool SecureClient::tls13Available() { return false; }
+-// The plain-http path checks hostResolves(); tests flip dnsWorks.
++// The plain-http path resolves through DeadlineDns; tests flip dnsWorks.
+ bool dnsWorks = true;
+-bool hostResolves(const char*) { return dnsWorks; }
 +
-+// No resolver backend in this binary: the plain-http path keeps connecting by
-+// hostname through the fake WiFiClient (test_deadline_dns covers the resolver).
++// No resolver backend in this binary: a name that resolves keeps connecting
++// by hostname through the fake WiFiClient (test_deadline_dns covers the
++// resolver itself), and one that does not must fail before any connect.
 +DeadlineDns::Status DeadlineDns::resolve(const char*, uint32_t, IPAddress&, const AbortFn&) {
-+  return DeadlineDns::Status::Unavailable;
++  return dnsWorks ? DeadlineDns::Status::Unavailable : DeadlineDns::Status::Failed;
 +}
  }  // namespace freeink
  
  using freeink::FetchOptions;
-@@ -96,7 +103,9 @@ int main() {
-     assert(http.getUniqueHeader("content-disposition") == nullptr);
-   }
-   for (const char* second : {"attachment; filename=Other.epub", "attachment; filename=Book.epub", ""}) {
--    const std::string response = std::string("HTTP/1.1 200 OK\r\nContent-Disposition: attachment; filename=Book.epub\r\ncOnTeNt-DiSpOsItIoN: ") + second + "\r\nContent-Length: 0\r\n\r\n";
-+    const std::string response =
-+        std::string("HTTP/1.1 200 OK\r\nContent-Disposition: attachment; filename=Book.epub\r\ncOnTeNt-DiSpOsItIoN: ") +
-+        second + "\r\nContent-Length: 0\r\n\r\n";
-     reset({response.c_str()});
-     freeink::SecureHttpClient http;
-     assert(http.begin("http://a/f"));

@@ -38,29 +38,30 @@ import sys
 
 # (patch asset, ((path relative to the SDK root, digest before, digest after), ...)).
 # None means the file does not exist in that state. Upstream files are from
-# freeink-sdk @ 44427f8.
+# freeink-sdk @ 5e94fe7.
 STAGES = (
     ('0001-deadline-dns-tcp.patch', (
         ('libs/network/SecureNet/include/DeadlineDns.h', None, 'c8f5a33c11edaa1edca1147734c66c87489a113e014ba0887b8d5f2229481f2a'),
-        ('libs/network/SecureNet/include/SecureClient.h', '6d51e5d8908f30c4c99622e3d3b64c8c9c6d8daaf55a6868e3d01ca49e27a9f7', 'c1bf74e8c909f87d44ab1a4e2019b772b70fa9b1e35c8cc3523a840dbd68a0c6'),
-        ('libs/network/SecureNet/include/SecureHttpClient.h', 'b9814ad852cceb6f56cf7fe6a9b4a219ac7848b860ab3c54314184ed658549d0', 'de83a12410e5fc2864a969c937c6543ddc8b494834c7b1bf84d24c2493eaa558'),
+        ('libs/network/SecureNet/include/SecureClient.h', '55389390b984cdb46e96b0f49e9b31c36f66fae10f46072637ac11a7e14fa498', '46a89cc555bb81422817e9c17782b376e72929a966a9de70132933d596005dc9'),
+        ('libs/network/SecureNet/include/SecureHttpClient.h', '2b2cebe54a540722965d898f4fabfbd3812f6efd53042f6428e2ff4a4cb23769', '153de6730ca82ce4528d146bdf3dd026bd124500f2e98b609de492cbd304e9cd'),
         ('libs/network/SecureNet/src/DeadlineDns.cpp', None, '8fe27642e5b95c6b59fdfdfc1d1fbbad43f87ad219f82a36c9320c6609650aff'),
-        ('libs/network/SecureNet/src/SecureClient.cpp', 'dced57c94310d1622d3315ba1a8bbb923586bbc9b7c01792bfcf5f810f6a0885', 'e3b3b21a6a34211a35ea43ec14146419e4b54465332e7b6721d7c7039ed14cda'),
-        ('libs/network/SecureNet/test/host/run.sh', '165668ab60715550785961a181d229b8c299c5be9bbb7b6cf495c66b1282cb54', '83d87a8b2774c5b46ba98bdecbd6dfb501754679084bf2ad2e69c191e730057c'),
+        ('libs/network/SecureNet/src/SecureClient.cpp', 'a3c8fb6cb2914cb2d6d550f2d2430622ea06841403a156a47c25ab59e17ef3e2', '1182d828ef1da27f7612b2ed67493559252792d7a7c5e41862dfe8e4a172f9df'),
+        ('libs/network/SecureNet/test/host/run.sh', 'bcff2d31dfee5e3ca635249eff303661a80c7d5ba51ebc9853e87f610009cb59', 'b2fafdb8ba75c2ec0f7c155aeb113295dea5820a8fe3327a441e21403f7479bc'),
         ('libs/network/SecureNet/test/host/stubs/Arduino.h', 'd76b7604f0a5bff1c775e1ee980a612e716f820a8fb4868c12e97ca96f6b4622', 'c8b97cf8c9f2321a6523e630c3faeda340adaf87b379a94228cff689a0244761'),
         ('libs/network/SecureNet/test/host/stubs/lwip/dns.h', None, '1bfa69dc9992a44b51fa37a01eb388b333cb74621d9b93de5b2b9fc057428327'),
         ('libs/network/SecureNet/test/host/stubs/lwip/ip6_addr.h', None, '5b0907772dac831a0ee02ea17e42f03e300f038b43cbf6ed878bbff599cd3692'),
         ('libs/network/SecureNet/test/host/stubs/lwip/ip_addr.h', None, '63c7a1755a9cdce6f9baa1cdc6ae8ccabdbaddf6387d64d9dc630a21f0aa783b'),
         ('libs/network/SecureNet/test/host/stubs/lwip/netif.h', None, '314bd0c3106472ba448f32dac2ae24c1fdf8272adf60e18826a5731481c4ed41'),
         ('libs/network/SecureNet/test/host/stubs/lwip/tcpip.h', None, '955c17613c70539be362ab2df981853f8efdf8f594def16cefd676667883f3d7'),
+        ('libs/network/SecureNet/test/host/test_bulk_request.cpp', '4b532d524201e075968903c5af4e0f8028fdff25282810bc9e7013e0217e2654', 'e6c25b35cd0a59ffe2bc6f744b685861d574b0e5395aeb07ca6cae40964f6ff0'),
         ('libs/network/SecureNet/test/host/test_deadline_dns.cpp', None, '328da1906943d2b8d7bbeb7110a0b37d22651a2f04173c086ca919bddc56e94a'),
-        ('libs/network/SecureNet/test/host/test_resumable_fetch.cpp', '467c309745ce35a53ea9698b21457a31830c9a1e2217bbc65cd21a82e04bd123', '2a05dd4ba1d29de9eb341b092ca0d5715dd876649e014578fc7627c7368e78b3'),
+        ('libs/network/SecureNet/test/host/test_resumable_fetch.cpp', '10c036eaa828df081f8fb4ccb7280b68929854829e96bf833f6e6f2cbc9345fd', 'ed61e04d488443af83d0bef088676a4254162b41b279aab1c5f4b60a156e2cad'),
     )),
     ('0002-tls-verify.patch', (
         ('libs/network/SecureNet/include/ResumableFetch.h', '5f2619d0df5316ae83362612a07b54890e3e1d7f83520b0354923de6493af1c1', 'f3d46e3d7d93d29d9d7628ca4ce308644f0e90903704fbdf9b80e3720f13683a'),
-        ('libs/network/SecureNet/include/SecureClient.h', 'c1bf74e8c909f87d44ab1a4e2019b772b70fa9b1e35c8cc3523a840dbd68a0c6', '2dccb26f3692c7a04a6e73a695d8e0b40ed6a5170ed1585f2e716ba3e889a8e2'),
-        ('libs/network/SecureNet/include/SecureHttpClient.h', 'de83a12410e5fc2864a969c937c6543ddc8b494834c7b1bf84d24c2493eaa558', 'd6b5197c7d8a645b49b0ebf5c4f130ce4a142b416c8fc5136e0cf8181d68a8c0'),
-        ('libs/network/SecureNet/src/SecureClient.cpp', 'e3b3b21a6a34211a35ea43ec14146419e4b54465332e7b6721d7c7039ed14cda', 'd3f98ff7535ce9adfd622f4ed48dedf1f28536c54b1b83a184b10b2c7b7818a5'),
+        ('libs/network/SecureNet/include/SecureClient.h', '46a89cc555bb81422817e9c17782b376e72929a966a9de70132933d596005dc9', 'c3a2fe1413c3dd3dba39e73652f0073421fe5e8603fe9c4c0cd641bd9f96d923'),
+        ('libs/network/SecureNet/include/SecureHttpClient.h', '153de6730ca82ce4528d146bdf3dd026bd124500f2e98b609de492cbd304e9cd', 'a16a752206a1217dafae4637dfd6fca7975c52d4631e3a5ce267acda9f62c7a8'),
+        ('libs/network/SecureNet/src/SecureClient.cpp', '1182d828ef1da27f7612b2ed67493559252792d7a7c5e41862dfe8e4a172f9df', 'ecf01ddb68af7f9ed984f09456019d481573d450cabe5efa27ad7771a45ce94a'),
     )),
 )
 

@@ -27,7 +27,8 @@ inside the submodule.
 | `scripts/securenet_patches/0001-deadline-dns-tcp.patch` | `scripts/patch_securenet.py` | `libs/network/SecureNet` |
 | `scripts/securenet_patches/0002-tls-verify.patch` | `scripts/patch_securenet.py` | `libs/network/SecureNet` |
 
-Pinned SDK revision: `44427f8d51866848b26bea01197f499f9fee5c4b`.
+Pinned SDK revision: `5e94fe7480f019c89fbf691aef87523eb1b46704` (the revision
+upstream `2.0.0` pins).
 
 ### 0001: deadline-bounded DNS and TCP
 
@@ -151,3 +152,46 @@ OPDS and plugin requests forward it to the existing SNTP wait, checked every
 100 ms. This does not weaken the plausible-clock or certificate requirement.
 Host tests and reproducible application checks passed; IPv6, DNS-slot pressure,
 SNTP cancellation and wolfSSL behavior still need device acceptance.
+
+## Pin advance — 12 November 2026
+
+The pin moved from `44427f8d` to `5e94fe74`, the revision upstream `2.0.0` pins.
+Both stages were re-ported onto the new sources and every digest in `STAGES` was
+regenerated. Three upstream commits touch SecureNet in that range: `c8a13c6`
+(bounded catalog requests), `e49d6b8` (connection-owned buffers) and `7ca28e5`
+(fail fast on an unresolvable host name).
+
+What the re-port decided:
+
+- **Record buffers: upstream wins.** `e49d6b8` replaced the allocator-hook buffer
+  loan (`g_recordBuf`, `lendMalloc`, `SecureClient::_recordBuf`) with a
+  connection-owned `GrowInputBuffer()` reservation gated on
+  `FREEINK_WOLFSSL_RETAIN_INPUT_BUFFER`. That design was upstream's at `44427f8d`
+  too, so the fork only ever reformatted it; the port keeps upstream's new
+  `reserveFullRecord()` and `stop()` unchanged. `test/host/test_record_reservation.py`
+  extracts those two functions by signature and still parses them.
+- **`_tcpConnected` is kept.** Upstream's "no TLS 1.2 retry after a failed TCP
+  connect" guard now sits alongside the fork's deadline guard and its
+  verification-failure guard, so all three reasons to skip the retry apply.
+- **`hostResolves()` stays, but the fork no longer calls it.** `7ca28e5` added it
+  as a blocking pre-check; `DeadlineDns::resolve()` supersedes it on both the
+  https and the plain-http path because it honours the deadline and the abort
+  callback. The helper remains an exported SDK utility, unchanged.
+- **Host tests follow the resolver.** `test_resumable_fetch.cpp` drops the
+  out-of-line `reserveFullRecord()` stub (the header now defines it inline when
+  wolfSSL is off) and its `hostResolves()` stub, and scripts `DeadlineDns::resolve`
+  from the existing `dnsWorks` flag, so upstream's "a host that does not resolve
+  fails without a connect attempt" case still tests the same behaviour through
+  the fork's resolver. `test_bulk_request.cpp` gains the same resolver stub
+  because it links its own `SecureClient` stubs.
+- Formatting follows upstream wherever the fork had only reformatted a line, so
+  the series stays reviewable as a behaviour change.
+
+Verified: `python3 scripts/patch_securenet.py` applies both stages to a pristine
+`5e94fe74` and is idempotent on a second run; the patch chain reproduces the
+reviewed tree byte for byte; `sh freeink-sdk/libs/network/SecureNet/test/host/run.sh`
+passes all three binaries (resumable fetch, bulk request, deadline DNS).
+`WOLFSSL_VERIFY_PEER`, `wolfSSL_check_domain_name()`, the fail-closed CA bundle
+check, `ConnectFailure` classification, redirect credential scoping and the
+https→http downgrade refusal are all present in the ported transport.
+Real wolfSSL handshakes and their RAM cost on X3/X4 remain device acceptance.
