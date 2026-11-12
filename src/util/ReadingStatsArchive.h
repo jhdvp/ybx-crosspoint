@@ -104,13 +104,17 @@ inline uint32_t take32(const uint8_t* in) {
 
 }  // namespace detail
 
-inline void serializeMonth(const Month& month, const uint32_t firstDay, uint8_t (&out)[MONTH_BYTES]) {
+// Serializes one month. `generation` is passed separately because the write
+// path stamps the copy it is about to commit, and copying the whole month to do
+// it would cost a second 132-byte stack frame.
+inline void serializeMonth(const Month& month, const uint32_t firstDay, const uint32_t generation,
+                           uint8_t (&out)[MONTH_BYTES]) {
   out[0] = 1;
   out[1] = 'Y';
   out[2] = 'D';
   out[3] = 'R';
   detail::put32(out + 4, firstDay);
-  detail::put32(out + 8, month.generation);
+  detail::put32(out + 8, generation);
   for (int i = 0; i < DAYS_PER_MONTH; ++i) detail::put32(out + 12 + 4 * i, month.seconds[i]);
   detail::put32(out + MONTH_BYTES - 4, snapshot::crc32(out, MONTH_BYTES - 4));
 }
@@ -118,9 +122,11 @@ inline void serializeMonth(const Month& month, const uint32_t firstDay, uint8_t 
 // Checks structure, magic, the expected first day, month-length bounds, and the
 // checksum. A newer format version is never parsed (and never overwritten),
 // whatever its size; only an exact-size, well-formed version 1 record loads.
+// `out` receives the days, or stays untouched when the caller only needs the
+// header (nullptr), which is how the write path verifies without a second month.
 template <class IO>
 bool readSlot(IO& io, const uint32_t firstDay, const uint8_t days, const int8_t slot, bool& exists, bool& valid,
-              uint32_t& generation, Month& out) {
+              uint32_t& generation, Month* out) {
   exists = false;
   valid = false;
   generation = 0;
@@ -135,7 +141,7 @@ bool readSlot(IO& io, const uint32_t firstDay, const uint8_t days, const int8_t 
     LOG_ERR("RSTA", "archive read failed: %s", path);
     return false;
   }
-  out = Month{};
+  if (out) *out = Month{};
   // Version precedes the size check so a torn or short newer-format copy is
   // still identified and refused, never bypassed in favor of its v1 sibling.
   if (size != 0 && raw[0] > 1) {
@@ -150,8 +156,8 @@ bool readSlot(IO& io, const uint32_t firstDay, const uint8_t days, const int8_t 
   for (int i = 0; i < DAYS_PER_MONTH; ++i) {
     const uint32_t seconds = detail::take32(raw + 12 + 4 * i);
     if (static_cast<unsigned>(i) >= days && seconds != 0) return true;
-    if (seconds == 0) continue;
-    out.seconds[i] = seconds;
+    if (seconds == 0 || !out) continue;
+    out->seconds[i] = seconds;
   }
   valid = true;
   return true;
@@ -173,12 +179,12 @@ template <class IO>
 bool loadMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month) {
   month = Month{};
   unsigned existingSlots = 0;
+  Month found;  // one decoded slot at a time; readSlot resets it
   for (int8_t slot = 0; slot < 2; ++slot) {
     bool exists = false;
     bool valid = false;
     uint32_t generation = 0;
-    Month found;
-    if (!readSlot(io, firstDay, days, slot, exists, valid, generation, found)) return false;
+    if (!readSlot(io, firstDay, days, slot, exists, valid, generation, &found)) return false;
     if (exists) existingSlots |= 1u << slot;
     const uint32_t delta = generation - month.generation;
     if (valid && (month.slot < 0 || (delta != 0 && delta < 0x80000000u))) {
@@ -202,12 +208,11 @@ bool loadMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month
   bool exists = false;
   bool valid = false;
   uint32_t generation = 0;
-  Month verified;
-  if (!readSlot(io, firstDay, days, month.slot, exists, valid, generation, verified) || !valid) {
+  if (!readSlot(io, firstDay, days, month.slot, exists, valid, generation, &found) || !valid) {
     LOG_ERR("RSTA", "monthly copy changed while reading");
     return false;
   }
-  month.seconds = verified.seconds;
+  month.seconds = found.seconds;
   return true;
 }
 
@@ -224,11 +229,8 @@ template <class IO>
 bool saveMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month) {
   const int8_t target = month.slot == 0 ? 1 : 0;
   const uint32_t generation = month.generation + 1;
-  Month next = month;
-  next.slot = target;
-  next.generation = generation;
   uint8_t raw[MONTH_BYTES];
-  serializeMonth(next, firstDay, raw);
+  serializeMonth(month, firstDay, generation, raw);
   char path[48];
   monthPath(firstDay, target, path);
   if (!io.write(path, raw, sizeof(raw))) {
@@ -238,13 +240,15 @@ bool saveMonth(IO& io, const uint32_t firstDay, const uint8_t days, Month& month
   bool exists = false;
   bool valid = false;
   uint32_t verifiedGeneration = 0;
-  Month verified;
-  if (!readSlot(io, firstDay, days, target, exists, valid, verifiedGeneration, verified) || !valid ||
+  // The readback only proves the bytes landed; the days are already in `month`,
+  // and materialising a second one here would double this frame.
+  if (!readSlot(io, firstDay, days, target, exists, valid, verifiedGeneration, nullptr) || !valid ||
       verifiedGeneration != generation) {
     LOG_ERR("RSTA", "archive checkpoint failed; previous copy retained: %s", path);
     return false;
   }
-  month = next;
+  month.slot = target;
+  month.generation = generation;
   return true;
 }
 

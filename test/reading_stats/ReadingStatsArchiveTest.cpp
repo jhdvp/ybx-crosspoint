@@ -249,7 +249,7 @@ TEST_F(Fixture, SecondsBeyondTheMonthLengthMakeTheCopyInvalid) {
   Month crafted;
   crafted.seconds[30] = 7;  // November has 30 days
   uint8_t raw[MONTH_BYTES];
-  serializeMonth(crafted, daysFromCivil(2026, 11, 1), raw);
+  serializeMonth(crafted, daysFromCivil(2026, 11, 1), crafted.generation, raw);
   const std::string bytes(reinterpret_cast<const char*>(raw), sizeof(raw));
   ASSERT_TRUE(io.put(nameOf(2026, 11, 'a'), bytes));
   EXPECT_FALSE(addSeconds(io, ordinalOf(2026, 11, 7), 5));
