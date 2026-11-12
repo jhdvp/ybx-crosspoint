@@ -27,8 +27,8 @@ inside the submodule.
 | `scripts/securenet_patches/0001-deadline-dns-tcp.patch` | `scripts/patch_securenet.py` | `libs/network/SecureNet` |
 | `scripts/securenet_patches/0002-tls-verify.patch` | `scripts/patch_securenet.py` | `libs/network/SecureNet` |
 
-Pinned SDK revision: `5e94fe7480f019c89fbf691aef87523eb1b46704` (the revision
-upstream `2.0.0` pins).
+Pinned SDK revision: `6a208c0c46cce99bafa334bc4f171f5e558c5195` (the revision
+`upstream/develop` pins; upstream `2.0.0` pins `5e94fe74`).
 
 ### 0001: deadline-bounded DNS and TCP
 
@@ -155,11 +155,22 @@ SNTP cancellation and wolfSSL behavior still need device acceptance.
 
 ## Pin advance — 12 November 2026
 
-The pin moved from `44427f8d` to `5e94fe74`, the revision upstream `2.0.0` pins.
-Both stages were re-ported onto the new sources and every digest in `STAGES` was
-regenerated. Three upstream commits touch SecureNet in that range: `c8a13c6`
-(bounded catalog requests), `e49d6b8` (connection-owned buffers) and `7ca28e5`
-(fail fast on an unresolvable host name).
+The pin moved from `44427f8d` to `5e94fe74` (the revision upstream `2.0.0` pins)
+and then to `6a208c0c` (the revision `upstream/develop` pins). Both stages were
+re-ported onto the new sources at each step and every digest in `STAGES` was
+regenerated. Three upstream commits touch SecureNet between `44427f8d` and
+`5e94fe74`: `c8a13c6` (bounded catalog requests), `e49d6b8` (connection-owned
+buffers) and `7ca28e5` (fail fast on an unresolvable host name). One more,
+`6a208c0` (skip oversized GitHub CSP response headers), sits between `5e94fe74`
+and `6a208c0c`; it re-ported with no conflicts.
+
+The second step is required by the firmware, not by the transport: with the pin
+at `5e94fe74` the merged `upstream/develop` tree fails to build in
+`lib/hal/HalStorage.cpp`, because `121d644 feat: report SD usage scan failures`
+adds the `bool SDCardManager::sdUsedBytes(uint64_t&)` overload that develop's
+`sdUsedBytes()` wrapper calls. Pinning the revision develop itself pins keeps
+the firmware and the SDK at the pairing upstream tested, instead of dropping
+upstream's SD-usage failure reporting to suit an older SDK.
 
 What the re-port decided:
 
@@ -188,10 +199,11 @@ What the re-port decided:
   the series stays reviewable as a behaviour change.
 
 Verified: `python3 scripts/patch_securenet.py` applies both stages to a pristine
-`5e94fe74` and is idempotent on a second run; the patch chain reproduces the
+`6a208c0c` and is idempotent on a second run; the patch chain reproduces the
 reviewed tree byte for byte; `sh freeink-sdk/libs/network/SecureNet/test/host/run.sh`
 passes all three binaries (resumable fetch, bulk request, deadline DNS).
 `WOLFSSL_VERIFY_PEER`, `wolfSSL_check_domain_name()`, the fail-closed CA bundle
 check, `ConnectFailure` classification, redirect credential scoping and the
-https→http downgrade refusal are all present in the ported transport.
+https→http downgrade refusal are all present in the ported transport, alongside
+upstream's CSP-header skip.
 Real wolfSSL handshakes and their RAM cost on X3/X4 remain device acceptance.

@@ -106,7 +106,7 @@ diff --git a/libs/network/SecureNet/include/SecureHttpClient.h b/libs/network/Se
  #include "SecureClient.h"
  
  namespace freeink {
-@@ -442,11 +443,12 @@
+@@ -452,11 +453,12 @@
  
    // Reuse the kept-alive connection when it matches, else (re)connect.
    //
@@ -124,7 +124,7 @@ diff --git a/libs/network/SecureNet/include/SecureHttpClient.h b/libs/network/Se
    bool ensureConnected(const AbortCallback& shouldAbort = nullptr) {
      if (connectionMatches()) return true;
      closeConnection();
-@@ -465,9 +467,24 @@
+@@ -475,9 +477,24 @@
        _conn = &_secure;
        _connHttps = true;
      } else {
@@ -885,8 +885,8 @@ new file mode 100644
 diff --git a/libs/network/SecureNet/test/host/test_bulk_request.cpp b/libs/network/SecureNet/test/host/test_bulk_request.cpp
 --- a/libs/network/SecureNet/test/host/test_bulk_request.cpp
 +++ b/libs/network/SecureNet/test/host/test_bulk_request.cpp
-@@ -46,6 +46,11 @@
- uint8_t SecureClient::connected() { return _transport.connected(); }
+@@ -53,6 +53,11 @@
+ }
  bool SecureClient::tls13Available() { return true; }
  bool hostResolves(const char*) { return true; }
 +
