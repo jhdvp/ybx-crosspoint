@@ -58,3 +58,44 @@ adds the Home panel and a Statistics screen with explicit refresh, a token-bound
 SD cache and weekly chart. X4 Pro uses the shared YBX Home/touch routing. This
 does not complete calendar/day details, awards/goals or local-session sync.
 See [Native statistics](ybx-native-statistics.md) for the precise boundaries.
+
+## Server mirrors (12 November 2026)
+
+The firmware now carries the server mirror the YBX plugin 1.6.17 ran in the
+browser, so a reader without the plugin reaches the same hosts. Three families,
+each with a Europe and a Portugal mirror:
+
+| Service | Main | Europe | Portugal |
+|---|---|---|---|
+| Account / catalog | `my.ybx.app` | `emy.ybx.app` | `pmy.ybx.app` |
+| OPDS | `opds.ybx.app` | `eopds.ybx.app` | `popds.ybx.app` |
+| KOSync | `sync.ybx.app` | `esync.ybx.app` | `psync.ybx.app` |
+
+`src/util/YbxServerMirror.h` holds the rules; `test/ybx_server_mirror` covers
+them. The choice is **Server: Auto / Main / Europe / Portugal** on the YBX
+account screen (Home → More → My account), persisted in
+`/.crosspoint/ybx-server.json`.
+
+- **Auto** probes main → eu → pt and remembers the host that answered for five
+  minutes, then probes main again. After every host fails it stays on a mirror
+  for one window instead of retrying main on each request.
+- **A manual mode pins exactly one host.** It never probes another: a connection
+  failure is returned to the caller, and the human changes the mode.
+- **Only connection failures switch hosts.** An HTTP reply — including 401, 429
+  and 5xx — and a response-body error stay on the host that produced them. A
+  local SD write failure is not a connection failure either.
+- Addresses that are not YBX hosts, or that carry userinfo or an explicit port,
+  pass through unchanged, so plugin and OPDS traffic to other servers is
+  unaffected.
+
+The mirror sits in `pluginhttp::request`, `requestStream` and `requestToFile`,
+which every native YBX call and every plugin request already goes through;
+`mintPasswordToken` inherits it from `request`.
+
+KOSync now defaults to `DocumentMatchMethod::BINARY` (content hash) instead of
+`FILENAME`, matching what the YBX provisioning path already wrote. A stored
+`FILENAME` is preserved; only a missing or invalid key takes the new default.
+
+Not device-tested: real reachability of the mirrors, the five-minute probe
+behaviour on a dropping network, and the account screen's five-button row on
+each panel size.

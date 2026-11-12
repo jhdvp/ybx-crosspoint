@@ -27,12 +27,27 @@
 #include "util/YbxKosync.h"
 #include "util/YbxNativeAuthPolicy.h"
 #include "util/YbxNativeSession.h"
+#include "util/YbxServerMirror.h"
 
 namespace fui = freeink::ui;
 namespace {
 constexpr size_t kMaxListsBytes = 8192;
 constexpr size_t kMaxAuthBytes = 4096;
 constexpr uint32_t kRequestTimeoutMs = 12000;
+
+StrId serverModeLabel() {
+  switch (ybxmirror::currentMode()) {
+    case ybxmirror::Mode::Main:
+      return StrId::STR_YBX_SERVER_MAIN;
+    case ybxmirror::Mode::Eu:
+      return StrId::STR_YBX_SERVER_EU;
+    case ybxmirror::Mode::Pt:
+      return StrId::STR_YBX_SERVER_PT;
+    case ybxmirror::Mode::Auto:
+      break;
+  }
+  return StrId::STR_YBX_SERVER_AUTO;
+}
 
 struct Connection {
   std::string token;
@@ -339,11 +354,11 @@ void YbxAccountActivity::loop() {
   const auto touch = routeTouch(mappedInput);
   if (touch.routed && app.invalidated()) requestUpdate();
   navigator_.onNext([this] {
-    selection_ = (selection_ + 1) % 4;
+    selection_ = (selection_ + 1) % 5;
     requestUpdate();
   });
   navigator_.onPrevious([this] {
-    selection_ = (selection_ + 3) % 4;
+    selection_ = (selection_ + 4) % 5;
     requestUpdate();
   });
   const int chosen = std::exchange(pending_, -1);
@@ -393,6 +408,14 @@ void YbxAccountActivity::activate(int value) {
         requestUpdate();
       });
     }
+    return;
+  }
+  if (value == 4) {
+    const auto next = static_cast<ybxmirror::Mode>((static_cast<uint8_t>(ybxmirror::currentMode()) + 1) %
+                                                   ybxmirror::MODE_COUNT);
+    ybxmirror::setMode(next);
+    LOG_DBG("YBXA", "Server mode: %s", ybxmirror::modeName(next));
+    requestUpdate();
     return;
   }
 }
@@ -457,7 +480,7 @@ void YbxAccountActivity::draw(UiScreen& ui) {
     ui.target().text({static_cast<int16_t>(x), static_cast<int16_t>(topY + 160), static_cast<int16_t>(width), 45},
                      status, text);
   }
-  const int spacing = 8, cell = (width - spacing * 3) / 4;
+  const int spacing = 8, cell = (width - spacing * 4) / 5;
   const int y = safe.y + safe.height - 64;
   button(ui, {static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 0, tr(STR_BACK));
   button(ui, {static_cast<int16_t>(x + cell + spacing), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48}, 1,
@@ -468,6 +491,12 @@ void YbxAccountActivity::draw(UiScreen& ui) {
          2, tr(STR_YBX_HOME_CATALOGS));
   button(ui, {static_cast<int16_t>(x + (cell + spacing) * 3), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48},
          3, tr(STR_YBX_SYNC));
+  // The server choice cycles Auto -> Main -> Europe -> Portugal. Auto is the
+  // only mode that probes another host, and only after a connection failure.
+  snprintf(serverLabel_.data(), serverLabel_.size(), "%s: %s", tr(STR_YBX_SERVER),
+           I18n::getInstance().get(serverModeLabel()));
+  button(ui, {static_cast<int16_t>(x + (cell + spacing) * 4), static_cast<int16_t>(y), static_cast<int16_t>(cell), 48},
+         4, serverLabel_.data());
 }
 void YbxAccountActivity::render(RenderLock&&) {
   renderer.clearScreen();

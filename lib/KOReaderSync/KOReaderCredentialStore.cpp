@@ -77,12 +77,14 @@ bool KOReaderCredentialStore::fromJson(JsonVariantConst doc) {
     }
   }
 
-  uint8_t method = doc["matchMethod"] | (uint8_t)0;
+  // A stored FILENAME stays FILENAME; only a missing or invalid key takes the
+  // default, which is the content hash.
+  uint8_t method = doc["matchMethod"] | static_cast<uint8_t>(DocumentMatchMethod::BINARY);
   if (method <= static_cast<uint8_t>(DocumentMatchMethod::BINARY)) {
     setMatchMethod(static_cast<DocumentMatchMethod>(method));
   } else {
-    LOG_DBG("KRS", "Invalid matchMethod %u in JSON, resetting to FILENAME", method);
-    setMatchMethod(DocumentMatchMethod::FILENAME);
+    LOG_DBG("KRS", "Invalid matchMethod %u in JSON, resetting to BINARY", method);
+    setMatchMethod(DocumentMatchMethod::BINARY);
   }
   setSendMetadata(doc["sendMetadata"] | false);
   setSyncClippings(doc["syncClippings"] | false);

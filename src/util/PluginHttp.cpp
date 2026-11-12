@@ -15,6 +15,7 @@
 #include "network/ProtectedPaths.h"
 #include "network/TlsTransport.h"
 #include "network/WifiPowerSaveGuard.h"
+#include "util/YbxServerMirror.h"
 
 namespace {
 constexpr size_t MAX_TOKEN_FILE_SIZE = 2 * 1024;
@@ -251,14 +252,18 @@ std::string catalogDownloadDir(const std::string& pluginDir) {
   return pickDownloadDir(config, manifestDir);
 }
 
-int request(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
-            const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
-            Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
+int requestOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
+                const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
+                Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs,
+                bool& connectionFailure) {
   WifiPowerSaveGuard psGuard;
   tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
   freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
-  if (!httpPtr) return -1;
+  if (!httpPtr) {
+    connectionFailure = true;
+    return -1;
+  }
   freeink::SecureHttpClient& http = *httpPtr;
 
   out.remove(0);
@@ -293,6 +298,9 @@ int request(freeink::SecureHttpClient* session, const std::string& url, const st
       },
       shouldAbort);
   if (responseHeaders) *responseHeaders = http.getHeaders();
+  // No HTTP answer at all is a connection failure; an answer whose body was
+  // cut short or over the cap is not, and must not move the request elsewhere.
+  if (status < 0) connectionFailure = true;
   // Error statuses still return their body: OAuth device-code polling carries
   // its state ("authorization_pending") in 4xx response bodies.
   if (overflow || status < 0 || !http.responseComplete()) {
@@ -303,14 +311,37 @@ int request(freeink::SecureHttpClient* session, const std::string& url, const st
   return status;
 }
 
-int requestStream(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
-                  const std::string& body, const Headers& headers, const StreamStart& onStart, const StreamData& onData,
-                  bool& complete, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
+int request(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
+            const std::string& body, const Headers& headers, String& out, const size_t maxResponse,
+            Headers* responseHeaders, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
+  const ybxmirror::Plan plan(url);
+  int status = -1;
+  for (uint8_t i = 0; i < plan.count(); i++) {
+    bool connectionFailure = false;
+    status = requestOnce(session, plan.urlAt(i), method, body, headers, out, maxResponse, responseHeaders, shouldAbort,
+                         timeoutMs, connectionFailure);
+    if (!connectionFailure) {
+      plan.answered(i);
+      return status;
+    }
+    if (shouldAbort && shouldAbort()) break;
+  }
+  plan.allFailed();
+  return status;
+}
+
+int requestStreamOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
+                      const std::string& body, const Headers& headers, const StreamStart& onStart,
+                      const StreamData& onData, bool& complete, const std::function<bool()>& shouldAbort,
+                      const uint32_t timeoutMs, bool& connectionFailure) {
   complete = false;
   WifiPowerSaveGuard psGuard;
   freeink::SecureHttpClient tmp;
   freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
-  if (!httpPtr) return -1;
+  if (!httpPtr) {
+    connectionFailure = true;
+    return -1;
+  }
   freeink::SecureHttpClient& http = *httpPtr;
 
   bool started = false;
@@ -334,6 +365,7 @@ int requestStream(freeink::SecureHttpClient* session, const std::string& url, co
   complete = status >= 0 && !stopped && http.responseComplete();
   // An empty body never calls onData, so start here.
   if (complete && !started && !start()) complete = false;
+  if (status < 0) connectionFailure = true;
   if (!complete) {
     LOG_ERR("PHTP", "Streamed request failed: status=%d started=%d stopped=%d %s", status, started, stopped,
             url.c_str());
@@ -341,14 +373,36 @@ int requestStream(freeink::SecureHttpClient* session, const std::string& url, co
   return started ? status : -1;
 }
 
-int requestToFile(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
-                  const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
-                  const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
+int requestStream(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
+                  const std::string& body, const Headers& headers, const StreamStart& onStart, const StreamData& onData,
+                  bool& complete, const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
+  const ybxmirror::Plan plan(url);
+  int status = -1;
+  for (uint8_t i = 0; i < plan.count(); i++) {
+    bool connectionFailure = false;
+    status = requestStreamOnce(session, plan.urlAt(i), method, body, headers, onStart, onData, complete, shouldAbort,
+                               timeoutMs, connectionFailure);
+    if (!connectionFailure) {
+      plan.answered(i);
+      return status;
+    }
+    if (shouldAbort && shouldAbort()) break;
+  }
+  plan.allFailed();
+  return status;
+}
+
+int requestToFileOnce(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
+                      const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
+                      const std::function<bool()>& shouldAbort, const uint32_t timeoutMs, bool& connectionFailure) {
   WifiPowerSaveGuard psGuard;
   tlspolicy::clearFailure();
   freeink::SecureHttpClient tmp;
   freeink::SecureHttpClient* httpPtr = openClient(session, tmp, url, headers, shouldAbort, timeoutMs);
-  if (!httpPtr) return -1;
+  if (!httpPtr) {
+    connectionFailure = true;
+    return -1;
+  }
   freeink::SecureHttpClient& http = *httpPtr;
 
   int status = -1;
@@ -356,6 +410,7 @@ int requestToFile(freeink::SecureHttpClient* session, const std::string& url, co
   size_t written = 0;
   {
     HalFile file;
+    // A local SD failure is not a connection failure: another mirror cannot fix it.
     if (!Storage.openFileForWrite("PHTP", destPath, file)) return -1;
     status = http.sendRequest(
         method.c_str(), reinterpret_cast<const uint8_t*>(body.data()), body.size(),
@@ -376,12 +431,32 @@ int requestToFile(freeink::SecureHttpClient* session, const std::string& url, co
     if (!file.close()) writeOk = false;
     // Close before checking/removing the temp file or committing the download.
   }
+  if (status < 0) connectionFailure = true;
   if (!writeOk || status < 0 || !http.responseComplete()) {
     LOG_ERR("PHTP", "API request (to file) failed: status=%d writeOk=%d complete=%d %s", status, writeOk,
             http.responseComplete(), url.c_str());
     Storage.remove(destPath);
     return -1;
   }
+  return status;
+}
+
+int requestToFile(freeink::SecureHttpClient* session, const std::string& url, const std::string& method,
+                  const std::string& body, const Headers& headers, const char* destPath, const size_t maxResponse,
+                  const std::function<bool()>& shouldAbort, const uint32_t timeoutMs) {
+  const ybxmirror::Plan plan(url);
+  int status = -1;
+  for (uint8_t i = 0; i < plan.count(); i++) {
+    bool connectionFailure = false;
+    status = requestToFileOnce(session, plan.urlAt(i), method, body, headers, destPath, maxResponse, shouldAbort,
+                               timeoutMs, connectionFailure);
+    if (!connectionFailure) {
+      plan.answered(i);
+      return status;
+    }
+    if (shouldAbort && shouldAbort()) break;
+  }
+  plan.allFailed();
   return status;
 }
 

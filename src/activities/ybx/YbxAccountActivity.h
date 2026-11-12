@@ -62,4 +62,5 @@ class YbxAccountActivity final : public Activity, public UiAppHost {
   ButtonNavigator navigator_;
   freeink::ui::ButtonProps props_;
   std::array<std::array<char, 96>, 3> rows_{};
+  std::array<char, 48> serverLabel_{};
 };
