@@ -34,8 +34,10 @@
 namespace pluginshelf {
 
 // Suffix of the per-file marker this firmware used to write next to a
-// downloaded book. Nothing reads it any more (a manifest could plant one), and
-// no download, sidecar, or bundle target may end in it.
+// downloaded book. Nothing reads it: a plugin-controlled write target could
+// plant one, so it grants no shelf status and is never adopted into a
+// provenance record. The namespace stays reserved so no plugin-supplied write
+// can land on it (see isWriteTargetAllowed).
 inline constexpr const char MARKER_SUFFIX[] = ".downloaded";
 
 // Firmware-owned provenance records, one per downloaded book, named by the MD5
@@ -70,6 +72,17 @@ inline std::string provenancePath(const std::string& digest) {
 // or deleted through the shelf.
 inline bool isBookPath(const std::string& path) {
   return FsHelpers::hasReflowableBookExtension(path) || FsHelpers::hasXtcExtension(path);
+}
+
+// True when a path names a file the firmware may write to on a plugin's
+// instruction: inside the plugin path space and outside the reserved marker
+// namespace. A target that failed this check would be a file a later firmware
+// could mistake for its own bookkeeping, so every plugin-supplied file name
+// passes it before reaching storage: catalog download destinations and sidecars,
+// bundle entries, event-handler downloads, manifest token/config files, and the
+// /api/fetch and plugin upload endpoints.
+inline bool isWriteTargetAllowed(const std::string& path) {
+  return protectedpaths::isPluginPath(path) && !hasMarkerSuffix(path);
 }
 
 // Surrounding whitespace/tabs a hand-edited record file could carry.

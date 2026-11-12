@@ -65,6 +65,7 @@
 #include "util/FirmwareIdentity.h"
 #include "util/PluginHttp.h"
 #include "util/PluginLocations.h"
+#include "util/PluginShelf.h"
 #include "util/TaskWatchdog.h"
 #include "util/UrlUtils.h"
 
@@ -2482,7 +2483,7 @@ void CrossPointWebServer::handleFetch() {
   size_t segmentLimit = req["maxBytes"] | 0;
   static constexpr size_t FETCH_MAX_SEGMENT_SIZE = 4 * 1024 * 1024;
   if (segmentLimit > FETCH_MAX_SEGMENT_SIZE) segmentLimit = FETCH_MAX_SEGMENT_SIZE;
-  if (url.empty() || !protectedpaths::isPluginPath(dest)) {
+  if (url.empty() || !pluginshelf::isWriteTargetAllowed(dest)) {
     server->send(400, "application/json", "{\"error\":\"bad url/dest\"}");
     return;
   }
@@ -2810,7 +2811,7 @@ void CrossPointWebServer::handlePluginFsUpload() {
         return;
       }
       const String plugin = server->arg("plugin");
-      if (!safeComponent(plugin) || !protectedpaths::isPluginPath(st.path)) {
+      if (!safeComponent(plugin) || !pluginshelf::isWriteTargetAllowed(st.path)) {
         LOG_ERR("WEB", "Rejected plugin file write: plugin='%s' path='%s'", plugin.c_str(), st.path.c_str());
         fail(400, "bad path");
         return;

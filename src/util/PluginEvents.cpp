@@ -18,6 +18,7 @@
 #include "PluginHttp.h"
 #include "PluginLocations.h"
 #include "PluginQueueStorage.h"
+#include "PluginShelf.h"
 #include "components/UITheme.h"
 #include "network/ProtectedPaths.h"
 
@@ -447,9 +448,10 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
     }
     if (handler->isDownload()) {
       const std::string dest = drainSubstituted(handler->dest, tok, config, meta, vars, ts, id);
-      // Substituted fields must not climb out of the tree or land on a
-      // credential store (same guard as the catalog sidecar writer).
-      if (!protectedpaths::isPluginPath(dest)) {
+      // Substituted fields must not climb out of the tree, land on a credential
+      // store, or write into the reserved marker namespace (the same gate as the
+      // catalog download, sidecar and bundle targets).
+      if (!pluginshelf::isWriteTargetAllowed(dest)) {
         LOG_ERR("PEVT", "unsafe download dest rejected: %s", dest.c_str());
         return 200;  // treat as delivered: retrying can never fix the manifest
       }

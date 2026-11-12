@@ -8,6 +8,7 @@ namespace {
 
 using pluginshelf::hasMarkerSuffix;
 using pluginshelf::isBookPath;
+using pluginshelf::isWriteTargetAllowed;
 using pluginshelf::parentWithinRoot;
 using pluginshelf::plannedPath;
 using pluginshelf::provenancePath;
@@ -80,12 +81,30 @@ TEST(PluginShelfMarkerSuffix, RejectsTargetsInTheMarkerNamespace) {
   EXPECT_FALSE(hasMarkerSuffix(""));
 }
 
+TEST(PluginShelfWriteTarget, KeepsTheMarkerNamespaceOutOfPluginWrites) {
+  // A manifest that names its sidecar or bundle entry "<user book>.downloaded"
+  // would plant a file shaped like the firmware's own marker, so the write
+  // target gate rejects it while accepting the documented conventions.
+  EXPECT_FALSE(isWriteTargetAllowed("/books/ybx/user.epub.downloaded"));
+  EXPECT_FALSE(isWriteTargetAllowed("/books/ybx/user.epub.DoWnLoAdEd"));
+  EXPECT_FALSE(isWriteTargetAllowed("/plugins/ybx/assets/notes.downloaded"));
+  EXPECT_TRUE(isWriteTargetAllowed("/books/ybx/a.epub.meta.json"));
+  EXPECT_TRUE(isWriteTargetAllowed("/plugins/ybx/assets/icon.bin"));
+  // Credential stores, the record folder and traversal stay unwritable.
+  EXPECT_FALSE(isWriteTargetAllowed("/.crosspoint/koreader.json"));
+  EXPECT_FALSE(isWriteTargetAllowed("/.crosspoint/shelf/d41d8cd98f00b204e9800998ecf8427e"));
+  EXPECT_FALSE(isWriteTargetAllowed("/books/ybx/../a.json"));
+  EXPECT_FALSE(isWriteTargetAllowed("books/ybx/a.json"));
+}
+
 TEST(PluginShelfProvenance, IsOutsideEveryPathAPluginCanWrite) {
   const std::string record = provenancePath("d41d8cd98f00b204e9800998ecf8427e");
   EXPECT_EQ(record, "/.crosspoint/shelf/d41d8cd98f00b204e9800998ecf8427e");
-  // Every download, sidecar and bundle target is gated by isPluginPath; the
-  // record path must fail it, or a manifest could stamp provenance for a file
-  // it never downloaded (dest_dir "/books/ybx", sidecar "<user file>.downloaded").
+  // Download, sidecar and bundle targets all pass isWriteTargetAllowed, which
+  // fails a record path (and a marker name), so a manifest cannot stamp
+  // provenance for a file it never downloaded (dest_dir "/books/ybx", sidecar
+  // "<user file>.downloaded").
+  EXPECT_FALSE(isWriteTargetAllowed(record));
   EXPECT_FALSE(protectedpaths::isPluginPath(record));
   EXPECT_TRUE(protectedpaths::isSensitivePath(record.c_str()));
   // A manifest cannot name the record folder as its download tree either.

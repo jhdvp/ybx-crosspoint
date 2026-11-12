@@ -1330,7 +1330,7 @@ void PluginCatalogActivity::computeInstallStatus() {
 // --- on-reader shelf state ------------------------------------------------
 // Book catalogs mirror the desktop clients' "книга на ридере" status: a row is
 // on the shelf when the file downloadBook would have written already exists
-// WITH its firmware provenance marker. The shelf only ever sees the manifest's
+// WITH its firmware provenance record. The shelf only ever sees the manifest's
 // own download.dest_dir (a config "dest_dir" override can move real downloads
 // but never what the shelf plans or deletes), and pluginshelf::plannedPath
 // gates the name to a single safe book-extension component.
@@ -1348,7 +1348,7 @@ std::string PluginCatalogActivity::plannedFilename(const Item& item) const {
   if (filename.empty() || filename.find("..") != std::string::npos || filename.find('/') != std::string::npos)
     return "";
   // A download must never land on the marker namespace: it would plant a file
-  // shaped like a provenance marker in the download folder.
+  // shaped like the firmware's own bookkeeping in the download folder.
   if (pluginshelf::hasMarkerSuffix(filename)) return "";
   return filename;
 }
@@ -1382,25 +1382,13 @@ void PluginCatalogActivity::computeOnReaderStatus() {
     const std::string record = provenanceRecordFor(path);
     // Stat the record first: most rows were never downloaded by this firmware,
     // and only a stamped path is worth opening.
-    bool stamped = Storage.exists(record.c_str());
-    // Upgrade path: a book downloaded by the marker-era firmware carries a
-    // ".downloaded" sibling and no record. Adopt it once into the protected
-    // record directory, then drop the marker so nothing in the download folder
-    // can grant shelf status any more.
-    const std::string marker = path + pluginshelf::MARKER_SUFFIX;
-    const bool legacy = !stamped && Storage.exists(marker.c_str());
-    if (!stamped && !legacy) continue;
+    if (!Storage.exists(record.c_str())) continue;
+    // A marker-era ".downloaded" sibling is never adopted into a record: any
+    // manifest that controls a write target could plant that name next to a
+    // user's own file, and a record makes the file removable with its cache and
+    // clippings. Such books simply show as not downloaded until the next fetch.
     const bool book = isRegularFile(path);
-    if (legacy) {
-      if (!book) {
-        Storage.remove(marker.c_str());  // nothing to adopt
-      } else if (Storage.ensureDirectoryExists(pluginshelf::PROVENANCE_DIR) &&
-                 Storage.writeFile(record.c_str(), String("none"))) {
-        stamped = true;
-        Storage.remove(marker.c_str());
-      }
-    }
-    if (stamped && !book && !Storage.exists(path.c_str())) {
+    if (!book && !Storage.exists(path.c_str())) {
       // The book was deleted outside the shelf (e.g. the file browser) while
       // its record survived: forget the record, or a user file later copied
       // under the same name would look firmware-downloaded and become
@@ -1408,7 +1396,7 @@ void PluginCatalogActivity::computeOnReaderStatus() {
       // deletion, so only a path that is really gone clears the record.
       Storage.remove(record.c_str());
     }
-    item.onReader = stamped && book;
+    item.onReader = book;
   }
 }
 
@@ -1434,8 +1422,10 @@ std::string PluginCatalogActivity::sidecarPathFor(const Item& item, const std::s
   // {title} alone cannot express that, since the filename is sanitized.
   substituteAll(path, "{dest}", dest);
   // Sidecar paths legitimately contain '/', but the substituted fields must
-  // not climb out of the tree or land on a credential store.
-  if (!protectedpaths::isPluginPath(path)) return "";
+  // not climb out of the tree or land on a credential store. The marker
+  // namespace stays reserved too: a sidecar named "<book>.downloaded" would be
+  // a plugin-authored file shaped like the firmware's own bookkeeping.
+  if (!pluginshelf::isWriteTargetAllowed(path)) return "";
   return path;
 }
 
@@ -1458,10 +1448,10 @@ bool PluginCatalogActivity::showShelfOptions(const int itemIndex) {
 }
 
 // File-only removal through the shared delete primitive (book file plus its
-// rebuildable caches and recent entry), together with the provenance marker
+// rebuildable caches and recent entry), together with the provenance record
 // and the plugin sidecar downloadBook wrote for this book. Only a file under
-// the manifest's own dest_dir that downloadBook itself marked is ever deleted;
-// settings, tokens, and every other folder stay untouched.
+// the manifest's own dest_dir that downloadBook itself recorded is ever
+// deleted; settings, tokens, and every other folder stay untouched.
 void PluginCatalogActivity::promptRemoveShelfBook(const int itemIndex) {
   if (itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
   const std::string path = plannedBookPath(items[itemIndex]);
@@ -1816,9 +1806,10 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBundle(const Item& 
     std::string rel = item.files[i];
     while (!rel.empty() && rel.front() == '/') rel.erase(rel.begin());
     const std::string dest = dir + "/" + rel;
-    if (rel.empty() || !protectedpaths::isPluginPath(dest)) {
-      // A manifest listing traversal or credential-store entries is hostile
-      // or broken either way; abort rather than install a bundle with holes.
+    if (rel.empty() || !pluginshelf::isWriteTargetAllowed(dest)) {
+      // A manifest listing traversal, credential-store entries, or a file in
+      // the reserved marker namespace is hostile or broken either way; abort
+      // rather than install a bundle with holes.
       LOG_ERR("PCAT", "unsafe bundle entry rejected: %s", item.files[i].c_str());
       downloadFileError = StrId::STR_UNSAFE_FILENAME;
       return HttpDownloader::FILE_ERROR;
@@ -1882,14 +1873,14 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
   }
 
   std::string folderDir = downloadDir();
-  // Match pluginshelf::plannedPath's normalization so the written path, the
-  // marker and the shelf plan are byte-identical for one manifest value.
+  // Match pluginshelf::plannedPath's normalization so the written path, its
+  // record and the shelf plan are byte-identical for one manifest value.
   while (folderDir.size() > 1 && folderDir.back() == '/') folderDir.pop_back();
   const char* folder = folderDir.c_str();
   const bool haveFolder = folder[0] != '\0';
   // A missing destination folder that cannot be created is a storage failure,
   // not a reason to silently write to the SD root: planned paths and the
-  // provenance marker belong to dest_dir, and a root fallback would let a
+  // provenance record belong to dest_dir, and a root fallback would let a
   // later "On Reader" removal target a different file than this download made.
   if (haveFolder && !Storage.exists(folder) && !Storage.mkdir(folder)) {
     LOG_ERR("PCAT", "mkdir failed for %s", folder);
@@ -1907,7 +1898,7 @@ HttpDownloader::DownloadError PluginCatalogActivity::downloadBook(const Item& it
   if (haveFolder) dest += folder;
   dest += '/';
   dest += filename;
-  if (!protectedpaths::isPluginPath(dest)) {
+  if (!pluginshelf::isWriteTargetAllowed(dest)) {
     LOG_ERR("PCAT", "unsafe download dest rejected: %s", dest.c_str());
     downloadFileError = StrId::STR_UNSAFE_FILENAME;
     return HttpDownloader::FILE_ERROR;
