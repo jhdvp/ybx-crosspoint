@@ -1,5 +1,6 @@
 #include "PluginHttp.h"
 
+#include <FsHelpers.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <SecureHttpClient.h>
@@ -227,7 +228,11 @@ std::string pickDownloadDir(const Headers& config, const std::string& manifestDe
     if (protectedpaths::isPluginPath(dir)) return dir;
     LOG_ERR("PHTP", "config dest_dir rejected: %s", kv.second.c_str());
   }
-  return manifestDestDir;
+  // One canonical spelling for the manifest value too: the home "On Reader"
+  // folder and the locked file browser compare it as a root, and a manifest
+  // writing "dest_dir": "/books/ybx/" would otherwise never equal the path the
+  // browser derives by dropping one component.
+  return FsHelpers::canonicalFolderPath(manifestDestDir);
 }
 
 std::string catalogDownloadDir(const std::string& pluginDir) {

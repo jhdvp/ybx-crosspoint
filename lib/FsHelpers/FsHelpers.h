@@ -11,6 +11,11 @@ std::string decodeUriEscapes(const std::string& path);
 
 std::string normalisePath(const std::string& path);
 
+// Canonical absolute folder: leading '/', no trailing slash. Returns "" for a
+// missing, relative, or SD-root value, so every holder of one configured folder
+// compares and concatenates a single spelling.
+std::string canonicalFolderPath(const std::string& path);
+
 // Numeric-aware, case-insensitive comparison ("2" < "10"). Returns true when str1 orders
 // before str2. Same ordering sortFileList applies within the file/directory groups.
 bool naturalLess(const std::string& str1, const std::string& str2);

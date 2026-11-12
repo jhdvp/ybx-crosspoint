@@ -6,9 +6,13 @@
 
 namespace {
 
+using pluginshelf::hasMarkerSuffix;
 using pluginshelf::isBookPath;
-using pluginshelf::markerPath;
+using pluginshelf::parentWithinRoot;
 using pluginshelf::plannedPath;
+using pluginshelf::provenancePath;
+using pluginshelf::safeSidecarPath;
+using pluginshelf::trimRecord;
 
 TEST(PluginShelfPlannedPath, AcceptsBookFilesDirectlyUnderManifestDir) {
   EXPECT_EQ(plannedPath("/books/ybx", "123 - Title.epub"), "/books/ybx/123 - Title.epub");
@@ -63,9 +67,85 @@ TEST(PluginShelfIsBookPath, MatchesReflowableAndXtcOnly) {
   EXPECT_FALSE(isBookPath(""));
 }
 
-TEST(PluginShelfMarker, NamesACompanionFileThatIsNeverABookItself) {
-  EXPECT_EQ(markerPath("/books/ybx/a.epub"), "/books/ybx/a.epub.downloaded");
-  EXPECT_FALSE(isBookPath(markerPath("/books/ybx/a.epub")));
+// --- finding 2: a name-only marker in the download folder is forgeable ------
+
+TEST(PluginShelfMarkerSuffix, RejectsTargetsInTheMarkerNamespace) {
+  EXPECT_TRUE(hasMarkerSuffix("/books/ybx/user.epub.downloaded"));
+  // FAT names are case-insensitive, so the forged spelling is not a way past.
+  EXPECT_TRUE(hasMarkerSuffix("/books/ybx/user.epub.DOWNLOADED"));
+  EXPECT_TRUE(hasMarkerSuffix("user.epub.downloaded"));
+  EXPECT_FALSE(hasMarkerSuffix("/books/ybx/user.epub"));
+  EXPECT_FALSE(hasMarkerSuffix("/books/ybx/user.epub.meta.json"));
+  EXPECT_FALSE(hasMarkerSuffix("loaded"));
+  EXPECT_FALSE(hasMarkerSuffix(""));
+}
+
+TEST(PluginShelfProvenance, IsOutsideEveryPathAPluginCanWrite) {
+  const std::string record = provenancePath("d41d8cd98f00b204e9800998ecf8427e");
+  EXPECT_EQ(record, "/.crosspoint/shelf/d41d8cd98f00b204e9800998ecf8427e");
+  // Every download, sidecar and bundle target is gated by isPluginPath; the
+  // record path must fail it, or a manifest could stamp provenance for a file
+  // it never downloaded (dest_dir "/books/ybx", sidecar "<user file>.downloaded").
+  EXPECT_FALSE(protectedpaths::isPluginPath(record));
+  EXPECT_TRUE(protectedpaths::isSensitivePath(record.c_str()));
+  // A manifest cannot name the record folder as its download tree either.
+  EXPECT_EQ(plannedPath(pluginshelf::PROVENANCE_DIR, "user.epub"), "");
+  EXPECT_EQ(provenancePath(""), "");
+}
+
+// --- finding 1: removal may delete only what the download recorded ----------
+
+TEST(PluginShelfSidecar, DeletesOnlyAJsonFileInTheManifestsOwnFolder) {
+  // The documented "{dest}.meta.json" convention.
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx/a.epub.meta.json"), "/books/ybx/a.epub.meta.json");
+  EXPECT_EQ(safeSidecarPath("/books/ybx/", " /books/ybx/a.epub.meta.json\r\n"), "/books/ybx/a.epub.meta.json");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx/d41d8cd98f00b204e9800998ecf8427e.json"),
+            "/books/ybx/d41d8cd98f00b204e9800998ecf8427e.json");
+}
+
+TEST(PluginShelfSidecar, RefusesTheRecordedSettingsFileAttack) {
+  // device.json: "sidecar": {"path": "/.crosspoint/settings.json"} - with no
+  // provenance record of a write, removing a shelf book must delete nothing.
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/.crosspoint/settings.json"), "");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/.crosspoint/wifi.json"), "");
+  // Out of the manifest tree, into a sibling folder, or above the card.
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/library.json"), "");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx/sub/a.json"), "");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx/../a.json"), "");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "books/ybx/a.json"), "");
+  EXPECT_EQ(safeSidecarPath("", "/books/ybx/a.json"), "");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", ""), "");
+  // Same folder but not a sidecar the shelf can own.
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx/a.epub"), "");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx/a.json.bak"), "");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx/.hidden.json"), "");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx/a.json.downloaded"), "");
+  // A near-miss prefix is not inside the folder.
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx-probe/a.json"), "");
+  EXPECT_EQ(safeSidecarPath("/books/ybx", "/books/ybx"), "");
+}
+
+TEST(PluginShelfTrimRecord, DropsWhitespaceAroundARecordedPath) {
+  EXPECT_EQ(trimRecord("  /books/ybx/a.json\t\r\n"), "/books/ybx/a.json");
+  EXPECT_EQ(trimRecord(""), "");
+  EXPECT_EQ(trimRecord("   "), "");
+}
+
+// --- finding 3: one canonical spelling for the locked shelf folder ----------
+
+TEST(PluginShelfParentWithinRoot, NeverClimbsAboveTheLockedFolder) {
+  EXPECT_EQ(parentWithinRoot("/books/ybx/Sub", "/books/ybx"), "/books/ybx");
+  EXPECT_EQ(parentWithinRoot("/books/ybx/Sub/Deep", "/books/ybx"), "/books/ybx/Sub");
+  // At the root, and with either trailing-slash spelling, Back stays put.
+  EXPECT_EQ(parentWithinRoot("/books/ybx", "/books/ybx"), "/books/ybx");
+  EXPECT_EQ(parentWithinRoot("/books/ybx/", "/books/ybx"), "/books/ybx");
+  // A value that is not inside the root returns to the root instead of above it.
+  EXPECT_EQ(parentWithinRoot("/books", "/books/ybx"), "/books/ybx");
+  EXPECT_EQ(parentWithinRoot("/books/ybxtoken/x", "/books/ybx"), "/books/ybx");
+  EXPECT_EQ(parentWithinRoot("/other/x", "/books/ybx"), "/books/ybx");
+  // Unlocked browser: one directory up, home at the SD root.
+  EXPECT_EQ(parentWithinRoot("/books/x", "/"), "/books");
+  EXPECT_EQ(parentWithinRoot("/", "/"), "/");
 }
 
 }  // namespace

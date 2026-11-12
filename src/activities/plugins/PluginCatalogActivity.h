@@ -165,6 +165,9 @@ class PluginCatalogActivity final : public CatalogActivity {
   // passed verification, instead of from downloadBook before it.
   std::string lastDownloadPath;
   std::string lastDownloadTitle;
+  // Sidecar downloadBook actually wrote for lastDownloadPath, recorded in its
+  // provenance record so shelf removal deletes only what the writer created.
+  std::string lastDownloadSidecar;
   bool rootMode = false;
   bool nativeYbx = false;  // native first-party catalog; no SD plugin picker
   // Plugin name to open in the hub catalog (Home update prompt), cleared once
@@ -292,8 +295,12 @@ class PluginCatalogActivity final : public CatalogActivity {
   // Resolved "{dest}.meta.json"-style sidecar for removal; "" when absent or
   // unsafe. Shares the downloadBook substitution.
   std::string sidecarPathFor(const Item& item, const std::string& dest) const;
-  // On-shelf = planned path exists and carries the firmware download marker.
+  // On-shelf = the firmware wrote a provenance record for this exact path and
+  // the path is a regular file.
   bool shelfBookPresent(const std::string& path) const;
+  // The sidecar a removal may delete, read back from the provenance record and
+  // re-gated against the manifest's own dest_dir; "" when absent or unsafe.
+  std::string recordedSidecarFor(const std::string& record) const;
   void computeOnReaderStatus();
   // Reboot into the reader on this file (the catalog's onExit restarts to Home,
   // so a soft navigation here would land on the wrong screen).

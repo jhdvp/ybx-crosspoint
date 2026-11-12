@@ -22,12 +22,21 @@
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
 #include "util/BookmarkUtil.h"
+#include "util/PluginShelf.h"
 
 namespace fui = freeink::ui;
 
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
 constexpr size_t NAME_BUFFER_SIZE = 500;
+
+// One canonical spelling for the starting folder and the locked root: a
+// manifest "dest_dir" carrying a trailing slash would otherwise never equal the
+// path a dir-up step derives, and short Back would climb out of the shelf.
+std::string canonicalRoot(const std::string& path) {
+  const std::string dir = FsHelpers::canonicalFolderPath(path);
+  return dir.empty() ? "/" : dir;
+}
 
 std::string getBookCachePath(const std::string& path) {
   const char* prefix = nullptr;
@@ -86,8 +95,8 @@ FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManag
                                          std::string initialPath, const Mode mode, std::string lockedRoot)
     : UiListActivity("FileBrowser", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       mode(mode),
-      basepath(initialPath.empty() ? "/" : std::move(initialPath)),
-      lockedRoot(lockedRoot.empty() ? "/" : std::move(lockedRoot)) {}
+      basepath(canonicalRoot(initialPath)),
+      lockedRoot(canonicalRoot(lockedRoot)) {}
 
 void FileBrowserActivity::loadFiles() {
   files.clear();
@@ -221,12 +230,8 @@ void FileBrowserActivity::onEnter() {
     loadFiles();
   } else if (!root.isDirectory()) {
     const std::string oldPath = basepath;
-    std::string parent = FsHelpers::extractFolderPath(basepath);
     // Keep a file's parent inside the locked folder when it sits above it.
-    if (parent.size() < lockedRoot.size() && lockedRoot.compare(0, parent.size(), parent) == 0) {
-      parent = lockedRoot;
-    }
-    basepath = parent;
+    basepath = pluginshelf::parentWithinRoot(basepath, lockedRoot);
     loadFiles();
 
     const auto pos = oldPath.find_last_of('/');
@@ -371,17 +376,21 @@ void FileBrowserActivity::activateSelected() {
   // buildScreen() runs on the render task and reads basepath plus `files`
   // through the row provider; mutate only under the render lock.
   RenderLock lock(*this);
-  if (basepath.back() != '/') basepath += "/";
+  // Join against a local copy: storing the trailing slash in `basepath` gave
+  // one folder two spellings, so the locked-root comparison below (and the
+  // header's folder name) failed right after the first open or descend.
+  std::string base = basepath;
+  if (base.back() != '/') base += "/";
 
   if (isDirectory) {
-    basepath += entry.substr(0, entry.length() - 1);
+    basepath = base + entry.substr(0, entry.length() - 1);
     loadFiles();
     nav.selected = 0;
     nav.top = 0;
     lock.unlock();
     requestUpdate();
   } else {
-    const std::string fullPath = basepath + entry;
+    const std::string fullPath = base + entry;
     lock.unlock();  // onSelectBook launches an activity; don't hold the lock across it
     onSelectBook(fullPath);
   }
@@ -571,8 +580,7 @@ bool FileBrowserActivity::handleButtons() {
           // buildScreen() runs on the render task and reads basepath plus `files`
           // through the row provider; mutate only under the render lock.
           RenderLock lock(*this);
-          basepath.replace(basepath.find_last_of('/'), std::string::npos, "");
-          if (basepath.empty()) basepath = "/";
+          basepath = pluginshelf::parentWithinRoot(basepath, lockedRoot);
           loadFiles();
 
           const auto pos = oldPath.find_last_of('/');

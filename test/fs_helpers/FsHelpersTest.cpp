@@ -45,6 +45,19 @@ TEST(NormalisePath, CollapsesParentReferenceWithinPath) {
 
 TEST(NormalisePath, DropsLeadingParentReferencesPastRoot) { EXPECT_EQ(FsHelpers::normalisePath("/../../etc"), "etc"); }
 
+TEST(CanonicalFolderPath, TrimsTrailingSlashesAndRejectsNonFolders) {
+  EXPECT_EQ(FsHelpers::canonicalFolderPath("/books/ybx"), "/books/ybx");
+  // One spelling for a configured folder: "/books/ybx/" and "/books/ybx" must
+  // not compare unequal when a caller treats either as a root.
+  EXPECT_EQ(FsHelpers::canonicalFolderPath("/books/ybx/"), "/books/ybx");
+  EXPECT_EQ(FsHelpers::canonicalFolderPath("/books/ybx///"), "/books/ybx");
+  EXPECT_EQ(FsHelpers::canonicalFolderPath("/books/ybx/Sub"), "/books/ybx/Sub");
+  EXPECT_EQ(FsHelpers::canonicalFolderPath(""), "");
+  EXPECT_EQ(FsHelpers::canonicalFolderPath("/"), "");
+  EXPECT_EQ(FsHelpers::canonicalFolderPath("//"), "");
+  EXPECT_EQ(FsHelpers::canonicalFolderPath("books/ybx"), "");
+}
+
 // Sanitizes into a buffer of `size` bytes (at most 64, the size ScreenshotUtil uses).
 std::string sanitize(const char* input, const size_t size = 64) {
   char out[64];

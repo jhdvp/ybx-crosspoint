@@ -82,6 +82,13 @@ std::string normalisePath(const std::string& path) {
   return result;
 }
 
+std::string canonicalFolderPath(const std::string& path) {
+  if (path.empty() || path.front() != '/') return "";
+  std::string dir = path;
+  while (dir.size() > 1 && dir.back() == '/') dir.pop_back();
+  return dir.size() > 1 ? dir : std::string();
+}
+
 bool naturalLess(const std::string& str1, const std::string& str2) {
   // Naive natural sort: numeric-aware, case-insensitive
   const char* s1 = str1.c_str();
