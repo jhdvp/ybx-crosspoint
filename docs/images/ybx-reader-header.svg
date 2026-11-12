@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
+  <title id="title">YBX Reader — Your Books, eXtended.</title>
+  <desc id="desc">YBX firmware for Xteink X3 and X4. Independent CrossPoint fork, development preview.</desc>
+  <defs><pattern id="paper" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".45" fill="#14161a" opacity=".1"/></pattern></defs>
+  <rect width="1280" height="400" fill="#e7e8e3"/>
+  <rect width="1280" height="400" fill="url(#paper)"/>
+  <g transform="translate(64 58)">
+    <rect width="68" height="68" rx="15" fill="#14161a"/>
+    <rect x="15" y="18" width="38" height="7" rx="3.5" fill="#e7e8e3"/>
+    <rect x="15" y="30" width="38" height="7" rx="3.5" fill="#e7e8e3"/>
+    <rect x="15" y="43" width="23" height="7" rx="3.5" fill="#ffdb4d"/>
+  </g>
+  <g fill="#14161a" font-family="'Courier New', monospace">
+    <text x="154" y="105" font-size="45" font-weight="700" letter-spacing="-2">YBX<tspan font-weight="400"> Reader</tspan></text>
+    <text x="64" y="215" font-size="46" font-weight="700" letter-spacing="-2">Your Books, eXtended.</text>
+    <text x="66" y="258" font-size="21" fill="#5d625d">Your connected libraries. On your e-ink reader.</text>
+    <path d="M64 307H1216" stroke="#c3c6be"/>
+    <text x="66" y="348" font-size="16">XTEINK X3 / X4</text>
+    <text x="455" y="348" font-size="16">BASED ON CROSSPOINT · MIT</text>
+    <text x="1035" y="348" font-size="16">PREVIEW</text>
+  </g>
+</svg>
