@@ -3,11 +3,14 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "BuildScratch.h"
 
 namespace fake {
+using Headers = std::vector<std::pair<std::string, std::string>>;
+inline std::vector<Headers> headers;  // One entry per begin(), in request order.
 inline std::vector<std::string> uploads;
 inline std::vector<std::string> anchorUploads;
 inline std::string remoteResponse;
@@ -19,7 +22,6 @@ inline int failHttpAt = -1;
 inline bool incomplete = false;
 inline bool insecureCalled = false;
 inline bool trustedClient = false;
-inline unsigned authHeaders = 0;
 }  // namespace fake
 namespace freeink {
 class SecureHttpClient {
@@ -28,15 +30,13 @@ class SecureHttpClient {
   void setCACert(const char*) { fake::trustedClient = true; }
   bool begin(const std::string& url) {
     url_ = url;
+    fake::headers.emplace_back();
     return fake::trustedClient || url.rfind("http://", 0) == 0;
   }
-  int GET() { return 200; }
   void end() {}
   int sendRequest(const char*, const std::string&) { return 200; }
   std::string getString() const { return "{}"; }
-  void addHeader(const std::string& key, const std::string&) {
-    if (key == "x-auth-user" || key == "x-auth-key" || key == "Authorization") ++fake::authHeaders;
-  }
+  void addHeader(const std::string& name, const std::string& value) { fake::headers.back().emplace_back(name, value); }
   template <typename Sink>
   int sendRequest(const char* method, const uint8_t* data, size_t length, Sink sink) {
 #if defined(CONFIG_IDF_TARGET_ESP32C3) && CONFIG_IDF_TARGET_ESP32C3

@@ -4,13 +4,15 @@
 #include "activities/UiListActivity.h"
 
 // Read-only device information: detected hardware (device profile, display
-// controller, touch, frontlight, RTC, IMU), firmware version, position-sync
-// state, and MAC address. Rows are informational; activating one does nothing.
+// Read-only device information: detected hardware (device profile, display
+// controller, touch, frontlight, RTC, IMU), firmware version, position-sync state,
+// MAC address, and the SD card's size, used and free space.
+// Rows are informational; activating one does nothing.
 class AboutActivity final : public UiListActivity {
  public:
   explicit AboutActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
-  static constexpr int ITEM_COUNT = 12;
+  static constexpr int ITEM_COUNT = 15;
 
   void onEnter() override;
 

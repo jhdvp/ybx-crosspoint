@@ -4,7 +4,11 @@
 #include <HalStorage.h>
 #include <KOReaderCredentialStore.h>
 #include <SecureHttpClient.h>
+#include <strings.h>
+#include <strings.h>
 
+#include <algorithm>
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <string>
@@ -28,6 +32,7 @@ void reset() {
   fake::syncHeap = 68000;
 #endif
   fake::syncBufferAllocated = false;
+  fake::headers.clear();
   fake::uploads.clear();
   fake::anchorUploads.clear();
   fake::anchorRequests = 0;
@@ -38,13 +43,14 @@ void reset() {
   fake::incomplete = false;
   fake::insecureCalled = false;
   fake::trustedClient = false;
-  fake::authHeaders = 0;
+  syncCredentials.customHeaders.clear();
   fake::allowVerifiedTls = true;
   fake::tlsPrepared = false;
   fake::tlsAttempts = 0;
   syncCredentials.baseUrl = "https://sync.test";
   fake::remoteResponse = "{\"cursor\":0,\"more\":false,\"items\":[]}";
   syncCredentials.enabled = true;
+  syncCredentials.customHeaders.clear();
 }
 void released() {
   auto* scratch = buildscratch::claim(32768);
@@ -94,6 +100,44 @@ void maximumTextRoundTrip() {
   assert(stored == text);
   CLIPPINGS.unload();
 }
+bool hasHeader(const fake::Headers& headers, const std::string& name, const std::string& value) {
+  return std::find(headers.begin(), headers.end(), std::make_pair(name, value)) != headers.end();
+}
+
+// Every clipping request sends one Authorization header: the configured one, else the Basic auth of progress
+// sync. The fork paired key is not in scope here, so https://sync.test keeps using the account credentials.
+void everyRequestSendsAuthHeaders(const SyncCredentials::Header& custom, const std::string& authorization) {
+  reset();
+  syncCredentials.customHeaders = {custom};
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3
+  fake::syncHeap = 100000;
+#endif
+  add("kept");
+  add("removed");
+  assert(clippingSync::run(book, "hash"));  // Probe, two uploads, pull.
+  released();
+  assert(CLIPPINGS.loadForBook(book, "", "", "epub"));
+  assert(CLIPPINGS.removeClippingAt(1));
+  CLIPPINGS.unload();
+  fake::uploads.clear();
+  fake::headers.clear();
+  assert(clippingSync::run(book, "hash"));  // Probe, delete, pull.
+  released();
+  assert(fake::uploads.size() == 1);
+  assert(fake::uploads.front().find("\"deleted\":1") != std::string::npos);
+  assert(fake::requests > 0 && fake::requests == static_cast<int>(fake::headers.size()));
+  for (const auto& headers : fake::headers) {
+    assert(hasHeader(headers, "x-auth-user", "reader"));
+    assert(hasHeader(headers, "x-auth-key", "key"));
+    if (!custom.name.empty()) assert(hasHeader(headers, custom.name, custom.value));
+    std::vector<std::string> values;
+    for (const auto& [name, value] : headers) {
+      if (strcasecmp(name.c_str(), "Authorization") == 0) values.push_back(value);
+    }
+    assert(values == std::vector<std::string>{authorization});
+  }
+}
+
 constexpr const char* nativeBook = "/apps/notes/note-0123456789abcdef.md";
 constexpr const char* nativeText = "A complete unique selection.";
 
@@ -118,7 +162,7 @@ void compatibleOldServerKeepsPrimaryClippingSync() {
   assert(fake::uploads.size() == 1);
   assert(fake::anchorUploads.empty());
   assert(fake::anchorRequests == 1);
-  assert(fake::authHeaders >= 2);
+  assert(!fake::headers.empty());
   released();
 }
 
@@ -234,6 +278,12 @@ void refusesRemoteAnchorForEditedQuoteButKeepsLocalClip() {
 int main() {
   buildscratch::lend(framebuffer.data(), framebuffer.size());
   maximumTextRoundTrip();
+  const std::string basic = "Basic cmVhZGVyOnBhc3M=";
+  everyRequestSendsAuthHeaders({}, basic);
+  everyRequestSendsAuthHeaders({"CF-Access-Client-Id", "client"}, basic);
+  for (const char* name : {"Authorization", "authorization", "AuThOrIzAtIoN"}) {
+    everyRequestSendsAuthHeaders({name, "Bearer fixture"}, "Bearer fixture");
+  }
   compatibleOldServerKeepsPrimaryClippingSync();
   sendsLocalContextAfterPrimaryQuoteAndAcceptsIdempotentRetry();
   savesFetchedContextForQuoteAlreadySyncedViaV2();
@@ -267,7 +317,7 @@ int main() {
   assert(!clippingSync::run(book, "hash"));
   assert(fake::tlsAttempts == 1);
   assert(fake::requests == 0);
-  assert(fake::authHeaders == 0);
+  assert(fake::headers.empty());
   assert(!fake::insecureCalled);
   released();
   reset();
@@ -275,12 +325,12 @@ int main() {
   assert(!clippingSync::run(book, "hash"));
   assert(fake::tlsAttempts == 1);
   assert(fake::requests == 0);
-  assert(fake::authHeaders == 0);
+  assert(fake::headers.empty());
   released();
   reset();
   assert(clippingSync::run(book, "hash"));
   assert(fake::tlsPrepared && fake::trustedClient && !fake::insecureCalled);
-  assert(fake::authHeaders >= 2);
+  assert(!fake::headers.empty());
   released();
 
   buildscratch::reclaim();

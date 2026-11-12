@@ -38,11 +38,12 @@ std::vector<PluginRef> discoverPlugins();
 // See docs/sd-plugins.md for the device.json schema.
 class PluginCatalogActivity final : public CatalogActivity {
  public:
-  // showOpds adds the OPDS row; rootMode returns Home instead of popping to Settings.
+  // rootMode returns Home instead of popping to Settings.
   // updateTarget opens Plugin Hub straight into that plugin's update screen.
   // Out-of-line construction/destruction needs the complete SecureHttpClient type.
-  explicit PluginCatalogActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool showOpds = false,
-                                 bool rootMode = false, std::string updateTarget = {}, bool nativeYbx = false);
+  explicit PluginCatalogActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                 bool rootMode = false, std::string updateTarget = {},
+                                 bool nativeYbx = false);
   ~PluginCatalogActivity() override;
 
   void onEnter() override;
@@ -82,6 +83,7 @@ class PluginCatalogActivity final : public CatalogActivity {
       std::string title, url, body;
       std::string id, parent;  // id fills {list_id}; parent selects a directory's children
       std::string noticeTitle, noticeMessage, noticeConfirm, noticeCancel;
+      std::string noticeId;  // nonempty only for valid notice.id with notice.once=true
       bool hasNotice() const { return !noticeMessage.empty(); }
     };
     std::vector<BrowseList> browseLists;
@@ -163,7 +165,6 @@ class PluginCatalogActivity final : public CatalogActivity {
   // passed verification, instead of from downloadBook before it.
   std::string lastDownloadPath;
   std::string lastDownloadTitle;
-  bool showOpds = false;
   bool rootMode = false;
   bool nativeYbx = false;  // native first-party catalog; no SD plugin picker
   // Plugin name to open in the hub catalog (Home update prompt), cleared once
@@ -269,6 +270,7 @@ class PluginCatalogActivity final : public CatalogActivity {
   void openUpdateTarget();
   void continueUpdateTarget();
   bool parseXmlList();
+  bool parseUpdateFirstBrowseResponse(size_t pageOffset);
   bool parseBrowseResponse();
   void activateItem(int itemIndex);  // XML list: navigate into a folder, else show details/download
   bool loadItemDetails(int itemIndex, ItemDetails& details);

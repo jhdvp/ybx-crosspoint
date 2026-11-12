@@ -323,13 +323,14 @@ void ActivityManager::goToBrowser() {
   }
 }
 
-void ActivityManager::goToPlugins(bool showOpds, std::string updateTarget) {
-  replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, showOpds, /*rootMode=*/true,
+void ActivityManager::goToPlugins(std::string updateTarget) {
+  replaceActivity(std::make_unique<PluginCatalogActivity>(renderer, mappedInput, /*rootMode=*/true,
                                                           std::move(updateTarget)));
 }
 
 void ActivityManager::goToYbxCatalog() {
-  auto catalog = makeUniqueNoThrow<PluginCatalogActivity>(renderer, mappedInput, false, true, std::string{}, true);
+  auto catalog = makeUniqueNoThrow<PluginCatalogActivity>(renderer, mappedInput, /*rootMode=*/true, std::string{},
+                                                          /*builtinYbx=*/true);
   if (!catalog) return;
   replaceActivity(std::move(catalog));
 }
@@ -375,7 +376,9 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
       initialMenuItem = HomeMenuItem::FILE_BROWSER;
     } else if (activityName == "Library") {
       initialMenuItem = HomeMenuItem::LIBRARY;
-    } else if (activityName == "OpdsBookBrowser" || activityName == "PluginCatalog") {
+    } else if (activityName == "PluginCatalog") {
+      initialMenuItem = HomeMenuItem::PLUGINS;
+    } else if (activityName == "OpdsBookBrowser") {
       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
     } else if (activityName == "CrossPointWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
