@@ -26,7 +26,7 @@ class DictionaryDefinitionActivity final : public Activity {
         content{.headword = std::move(headword), .text = std::move(definition)},
         htmlDefinition(htmlDefinition) {}
 
-  bool enableLookup(Dictionary& dictionary, DictLocation location);
+  bool enableLookup(Dictionary& dictionary, std::string&& query);
 
   void onEnter() override;
   void onExit() override;
@@ -41,6 +41,7 @@ class DictionaryDefinitionActivity final : public Activity {
   struct Line {
     uint32_t start;
     uint16_t len;
+    bool bold;
   };
 
   // Usable body-text area between the header and the button hints.
@@ -52,6 +53,7 @@ class DictionaryDefinitionActivity final : public Activity {
   };
 
   BodyArea bodyArea() const;
+
   struct Definition {
     std::string headword;
     std::string text;
@@ -70,9 +72,9 @@ class DictionaryDefinitionActivity final : public Activity {
     }
   };
 
+  // Replay the original query: the displayed headword may be a stem or synonym.
   struct HistoryEntry {
-    std::string headword;
-    DictLocation location;
+    std::string query;
     int page = 0;
     int selectionPage = 0;
     ClipSelectionActivity::Selection selection;
@@ -80,11 +82,11 @@ class DictionaryDefinitionActivity final : public Activity {
   };
 
   struct LookupState {
-    explicit LookupState(Dictionary& dictionary, DictLocation location) : dictionary(dictionary), location(location) {}
+    explicit LookupState(Dictionary& dictionary) : dictionary(dictionary) {}
     Dictionary& dictionary;  // Owned by the retained DictionaryWordSelectActivity parent.
-    DictLocation location;
     std::array<HistoryEntry, 16> history;
     size_t depth = 0;
+    std::string query;
     std::string pendingWord;
     std::vector<std::unique_ptr<Page>> selectionPages;
   };
@@ -93,7 +95,7 @@ class DictionaryDefinitionActivity final : public Activity {
   bool layoutHtmlPages(Definition& next);
   bool wrapText(Definition& next);
   bool reserveLines(Definition& next, size_t count);
-  int measureSpan(int fontId, const char* text, size_t len) const;
+  int measureSpan(int fontId, const char* text, size_t len, EpdFontFamily::Style family = EpdFontFamily::REGULAR) const;
   void drawBody(int fontId, int x, int startY, int currentPage) const;
   void startSelection(int x = -1, int y = -1);
   bool buildPlainSelectionPages();

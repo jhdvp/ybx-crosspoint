@@ -27,7 +27,7 @@ namespace {
 // Longest measurable/drawable span. Wrapped lines stay under the screen width
 // (far below this); only pathological unbreakable tokens are split at this cap.
 constexpr size_t MAX_LINE_BYTES = 191;
-constexpr float PLAIN_TEXT_LINE_SPACING = 1.5f;
+constexpr float PLAIN_TEXT_LINE_SPACING = 2.0f;
 constexpr size_t HEAP_HEADROOM = 8 * 1024;
 constexpr unsigned long MESSAGE_DURATION_MS = 1500;
 constexpr size_t SELECTION_PAGE_WINDOW = 3;
@@ -64,7 +64,9 @@ struct DictionaryDefinitionActivity::PlainSelectionLine {
     ranges.clear();
     size_t i = 0;
     while (i < length) {
-      if (bytes[i] == ' ' || bytes[i] == '\t' || bytes[i] == '\r') {
+      // The headword label marker is a control byte, not text: it must not
+      // end up inside a selected word.
+      if (bytes[i] == ' ' || bytes[i] == '\t' || bytes[i] == '\r' || bytes[i] == DICTIONARY_PLAIN_HEADWORD_MARKER) {
         ++i;
         continue;
       }
@@ -72,7 +74,8 @@ struct DictionaryDefinitionActivity::PlainSelectionLine {
       auto* ptr = reinterpret_cast<const unsigned char*>(bytes + i);
       uint32_t previous = utf8NextCodepoint(&ptr);
       i = ptr - reinterpret_cast<const unsigned char*>(bytes);
-      while (i < length && bytes[i] != ' ' && bytes[i] != '\t' && bytes[i] != '\r') {
+      while (i < length && bytes[i] != ' ' && bytes[i] != '\t' && bytes[i] != '\r' &&
+             bytes[i] != DICTIONARY_PLAIN_HEADWORD_MARKER) {
         ptr = reinterpret_cast<const unsigned char*>(bytes + i);
         const uint32_t cp = utf8NextCodepoint(&ptr);
         if (!utf8IsHangul(previous) && !utf8IsHangul(cp) && (utf8IsCjkBreakable(previous) || utf8IsCjkBreakable(cp)) &&
@@ -119,9 +122,11 @@ struct DictionaryDefinitionActivity::PlainSelectionLine {
   }
 };
 
-bool DictionaryDefinitionActivity::enableLookup(Dictionary& dictionary, const DictLocation location) {
-  lookup = makeUniqueNoThrow<LookupState>(dictionary, location);
+// cppcheck-suppress constParameterReference // the lookup state holds the dictionary by non-const reference
+bool DictionaryDefinitionActivity::enableLookup(Dictionary& dictionary, std::string&& query) {
+  lookup = makeUniqueNoThrow<LookupState>(dictionary);
   if (!lookup) LOG_ERR("DICT", "OOM: lookup history (%u bytes)", static_cast<unsigned>(sizeof(LookupState)));
+  if (lookup) lookup->query = std::move(query);
   return lookup != nullptr;
 }
 
@@ -145,7 +150,7 @@ bool DictionaryDefinitionActivity::prepareDefinition(Definition& next, const boo
       LOG_ERR("DICT", "Low heap for plain definition (%u bytes)", static_cast<unsigned>(next.text.size() + 1));
       return false;
     }
-    next.text = htmlToPlainText(next.text);
+    next.text = htmlToPlainText(next.text, DICTIONARY_PLAIN_HEADWORD_MARKER);
   }
   return wrapText(next);
 }
@@ -200,12 +205,13 @@ bool DictionaryDefinitionActivity::layoutHtmlPages(Definition& next) {
   return true;
 }
 
-int DictionaryDefinitionActivity::measureSpan(const int fontId, const char* text, size_t len) const {
+int DictionaryDefinitionActivity::measureSpan(const int fontId, const char* text, size_t len,
+                                              const EpdFontFamily::Style family) const {
   char buf[MAX_LINE_BYTES + 1];
   len = std::min(len, MAX_LINE_BYTES);
   memcpy(buf, text, len);
   buf[len] = '\0';
-  return renderer.getTextAdvanceX(fontId, buf, EpdFontFamily::REGULAR);
+  return renderer.getTextAdvanceX(fontId, buf, family);
 }
 
 bool DictionaryDefinitionActivity::reserveLines(Definition& next, const size_t count) {
@@ -230,7 +236,7 @@ bool DictionaryDefinitionActivity::wrapText(Definition& next) {
   // SD-card fonts: merge every definition codepoint into the persistent
   // advance table up front. Otherwise each unseen codepoint measured below
   // falls back to an on-demand glyph load from SD (8-slot overflow ring).
-  renderer.ensureSdCardFontReady(fontId, definition.c_str(), 0x01 /* REGULAR */);
+  renderer.ensureSdCardFontReady(fontId, definition.c_str(), 0x03 /* REGULAR + BOLD */);
 
   const BodyArea body = bodyArea();
   const int maxWidth = body.width;
@@ -243,18 +249,29 @@ bool DictionaryDefinitionActivity::wrapText(Definition& next) {
   uint32_t lineStart = 0;
   uint32_t lineEnd = 0;  // one past the last token byte on the current line
   int lineWidth = 0;
+  bool lineBold = false;
 
   const auto flushLine = [&](uint32_t nextStart) {
     if (lines.size() == lines.capacity() && !reserveLines(next, lines.capacity() * 2)) return false;
-    lines.push_back({lineStart, static_cast<uint16_t>(lineEnd - lineStart)});
+    lines.push_back({lineStart, static_cast<uint16_t>(lineEnd - lineStart), lineBold});
     lineStart = nextStart;
     lineEnd = nextStart;
     lineWidth = 0;
+    lineBold = false;
     return true;
   };
 
   uint32_t i = 0;
   while (i < n) {
+    // A marker at the start of a line makes that whole line bold. It stands
+    // for a <h2> in the HTML path, and for a synonym's headword label in the
+    // plain-text path.
+    if (lineEnd == lineStart && i == lineStart && text[i] == DICTIONARY_PLAIN_HEADWORD_MARKER) {
+      lineStart = ++i;
+      lineEnd = lineStart;
+      lineBold = true;
+      continue;
+    }
     const char c = text[i];
     if (c == '\n' || c == '\0') {
       if (!flushLine(i + 1)) return false;
@@ -278,7 +295,8 @@ bool DictionaryDefinitionActivity::wrapText(Definition& next) {
     // continuation byte, so this is a no-op there.
     while (i - tokenStart > 1 && (text[i] & 0xC0) == 0x80) i--;
     const uint32_t tokenLen = i - tokenStart;
-    const int tokenWidth = measureSpan(fontId, text + tokenStart, tokenLen);
+    const int tokenWidth =
+        measureSpan(fontId, text + tokenStart, tokenLen, lineBold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
 
     if (lineEnd == lineStart) {
       lineStart = tokenStart;
@@ -302,7 +320,9 @@ bool DictionaryDefinitionActivity::wrapText(Definition& next) {
       uint32_t lastFit = 0;
       for (uint32_t f = 1; f <= len; f++) {
         if (f == len || (text[lineStart + f] & 0xC0) != 0x80) {  // codepoint boundary
-          if (measureSpan(fontId, text + lineStart, f) > maxWidth) break;
+          if (measureSpan(fontId, text + lineStart, f, lineBold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR) >
+              maxWidth)
+            break;
           lastFit = f;
         }
       }
@@ -316,7 +336,8 @@ bool DictionaryDefinitionActivity::wrapText(Definition& next) {
       lineEnd = rest;
       if (!flushLine(rest)) return false;
       lineEnd = rest + (len - lastFit);
-      lineWidth = measureSpan(fontId, text + lineStart, lineEnd - lineStart);
+      lineWidth = measureSpan(fontId, text + lineStart, lineEnd - lineStart,
+                              lineBold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
     }
   }
   if (lineEnd > lineStart && !flushLine(n)) return false;
@@ -339,7 +360,7 @@ void DictionaryDefinitionActivity::showMessage(const StrId nextMessage) {
 bool DictionaryDefinitionActivity::restoreCurrentDefinition(const bool styled) {
   const int page = content.currentPage;
   auto result = Dictionary::LookupResult::Found;
-  if (!lookup->dictionary.readDefinition(lookup->location, content.text, &result) ||
+  if (!lookup->dictionary.lookup(lookup->query.c_str(), content.text, content.headword, &result) ||
       !prepareDefinition(content, !styled) || styled != !content.pages.empty() || page >= content.totalPages) {
     LOG_ERR("DICT", "Cannot recover current definition after failed lookup");
     finish();
@@ -362,17 +383,17 @@ void DictionaryDefinitionActivity::navigateDefinition(const bool back) {
   // Keep only navigation metadata while inflating and laying out another entry.
   content.releasePayload();
   if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
+#if defined(ENABLE_SERIAL_LOG) && LOG_LEVEL >= 2
   const auto heap = HalMemory::getInternalHeap();
   LOG_DBG("DICT", "Navigation after release: free=%u largest=%u", static_cast<unsigned>(heap.freeBytes),
           static_cast<unsigned>(heap.largestBlockBytes));
+#endif
   Definition next;
-  DictLocation location;
   auto result = Dictionary::LookupResult::Found;
-  const bool found =
-      back ? lookup->dictionary.readDefinition(lookup->history[lookup->depth - 1].location, next.text, &result)
-           : lookup->dictionary.lookup(lookup->pendingWord.c_str(), next.text, next.headword, &result, &location);
-  lookup->pendingWord.clear();
+  const char* word = back ? lookup->history[lookup->depth - 1].query.c_str() : lookup->pendingWord.c_str();
+  const bool found = lookup->dictionary.lookup(word, next.text, next.headword, &result);
   const auto recover = [this, back, styled, &next](const StrId error) {
+    lookup->pendingWord.clear();
     next.releasePayload();
     std::string{}.swap(next.headword);
     if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
@@ -413,22 +434,21 @@ void DictionaryDefinitionActivity::navigateDefinition(const bool back) {
       recover(StrId::STR_DICT_RESTORE_FAILED);
       return;
     }
-    next.headword = std::move(previous.headword);
+    lookup->query = std::move(previous.query);
     next.currentPage = previous.page;
     next.selectionPage = previous.selectionPage;
     next.selection = previous.selection;
-    lookup->location = previous.location;
     --lookup->depth;
   } else {
     auto& previous = lookup->history[lookup->depth++];
-    previous.headword = std::move(content.headword);
-    previous.location = lookup->location;
+    previous.query = std::move(lookup->query);
+    lookup->query = std::move(lookup->pendingWord);
     previous.page = content.currentPage;
     previous.selectionPage = content.selectionPage;
     previous.selection = content.selection;
     previous.styled = styled;
-    lookup->location = location;
   }
+  lookup->pendingWord.clear();
   content = std::move(next);
   requestUpdate();
 }
@@ -568,7 +588,7 @@ void DictionaryDefinitionActivity::loop() {
   int sx = 0;
   int sy = 0;
   const bool longPress = lookup && mappedInput.wasScreenLongPress(sx, sy);
-  const bool headerLongPress = longPress && HeaderBackTapTarget::contains(sx, sy);
+  const bool headerLongPress = longPress && HeaderBackTapTarget::containsUnpadded(sx, sy);
   if (headerLongPress || mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     if (lookup && (headerLongPress || mappedInput.getHeldTime() >= ReaderUtils::GO_BACK_OR_HOME_MS)) {
       ActivityResult result;
@@ -654,7 +674,8 @@ void DictionaryDefinitionActivity::drawBody(const int fontId, const int x, const
                                               std::min(static_cast<size_t>(lines[i].len), MAX_LINE_BYTES));
     memcpy(buf, definition.c_str() + lines[i].start, len);
     buf[len] = '\0';
-    renderer.drawText(fontId, x, startY + (i - firstLine) * lineHeight, buf);
+    renderer.drawText(fontId, x, startY + (i - firstLine) * lineHeight, buf, true,
+                      lines[i].bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
   }
 }
 

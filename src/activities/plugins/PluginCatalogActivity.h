@@ -80,16 +80,19 @@ class PluginCatalogActivity final : public CatalogActivity {
     // Named JSON views override the browse URL/body; Back returns to their picker.
     struct BrowseList {
       std::string title, url, body;
-      std::string id, parent;  // no URL + ID = directory; parent selects its children
+      std::string id, parent;  // id fills {list_id}; parent selects a directory's children
       std::string noticeTitle, noticeMessage, noticeConfirm, noticeCancel;
       bool hasNotice() const { return !noticeMessage.empty(); }
     };
     std::vector<BrowseList> browseLists;
-    // Optional remote index that supplies the named JSON views dynamically.
+    // Optional remote index whose views follow the manifest's own lists,
+    // read with its own headers from the array and entry fields below.
     std::string browseListsUrl;
     // Optional credentials for the remote index. If omitted, reuse browse
     // request headers; only send to the explicitly configured index endpoint.
-    pluginhttp::Headers browseListsHeaders;
+    pluginhttp::Headers listsHeaders;
+    std::string listsItemsPath, listsTitlePath, listsUrlPath, listsIdPath, listsParentPath, listsRequiresPath;
+    size_t fixedListCount = 0;  // leading browseLists entries from the manifest
     // JSON search overrides URL/body independently; empty fields reuse browse.
     std::string searchUrl, searchBody;
     bool hasSearch() const { return (!searchUrl.empty() || !searchBody.empty()) && browseFormat != "xml"; }
@@ -181,6 +184,8 @@ class PluginCatalogActivity final : public CatalogActivity {
   std::vector<std::string> groupTrail;  // cycle-free stack (max 8)
   std::string folderLabel;
   std::vector<std::string> folderLabelHistory;
+  // browseListsUrl was fetched, or failed while fixed lists remain to show.
+  bool listIndexLoaded = false;
   std::string searchQuery;
   bool searchActive = false;
   // Reuse browse TLS; release in the picker and before a single-file download.
@@ -212,8 +217,8 @@ class PluginCatalogActivity final : public CatalogActivity {
   int visibleListIndex(int ordinal) const;
   void openList(int index);
   bool loadManifest();
-  enum class ListIndexResult { LOADED, UNAUTHORIZED, FAILED };
-  ListIndexResult loadBrowseListIndex();
+  // `status` is the index request's HTTP status (200 when there is no index).
+  bool loadBrowseListIndex(int& status);
   bool loadToken();
   void loadConfig();
   bool saveToken(const std::string& value);

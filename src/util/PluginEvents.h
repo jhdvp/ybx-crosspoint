@@ -50,14 +50,14 @@ namespace pluginevents {
 
 enum class Event : uint8_t {
   ReaderOpen,  // "reader.open"      vars: book
-  ReaderExit,  // "reader.exit"      vars: book, percent
+  ReaderExit,  // "reader.exit"      vars: book, percent, end_percent
   // "reader.session" vars: book, document, start_time, end_time,
   // duration_seconds, start_progress_bp, end_progress_bp, progress_scale.
   // Emitted once per completed reading interval (exit, sleep, restart, or
   // recovered at boot after a crash) carrying the id allocated for it once.
   ReaderSession,
   BookDownloaded,  // "book.downloaded"  vars: path, title, plugin
-  SleepEnter,      // "sleep.enter"      vars: book, percent when sleeping from a reader, else none
+  SleepEnter,      // "sleep.enter"      vars: book, percent, end_percent when sleeping from a reader, else none
   COUNT
 };
 
